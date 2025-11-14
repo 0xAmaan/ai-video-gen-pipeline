@@ -2,6 +2,8 @@
 
 .claude/
 .cursor/
+Mockup/
+
 
 # dependencies
 /node_modules

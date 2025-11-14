@@ -1,6 +1,7 @@
 import "@/app/globals.css";
 
 import { Inter } from "next/font/google";
+import { ConvexClientProvider } from "./ConvexClientProvider";
 
 const inter = Inter({
   weight: ["300", "400", "500", "600", "700"],
@@ -18,8 +19,10 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
       <body
         className={`${inter.className} bg-background-base text-foreground h-screen p-3`}
       >
-        {/* Main Content */}
-        <main>{children}</main>
+        <ConvexClientProvider>
+          {/* Main Content */}
+          <main>{children}</main>
+        </ConvexClientProvider>
       </body>
     </html>
   );
