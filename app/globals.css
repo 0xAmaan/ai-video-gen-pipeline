@@ -1,26 +1,60 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
+/* Base Variables */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Your core colors mapped to shadcn names */
+  --background: oklch(0.1924 0.0102 276.47); /* default bg color */
+  --foreground: oklch(0.9249 0 0); /* default text color */
+
+  --card: oklch(0.1515 0.0085 285.34); /* card bg color */
+  --card-foreground: oklch(88.224% 0.0001 271.152); /* card text color */
+
+  --primary: oklch(57.135% 0.10163 216.255); /* default primary bg color */
+  --primary-foreground: oklch(0.9249 0 0); /* default primary text color */
+
+  --button: oklch(0.2064 0.0079 285.69); /* default button bg color */
+  --button-hover: oklch(0.24 0.0079 285.69); /* default button bg color */
+
+  --destructive: oklch(57.127% 0.15752 12.869); /* default dest bg color */
+  --destructive-foreground: oklch(0.9249 0 0); /* default dest text color */
+
+  /* Keep shadcn defaults for the rest */
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --radius: 0.625rem;
 }
 
+/* Utility classes */
 @theme inline {
+  /* Add your special background-base for the outer layer */
+  --color-background-base: oklch(0 0 0);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-button: var(--button);
+  --color-button-hover: var(--button-hover);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-ring: var(--ring);
+
+  --color-accent: oklch(0.371 0 0);
+  --color-accent-foreground: oklch(0.985 0 0);
 }
