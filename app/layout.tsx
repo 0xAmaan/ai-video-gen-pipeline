@@ -1,6 +1,7 @@
 import "@/app/globals.css";
 
 import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "./ConvexClientProvider";
 
 const inter = Inter({
@@ -15,16 +16,18 @@ export const metadata = {
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <html lang="en">
-      <body
-        className={`${inter.className} bg-background-base text-foreground h-screen p-3`}
-      >
-        <ConvexClientProvider>
-          {/* Main Content */}
-          <main>{children}</main>
-        </ConvexClientProvider>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body
+          className={`${inter.className} bg-background-base text-foreground h-screen p-3`}
+        >
+          <ConvexClientProvider>
+            {/* Main Content */}
+            <main>{children}</main>
+          </ConvexClientProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 };
 
