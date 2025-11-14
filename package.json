@@ -6,7 +6,7 @@
     "dev": "concurrently \"bun run dev:next\" \"bun run dev:convex\" --names \"NEXT,CONVEX\" --prefix-colors \"cyan,magenta\"",
     "dev:next": "next dev --turbopack",
     "dev:convex": "bunx convex dev",
-    "build": "npx convex deploy && next build --turbopack",
+    "build": "next build",
     "start": "next start"
   },
   "dependencies": {
