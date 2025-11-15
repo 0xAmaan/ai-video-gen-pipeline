@@ -1,433 +1,582 @@
-# Generation Engine: Parallel Video Model System (PRD)
+# Generation Engine - Product Requirements Document
 
-### TL;DR
+**Project**: Generation Engine - Parallel multi-model video generation system with intelligent routing and optimization  
+**Goal**: Enable rapid, cost-effective video ad production through intelligent model selection and parallel processing across multiple AI providers
 
-A parallel video model engine that routes briefs to the best generator(s) across providers like HeyGen, KlingAI, Veo3, and others—simultaneously—so marketers and ad directors can produce high-quality ad videos fast and cost-effectively. It automates asset flow, audio tagging, retries, and handoff while exposing a clear timeline/progress UI and a clean API. The result: more approved ads, faster cycles, lower cost per finished minute, and consistent brand safety.
+**Note**: This system orchestrates the actual video generation, routing requests to optimal models based on requirements, budget, and quality needs
 
 ---
 
-## Goals
+## Core Architecture
 
-### Business Goals
+**Multi-Model Orchestration:**
 
-* Reduce cost per finished minute of video by 30–50% within 90 days of launch, measured across all tenants.
+- Intelligent routing to multiple video generation providers simultaneously
+- Dynamic model selection based on complexity, cost, and quality requirements
+- Parallel generation with automatic retry and fallback mechanisms
+- Unified progress tracking across all generation pipelines
+- Future: Custom model fine-tuning and proprietary model integration
 
-* Achieve 95%+ on-time delivery for jobs under a 2-hour SLA at P95 latency for single-variant outputs.
+**Provider Integration:**
 
-* Increase approved-first-pass rate to 70%+ (outputs accepted without external editing) within 60 days.
-
-* Drive 40% of generated videos to be multi-variant experiments (3+ variants) to increase win-rate in market tests.
-
-* Reach 80%+ provider utilization with smart routing and fallbacks to minimize idle compute and vendor overage fees.
-
-### User Goals
-
-* Generate multiple high-quality video ad variants quickly with predictable budgets and deadlines.
-
-* Maintain brand consistency and compliance via metadata, audio tagging, and automated QC checks.
-
-* See live progress, costs, and ETA in a consolidated timeline; pause, cancel, or rerun specific branches.
-
-* Reuse scripts, images, VO, and metadata across campaigns with versioning and lineage.
-
-* Deliver assets directly to ad platforms, DAMs, or cloud storage with captions and multiple aspect ratios.
-
-### Non-Goals
-
-* Building a full non-linear video editor (NLE). Advanced frame-level editing is out of scope.
-
-* Custom model training or fine-tuning in v1; we focus on orchestration and routing over existing providers.
-
-* Live broadcast or real-time streaming production; this is a batch/near-real-time generation system.
+- HeyGen for avatar and presenter videos
+- KlingAI for creative and artistic content
+- Veo3 for high-quality cinematic generation
+- RunwayML for motion and transformation effects
+- Additional providers added modularly
 
 ---
 
 ## User Stories
 
-Personas:
+### Primary User: Marketing Teams and Ad Directors
 
-* Marketing Manager (MM)
+- As a marketer, I want to **generate multiple video variations simultaneously** so that I can choose the best option
+- As an ad director, I want to **control quality vs cost trade-offs** so that I stay within budget
+- As a producer, I want to **see real-time progress for all generations** so that I can manage timelines
+- As a creative director, I want to **automatically retry failed generations** so that technical issues don't delay projects
+- As a brand manager, I want to **ensure brand consistency across all outputs** so that standards are maintained
 
-* Ad/Creative Director (CD)
+### Secondary User: Agencies and Production Teams
 
-* Producer/Project Manager (PM)
-
-* Brand Compliance Officer (BCO)
-
-* Data Analyst (DA)
-
-* Workspace Admin (WA)
-
-Marketing Manager
-
-* As a Marketing Manager, I want to upload a script and product images, so that I can quickly generate multiple ad variants for A/B testing.
-
-* As a Marketing Manager, I want to set a budget cap and deadline, so that the system optimizes model choices without cost overruns.
-
-* As a Marketing Manager, I want to export final cuts with captions and aspect ratios, so that I can publish to different channels without extra work.
-
-Ad/Creative Director
-
-* As an Ad Director, I want to compare variants side-by-side, so that I can select the most on-brief creative fast.
-
-* As an Ad Director, I want to lock key scenes while rerunning only the weak ones, so that I preserve good segments and iterate efficiently.
-
-* As an Ad Director, I want brand and tone metadata grounded in the brief, so that outputs stay on-message.
-
-Producer/Project Manager
-
-* As a Producer, I want a job timeline with per-model progress and ETA, so that I can manage expectations and unblock delays.
-
-* As a Producer, I want to retry failed branches automatically on fallback providers, so that deadlines are met without manual intervention.
-
-* As a Producer, I want webhook notifications, so that I can trigger downstream QC and delivery workflows.
-
-Brand Compliance Officer
-
-* As a Compliance Officer, I want automated audio tagging that detects music sources and VO language, so that I can verify rights and localization.
-
-* As a Compliance Officer, I want content safety checks and logo usage validation, so that brand and regulatory standards are upheld.
-
-Data Analyst
-
-* As a Data Analyst, I want cost and success-rate analytics by provider and genre, so that we can negotiate better rates and refine routing rules.
-
-* As a Data Analyst, I want to track approval rates per variant and channel, so that we can invest in the most effective creative.
-
-Workspace Admin
-
-* As an Admin, I want role-based access and per-team budgets, so that costs and permissions remain controlled.
-
-* As an Admin, I want API keys with scopes and rate limits, so that integrations are safe and auditable.
+- As an agency producer, I want to **batch process multiple campaigns** so that we maximize efficiency
+- As a production coordinator, I want to **track costs per generation** so that we manage client budgets effectively
 
 ---
 
-## Functional Requirements
+## Key Features
 
-* Input & Briefing (Priority: P0) -- Brief Intake: Script upload, product images/video, brand kit (logo, fonts/colors), and key messages. -- Metadata Tags: Audience, channel, length, tone, compliance flags, required/forbidden elements. -- Constraints: Budget cap, deadline, quality profile, number of variants, aspect ratios.
+### 1. Authentication System
 
-* Parallel Model Orchestrator (Priority: P0) -- Model Registry: Catalog of providers (HeyGen, KlingAI, Veo3, others) with declared capabilities, cost, speed, and quality scores. -- Intelligent Routing: Rule- and signal-based routing based on brief metadata, budget, deadlines, and historical performance. -- Parallelization: Simultaneous dispatch to multiple providers for variant generation; configurable concurrency per tenant. -- Health & Warmup: Provider health checks, pre-warm pools, rate-limit awareness, and backoff strategies. -- Fallbacks & Reruns: Automatic retry on alternative providers; partial reruns for specific scenes or tracks. -- Versioning: Pin model/provider versions per job for reproducibility; seed management for deterministic reruns.
+**Must Have:**
 
-* Integrations (Priority: P0) -- Providers: HeyGen (talking-head and VO), KlingAI (cinematic T2V), Veo3 (high-fidelity T2V), plus optional Runway/Pika/Stability/ElevenLabs. -- Delivery: DAMs (e.g., Brandfolder/Bynder), cloud buckets (S3/GCS/Azure), and ad platforms via export bundles. -- Notifications: Webhooks, email, Slack/Teams. -- Auth: OAuth/API key storage with rotation and scoped permissions.
+- Integrated Clerk authentication with team management
+- API key management for each provider
+- Usage quota tracking per user/team
+- Billing integration for cost tracking
+- Provider credential encryption
 
-* Asset Flow & Storage (Priority: P0) -- Asset Graph: Track lineage between scripts, images, audio, scenes, and final outputs; versioning across iterations. -- Storage: Content-addressable storage with regional replication; signed URLs; CDN-backed downloads. -- Checksums & Watermarks: Integrity checks and optional invisible watermarking of generated content.
+**Access Control:**
 
-* Audio Management & Tagging (Priority: P0) -- Audio Tagging: Detect VO language, music presence/source, SFX classes; profanity/loudness checks. -- VO & TTS: Selection from integrated providers; voice cloning where available (with consent tracking). -- Alignment: Lip-sync alignment hints for talking-head outputs; beat detection for cut timing. -- Loudness & Mix: Normalize to target LUFS; ducking for VO-over-music.
+- Model access permissions by tier
+- Spending limits per user/project
+- Priority queue management
+- Resource allocation controls
 
-* Timeline & Progress UI (Priority: P0) -- Job Overview: Gantt-style timeline of branches per provider, with statuses, ETA, and cost projections. -- Controls: Pause, cancel, rerun per branch; cap spend during execution; approve/lock scenes. -- Logs: Human-readable logs and raw provider responses for debugging.
+**Success Criteria:**
 
-* Review & QA (Priority: P1) -- Automated QC: Duration bounds, black frames, flicker detection, speech intelligibility, logo presence. -- Review Tools: Frame-accurate comments, scene ratings, A/B side-by-side, diff of iterations.
+- Secure credential storage
+- Accurate usage tracking
+- Clear quota visibility
+- Seamless billing integration
 
-* Delivery & Handoff (Priority: P0) -- Exports: MP4/MOV, captions (SRT/VTT), thumbnails, and social-ready aspect ratios (9:16, 1:1, 16:9). -- Packaging: Shot lists, scripts, and rights report bundled; push to DAM/storage; publish webhooks.
+### 2. Intelligent Model Router
 
-* Policy & Safety (Priority: P0) -- Content Filters: Safety/classification gates based on brief and brand requirements. -- Rights & Consent: Track third-party content rights, VO consent, and usage windows.
+**Must Have:**
 
-* Admin, Billing & Governance (Priority: P1) -- RBAC & SSO: Roles (Viewer, Editor, Approver, Admin) and SSO integration. -- Metering & Budgets: Real-time spend meter, monthly caps, cost reports by team/campaign. -- Audit: Full activity log and immutable job audit trail.
+- Complexity analysis of generation requirements
+- Cost estimation before generation
+- Quality requirement matching
+- Automatic model selection with override option
+- Load balancing across providers
 
-* Public API (Priority: P0) -- Endpoints: Create job, upload assets, submit brief, get status, stream logs, list outputs, trigger reruns, export assets. -- Webhooks: Job.created, job.updated, branch.completed, qc.failed, export.ready; idempotency and signature verification. -- Limits: Pagination, rate limiting, retry-after headers, idempotency keys.
+**Routing Decision Tree:**
 
-* Observability (Priority: P0) -- Metrics: Provider latency, success rates, error codes; cost per job/variant; cache hit rates. -- Tracing: Distributed tracing for job flows; correlation IDs across providers.
+```
+Input Analysis → 
+  ├─ Simple (text overlay, basic animation) → Tier 1 Models (fast, cheap)
+  ├─ Medium (character animation, scene transitions) → Tier 2 Models (balanced)
+  └─ Complex (photorealistic, cinematic) → Tier 3 Models (premium quality)
+```
 
-* Localization (Priority: P2) -- Multi-language VO and subtitles; per-locale variants and compliance checks.
+**Model Selection Factors:**
+
+- Visual complexity score (1-10)
+- Required resolution and frame rate
+- Specific capabilities needed (avatar, effects, etc.)
+- Budget constraints
+- Deadline urgency
+- Historical performance data
+
+**Success Criteria:**
+
+- Accurate complexity assessment
+- Optimal model selection in 95% of cases
+- Cost savings of 30% vs manual selection
+- Clear routing explanation to users
+
+### 3. Parallel Generation Pipeline
+
+**Must Have:**
+
+- Simultaneous generation across multiple providers
+- Queue management with priority handling
+- Resource allocation optimization
+- Progress tracking for each pipeline
+- Result aggregation and comparison
+
+**Pipeline Stages:**
+
+- Pre-processing and asset preparation
+- Provider-specific formatting
+- Generation request dispatch
+- Progress monitoring
+- Result retrieval and processing
+- Quality assessment
+- Final delivery
+
+**Success Criteria:**
+
+- 3x faster than sequential processing
+- 99.9% generation completion rate
+- Automatic failure recovery
+- Real-time progress visibility
+- Synchronized result delivery
+
+### 4. Provider Integration Layer
+
+**Must Have:**
+
+- Standardized API wrapper for each provider
+- Format conversion for inputs/outputs
+- Error handling and retry logic
+- Provider health monitoring
+- Fallback provider selection
+
+**Supported Providers:**
+
+```
+HeyGen:
+  - Capabilities: Avatar videos, lip-sync, presenter mode
+  - Cost: $0.05 per second
+  - Quality: High for human avatars
+  - Speed: 2-5 minutes per minute of video
+
+KlingAI:
+  - Capabilities: Creative effects, artistic styles
+  - Cost: $0.03 per second
+  - Quality: High for stylized content
+  - Speed: 3-7 minutes per minute of video
+
+Veo3:
+  - Capabilities: Cinematic quality, complex scenes
+  - Cost: $0.08 per second
+  - Quality: Premium photorealistic
+  - Speed: 5-10 minutes per minute of video
+
+RunwayML:
+  - Capabilities: Motion effects, transformations
+  - Cost: $0.04 per second
+  - Quality: High for effects
+  - Speed: 2-4 minutes per minute of video
+```
+
+**Success Criteria:**
+
+- Seamless provider switching
+- Consistent output quality
+- Error recovery without user intervention
+- Provider uptime monitoring
+- Cost optimization achieved
+
+### 5. Quality Assessment System
+
+**Must Have:**
+
+- Automatic quality scoring for outputs
+- Brand compliance checking
+- Technical quality metrics (resolution, artifacts)
+- Content appropriateness filtering
+- Comparison tools for multiple outputs
+
+**Quality Metrics:**
+
+- Visual fidelity score
+- Motion smoothness rating
+- Audio sync accuracy
+- Brand guideline adherence
+- Content safety score
+
+**Success Criteria:**
+
+- Accurate quality assessment
+- Automated rejection of subpar outputs
+- Clear quality reporting
+- Improvement suggestions provided
+- Consistent scoring across providers
+
+### 6. Cost Optimization Engine
+
+**Must Have:**
+
+- Real-time cost tracking
+- Budget allocation across generations
+- Cost vs quality trade-off analysis
+- Bulk pricing negotiation tracking
+- Spend forecasting and alerts
+
+**Optimization Strategies:**
+
+- Batch processing for volume discounts
+- Off-peak generation scheduling
+- Provider arbitrage for best rates
+- Quality threshold management
+- Cached result reuse
+
+**Success Criteria:**
+
+- 30% cost reduction vs direct provider use
+- Accurate cost predictions (±10%)
+- Budget overrun prevention
+- Clear cost breakdown reporting
+- Automatic optimization suggestions
+
+### 7. Progress Monitoring Dashboard
+
+**Must Have:**
+
+- Real-time generation status
+- Multi-pipeline progress tracking
+- Estimated completion times
+- Queue position visibility
+- Historical generation analytics
+
+**Dashboard Components:**
+
+- Active generation tiles
+- Timeline view of pipeline stages
+- Provider status indicators
+- Cost accumulator
+- Quality preview thumbnails
+
+**Success Criteria:**
+
+- Updates every 5 seconds
+- Accurate time estimates
+- Clear error reporting
+- Mobile responsive design
+- Export capability for reports
+
+### 8. Asset Flow Management
+
+**Must Have:**
+
+- Automatic asset preparation for each provider
+- Format conversion and optimization
+- Temporary storage management
+- Result packaging and delivery
+- Cleanup and archival processes
+
+**Asset Pipeline:**
+
+- Input validation and sanitization
+- Provider-specific preprocessing
+- Upload to provider platforms
+- Generation monitoring
+- Result download and processing
+- Final packaging and storage
+
+**Success Criteria:**
+
+- Zero asset loss during processing
+- Optimal format for each provider
+- Efficient storage utilization
+- Quick retrieval of results
+- Automatic cleanup of temporary files
+
+### 9. Retry and Fallback Logic
+
+**Must Have:**
+
+- Automatic retry for transient failures
+- Intelligent fallback to alternative providers
+- Partial result recovery
+- Queue persistence across failures
+- Manual intervention options
+
+**Retry Strategy:**
+
+- 3 automatic retries with exponential backoff
+- Provider switching after 2 failures
+- Quality degradation acceptance for urgency
+- Manual override capabilities
+- Failure reason logging
+
+**Success Criteria:**
+
+- 99.9% eventual success rate
+- Minimal user intervention required
+- Clear failure communication
+- Graceful degradation
+- Complete audit trail
 
 ---
 
-## User Experience
+## Data Model
 
-* End-to-end journey for marketers and ad directors
+### Convex Collection: `generationJobs`
 
-Entry Point & First-Time User Experience
+**Document Structure:**
 
-* Users access via invite link or SSO from the marketing tool suite; landing on “Create New Ad.”
+```json
+{
+  "jobId": "gen_abc123xyz",
+  "projectId": "proj_789",
+  "userId": "usr_123456",
+  "input": {
+    "storyboardId": "stb_reference",
+    "scenes": ["scene_1", "scene_2"],
+    "duration": 30,
+    "resolution": "1920x1080",
+    "frameRate": 30
+  },
+  "routing": {
+    "complexityScore": 7.5,
+    "selectedModels": ["heygen", "kling", "veo3"],
+    "strategy": "parallel_quality",
+    "costEstimate": 2.40,
+    "routingReason": "Complex scene requiring multiple capabilities"
+  },
+  "pipelines": [
+    {
+      "pipelineId": "pip_001",
+      "provider": "heygen",
+      "status": "processing",
+      "progress": 0.65,
+      "startTime": "timestamp",
+      "estimatedCompletion": "timestamp",
+      "cost": 1.50,
+      "attempts": 1
+    }
+  ],
+  "results": {
+    "completed": ["pip_001"],
+    "failed": [],
+    "outputs": [
+      {
+        "pipelineId": "pip_001",
+        "url": "output_url",
+        "quality": 8.5,
+        "format": "mp4",
+        "size": 45678900
+      }
+    ]
+  },
+  "metadata": {
+    "priority": "high",
+    "deadline": "timestamp",
+    "budget": 10.00,
+    "tags": ["campaign_summer", "product_launch"]
+  },
+  "createdAt": "timestamp",
+  "completedAt": "timestamp",
+  "status": "in_progress"
+}
+```
 
-* Onboarding wizard introduces: brief structure, routing overview, and budget & deadline controls (2–3 screens, skippable).
+### Convex Collection: `modelRegistry`
 
-* Starter templates for common ad types (UGC talking-head, product explainer, cinematic intro).
+```json
+{
+  "modelId": "mdl_heygen_v2",
+  "provider": "heygen",
+  "capabilities": {
+    "avatars": true,
+    "lipSync": true,
+    "backgrounds": true,
+    "effects": false,
+    "maxDuration": 300,
+    "resolutions": ["720p", "1080p", "4k"]
+  },
+  "pricing": {
+    "baseRate": 0.05,
+    "bulkRates": [
+      {"volume": 1000, "rate": 0.045},
+      {"volume": 5000, "rate": 0.04}
+    ],
+    "currency": "USD",
+    "unit": "second"
+  },
+  "performance": {
+    "averageSpeed": 3.5,
+    "successRate": 0.98,
+    "qualityScore": 8.7,
+    "uptime": 0.995
+  },
+  "limits": {
+    "maxConcurrent": 10,
+    "rateLimitPerMinute": 60,
+    "maxFileSize": 500,
+    "supportedFormats": ["mp4", "mov", "webm"]
+  },
+  "status": "active",
+  "lastHealthCheck": "timestamp"
+}
+```
 
-Core Experience
+### Convex Collection: `costTracking`
 
-* Step 1: Create Brief
-
-  * User enters title, selects ad type, uploads script (or writes inline), and adds product images/video.
-
-  * UI guides required metadata: audience, channel, tone, aspect ratios, length target.
-
-  * Validation: required fields, asset formats, script length; inline errors show fixes.
-
-  * Success: brief saved as Draft; user sees estimated cost/time based on current routing profile.
-
-* Step 2: Configure Constraints
-
-  * User sets budget cap, deadline, number of variants, and quality profile.
-
-  * UI displays cost/time tradeoffs; recommends providers for the brief.
-
-  * Errors if budget cannot meet constraints; offer auto-adjust (fewer variants or extended deadline).
-
-* Step 3: Audio Setup
-
-  * Choose VO source (upload/TTS/cloned voice) and background music from library or none.
-
-  * Audio tagging preview identifies language, potential issues (e.g., profanity), and loudness.
-
-  * Success: audio assets attached with alignment hints.
-
-* Step 4: Review Routing Plan
-
-  * Timeline pre-visualization of model branches: e.g., 2x Veo3 cinematic variants, 1x KlingAI, 1x HeyGen talking-head.
-
-  * Display per-branch ETA and projected cost; user can lock/unlock branches, reorder, or add/remove providers.
-
-* Step 5: Launch Generation
-
-  * Click “Generate.” Orchestrator dispatches parallel jobs; UI shows live timeline with statuses.
-
-  * Real-time updates: queueing, rendering, stitching, QC; logs expandable per branch.
-
-  * Error handling: automatic retry/fallback indicated with reason; user can override or pause.
-
-* Step 6: Review Variants
-
-  * Grid + side-by-side compare; per-variant scorecards (duration, QC results, costs, notes).
-
-  * User locks preferred scenes; selectively reruns weak scenes or requests an extra variant within remaining budget.
-
-* Step 7: Approvals & Captions
-
-  * Approver role confirms final cut; system generates captions (SRT/VTT) and burns in if requested.
-
-  * Language variants offered if localization enabled; VO swapping with smart re-timing.
-
-* Step 8: Delivery & Handoff
-
-  * Export presets: TikTok, Instagram, YouTube, CTV; aspect ratio-specific outputs with safe margins.
-
-  * Assets packaged with rights report and pushed to DAM/storage; webhook fires to notify downstream teams.
-
-Advanced Features & Edge Cases
-
-* Budget Exhaustion: System pauses non-critical branches and prompts to increase budget or reduce variants.
-
-* Provider Outage: Automatic rebalancing to available providers; user notified with revised ETA.
-
-* Lip-Sync Mismatch: Auto-detect and re-time; fallback to alternative VO or provider with better alignment.
-
-* Compliance Fail: QC flags content; user receives guided fixes (swap music, remove flagged frame) or one-click rerun with adjusted constraints.
-
-* Long Scripts: Suggest scene splits; partial generation per scene to enable quicker iteration.
-
-* Asset Rights Conflict: Halt export until rights metadata completed; provide checklist.
-
-UI/UX Highlights
-
-* Color-coded statuses (Queued, Rendering, QC, Needs Attention, Done); accessible contrast ratios.
-
-* Gantt-style timeline with per-branch tooltips: current step, ETA delta, spend-to-date.
-
-* Keyboard shortcuts for review (space to play/pause, 1–5 to rate scenes).
-
-* Scene-based navigation; lock icons for preserved segments; breadcrumb for lineage.
-
-* Responsive layout with offline-ready uploads and resumable transfers; drag-and-drop assets.
-
-* Clear privacy cues when voice cloning or external providers are used; consent banners and policy links.
+```json
+{
+  "trackingId": "cst_xyz789",
+  "userId": "usr_123456",
+  "teamId": "team_789",
+  "period": "2025-01",
+  "providers": {
+    "heygen": {
+      "jobs": 145,
+      "seconds": 4350,
+      "cost": 217.50
+    },
+    "kling": {
+      "jobs": 89,
+      "seconds": 2670,
+      "cost": 80.10
+    }
+  },
+  "totals": {
+    "jobs": 234,
+    "seconds": 7020,
+    "cost": 297.60,
+    "budget": 500.00,
+    "remaining": 202.40
+  },
+  "savings": {
+    "batchProcessing": 45.30,
+    "offPeakUsage": 22.15,
+    "providerArbitrage": 38.90
+  },
+  "alerts": [
+    {
+      "type": "budget_warning",
+      "threshold": 0.80,
+      "triggered": false
+    }
+  ],
+  "updatedAt": "timestamp"
+}
+```
 
 ---
 
-## Narrative
+## Recommended Tech Stack
 
-Sofia, a Creative Director at a consumer brand, faces a tight deadline: launch a social-first video campaign for a new product line by tomorrow. She has a strong script, a product shoot, and an approved brand kit, but the agency’s edit bay is backed up. She needs multiple creative directions fast—talking-head UGC for TikTok, a cinematic opener for YouTube, and square variants for Instagram—without blowing her budget.
+**Frontend:** Next.js 16.0.3 with App Router + React 19.2.0 + TypeScript 5  
+**Backend:** Convex for real-time job tracking and orchestration  
+**Queue System:** Convex scheduled functions for job processing  
+**Authentication:** Clerk for user and API key management  
+**AI Integration:** Direct provider SDKs and REST APIs  
+**Monitoring:** Built-in Convex analytics + custom dashboards  
+**Runtime:** Bun for performance optimization  
 
-She opens the Generation Engine and completes a brief in minutes, attaching images, VO guidance, and tone metadata. The system proposes a parallel plan: two cinematic variants via Veo3, one stylized cut via KlingAI, and a UGC-style talking-head via HeyGen, all within her budget and a two-hour window. She launches. The timeline animates as each branch progresses, with automated audio tagging confirming rights, loudness, and language. One provider hits a rate limit; the system quietly reroutes, preserving the deadline.
+**Rationale:** Convex's real-time capabilities are perfect for job tracking and orchestration, while the serverless architecture scales automatically with demand.
 
-When renders finish, Sofia compares variants side-by-side with QC scorecards. She locks two strong scenes and reruns a weak segment only, conserving spend. Captions generate automatically; aspect ratios are packaged with safe margins. With a click, assets are pushed to the brand’s DAM and a webhook alerts the media team. Sofia meets the deadline with three polished options, at half the usual cost and with higher confidence in brand safety. The business sees a faster cycle to market and higher approval rates—without adding headcount.
+---
+
+## Out of Scope
+
+### Features NOT Included:
+
+- Custom model training
+- Video editing post-generation
+- Live streaming generation
+- 3D model generation
+- Voice cloning
+- Music composition
+- Real-time collaborative generation
+- Blockchain verification
+
+### Technical Items NOT Included:
+
+- On-premise deployment
+- Custom hardware acceleration
+- Peer-to-peer generation network
+- Distributed computing cluster
+- Model fine-tuning interface
+- Direct GPU access
+- Custom codec development
+- Native mobile SDKs
+
+---
+
+## Known Limitations & Trade-offs
+
+1. **Provider Dependencies**: System reliability depends on third-party provider uptime
+2. **Generation Speed**: Limited by provider processing times (2-10 minutes typical)
+3. **Cost Variability**: Prices may fluctuate based on provider pricing changes
+4. **Quality Consistency**: Output quality varies between providers and models
+5. **Concurrent Limits**: Maximum 50 parallel generations per organization
+6. **File Size**: Input assets limited to 500MB per file
+7. **Video Length**: Maximum 5 minutes per generation
+8. **Storage Duration**: Generated videos stored for 30 days
 
 ---
 
 ## Success Metrics
 
-* Time-to-First-Render (TTFR): Median under 8 minutes for at least one variant per job.
-
-* Approved-First-Pass Rate: 70%+ of outputs accepted without external editing.
-
-* Cost per Finished Minute: 30–50% reduction compared to baseline manual workflows.
-
-* Job Success Rate: 98%+ jobs finishing within budget and deadline; <2% manual intervention.
-
-* Variant Throughput: Average 3+ variants per job; 40% jobs use multivariate tests.
-
-### User-Centric Metrics
-
-* DAU/WAU and org activation rate within 14 days of invite.
-
-* NPS/CSAT post-delivery; target ≥45 NPS and ≥4.5/5 CSAT.
-
-* Median iteration cycle time (first review to approved) under 45 minutes.
-
-* QC-assisted fix acceptance rate ≥80%.
-
-### Business Metrics
-
-* Gross margin per minute generated; target ≥55% within 90 days.
-
-* Expansion revenue: 25% of orgs increase monthly budgets by month 2.
-
-* Churn: <3% logo churn quarterly among active orgs.
-
-* Provider cost optimization: ≥15% savings via routing vs. naive allocation.
-
-### Technical Metrics
-
-* P95 provider-render latency within declared SLOs per provider class.
-
-* Uptime: ≥99.9% core orchestration; webhook delivery success ≥99% within 5 minutes.
-
-* Error budgets: <1% failed branches; <0.5% misrouted jobs.
-
-* Storage egress cache hit rate ≥60% for repeated downloads.
-
-### Tracking Plan
-
-* brief.created, assets.uploaded, constraints.set, routing.previewed, job.launched
-
-* branch.dispatched(provider), branch.retry, branch.fallback, branch.completed
-
-* audio.tagged, qc.passed, qc.failed(reason)
-
-* variant.viewed, scene.locked, partial.rerun
-
-* export.requested, export.completed, delivery.webhook.delivered
-
-* budget.threshold.reached, job.paused, job.cancelled
-
-* auth.login, user.invited, api.key.created
-
-* billing.usage.recorded, report.generated
+1. **Average generation time under 5 minutes** for 30-second videos
+2. **99.9% successful completion rate** including retries
+3. **30% cost reduction** compared to direct provider usage
+4. **Quality score above 8.0** for 90% of outputs
+5. **Provider utilization balanced** within 20% variance
+6. **Zero data loss** during generation pipeline
 
 ---
 
-## Technical Considerations
+## Testing Checklist
 
-### Technical Needs
+### Core Functionality:
 
-* Orchestration API: Create jobs, manage branches, expose status/logs; idempotent, resumable uploads.
+- [ ] Jobs route to appropriate providers
+- [ ] Parallel generation executes correctly
+- [ ] Progress tracking updates in real-time
+- [ ] Results aggregate properly
+- [ ] Cost calculation is accurate
 
-* Scheduler & Queue: Priority-aware, tenant quotas, backpressure; concurrency controls per provider.
+### Provider Integration:
 
-* Provider Adapters: Modular connectors for HeyGen, KlingAI, Veo3, and others with unified request/response schemas.
+- [ ] All providers connect successfully
+- [ ] Format conversion works correctly
+- [ ] Error handling triggers appropriately
+- [ ] Fallback logic executes
+- [ ] Health checks run regularly
 
-* Rules & Scoring: Routing engine combining static rules (budget/deadline) and learned performance signals.
+### Optimization Features:
 
-* Media Pipeline: Asset graph, scene-level segmentation, stitching, transcode, captions generation, and QC analyzers.
+- [ ] Cost optimization reduces spending
+- [ ] Quality assessment is accurate
+- [ ] Retry logic handles failures
+- [ ] Queue management prioritizes correctly
+- [ ] Resource allocation is efficient
 
-* Audio Stack: Tagging (language, music, SFX), loudness normalization, VO alignment/lip-sync hints, beat detection.
+### Monitoring and Reporting:
 
-* Front-End: Timeline/progress UI, side-by-side compare, review tools, admin settings; responsive and accessible.
+- [ ] Dashboard displays real-time status
+- [ ] Analytics track all metrics
+- [ ] Alerts trigger at thresholds
+- [ ] Reports generate accurately
+- [ ] Audit logs capture all events
 
-* Observability: Centralized logging, metrics, traces; correlation IDs across all components.
+### Performance:
 
-* Security & Auth: RBAC, SSO, scoped API keys, signed webhooks, audit trails.
-
-### Integration Points
-
-* Video/Audio Generation: HeyGen, KlingAI, Veo3, optional Runway/Pika/Stability/ElevenLabs.
-
-* Delivery: DAMs, cloud storage providers, and ad platforms via export profiles.
-
-* Notifications: Email, Slack/Teams webhooks.
-
-* Billing: Usage metering and cost reporting; integration with payment processor if required.
-
-* Governance: Consent and rights metadata capture; policy engines for content filters.
-
-### Data Storage & Privacy
-
-* Data Flow: Assets ingress to secure object storage; job metadata in a transactional store; provider requests via ephemeral URLs; outputs stored with lineage.
-
-* Privacy: Encryption in transit and at rest; tenant isolation; scoped API tokens; PII minimization.
-
-* Compliance: Audit logs and consent tracking; data residency options; GDPR/CCPA alignment; configurable retention and deletion policies.
-
-* IP & Rights: Source attribution for audio/music; contract terms attached to assets; exportable rights report.
-
-### Scalability & Performance
-
-* Load Targets: MVP 100 concurrent renders; scale to 1,000+ with horizontal workers and adaptive concurrency.
-
-* Caching & Warmup: Provider token and session reuse; pre-warmed pools for hot models; CDN for downloads.
-
-* Backpressure: Queue-based throttling; dynamic rerouting on provider saturation or rate limits.
-
-* Multi-Region Readiness: Stateless workers with replicated storage and region-aware routing (future phase).
-
-### Potential Challenges
-
-* Provider Variability: Latency/outages and version drift—mitigate with health checks, pinning, and fallbacks.
-
-* Cost Uncertainty: Variable pricing—mitigate with pre-flight estimates, real-time metering, and budget guards.
-
-* Quality Divergence: Lip-sync and motion artifacts—mitigate with QC analyzers and targeted reruns.
-
-* Compliance & Safety: False positives/negatives—provide explainable flags and guided remediation.
-
-* Large Asset Handling: Long uploads and egress costs—use resumable uploads and smart packaging.
+- [ ] System handles 50+ concurrent jobs
+- [ ] API response times under 100ms
+- [ ] Dashboard updates without lag
+- [ ] Database queries remain fast
+- [ ] Storage cleanup runs properly
 
 ---
 
-## Milestones & Sequencing
+## Risk Mitigation
 
-A lean, fast-moving plan optimized for a small team and quick feedback.
+**Biggest Risk:** Provider API failures disrupting generation pipeline  
+**Mitigation:** Implement multi-provider redundancy with automatic failover; maintain provider health scoring for intelligent routing
 
-### Project Estimate
+**Second Risk:** Cost overruns from unexpected usage spikes  
+**Mitigation:** Implement hard budget limits with automatic throttling; provide real-time cost alerts and forecasting
 
-* Large: 4–8 weeks for MVP to production pilot, with iterative releases every 1–2 weeks.
+**Third Risk:** Quality inconsistency across providers  
+**Mitigation:** Develop provider-specific quality calibration; implement automatic quality validation with re-generation triggers
 
-### Team Size & Composition
-
-* Medium Team (3–5 total people)
-
-  * 1 Product Manager/Designer (hybrid)
-
-  * 1 Backend/Orchestration Engineer
-
-  * 1 Full-Stack Engineer (front-end + API)
-
-  * Optional: 1 Integrations Engineer (contract) and 1 QA/Support (part-time during hardening)
-
-### Suggested Phases
-
-* Phase 0: Foundations & Provider Spikes (3–5 days)
-
-  * Key Deliverables: PM/Designer—wireframes of brief and timeline UI; Backend—provider adapter stubs; Full-Stack—skeleton app with auth; Metrics scaffold.
-
-  * Dependencies: Provider API access keys; sample assets; brand kit templates.
-
-* Phase 1: Core Orchestrator + Two Providers (2 weeks)
-
-  * Key Deliverables: Backend—job model, queue, routing rules, health checks; Integrations—HeyGen + KlingAI adapters; Front-End—brief creation, constraints, launch, basic timeline; API—jobs, status, assets.
-
-  * Dependencies: Provider rate limits configured; storage and CDN set up.
-
-* Phase 2: Parallel Variants, Fallbacks, and Reruns (1–1.5 weeks)
-
-  * Key Deliverables: Backend—parallel dispatch, per-branch controls, retries/fallbacks; Front-End—Gantt timeline, branch actions; API—rerun endpoints; Observability—branch-level metrics.
-
-  * Dependencies: Concurrency policies; budget guardrails.
-
-* Phase 3: Audio Tagging, QC, and Delivery (1 week)
-
-  * Key Deliverables: Audio tagging pipeline, loudness normalization; QC checks (duration, black frames, basic speech); Captions generation; Exports to storage/DAM; Webhooks for delivery.
-
-  * Dependencies: Music library integration (if used); captioning component.
-
-* Phase 4: Hardening, Analytics, and Pilot (1 week)
-
-  * Key Deliverables: Cost dashboards, provider performance analytics; RBAC and budget caps; NPS/CSAT capture; doc + runbooks; pilot with 1–2 design partners.
-
-  * Dependencies: Billing/metering provisioning; support workflows.
-
-* Phase 5: Optional Enhancements (ongoing, 1–2 weeks sprints)
-
-  * Key Deliverables: Add Veo3 adapter; localization; advanced QC; side-by-side review and scene locking; additional export presets.
-
-  * Dependencies: New provider contracts; localization datasets.
+**Fourth Risk:** Data loss during long generation processes  
+**Mitigation:** Implement checkpointing and partial result recovery; maintain persistent queue with automatic resume capability

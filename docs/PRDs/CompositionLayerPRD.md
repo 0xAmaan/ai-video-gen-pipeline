@@ -1,335 +1,585 @@
-# Composition Layer: Browser-Based Video Timeline Editor
+# Composition Layer - Product Requirements Document
 
-### TL;DR
+**Project**: Composition Layer - Browser-based timeline editor with AI regeneration and professional editing capabilities  
+**Goal**: Empower creators to arrange clips, make fast edits with low-latency previews, and regenerate sequences using AI directly in the browser
 
-The Composition Layer is a browser-based video timeline editor that empowers creators to arrange clips, make fast edits with low-latency previews, and regenerate sequences using AI—all without heavyweight desktop software. Core features include an interactive timeline, efficient video/audio proxy editing, and seamless AI-powered regeneration of selected segments. This tool is designed for modern creators, video editors, and teams seeking agile, collaborative video workflows directly in the browser.
+**Note**: This system integrates with CapCut's web-based engine for advanced editing while maintaining our AI regeneration capabilities
 
 ---
 
-## Goals
+## Core Architecture
 
-### Business Goals
+**Hybrid Editing Pipeline:**
 
-* Achieve 1,000+ monthly active users within six months of launch.
+- WebAssembly-powered timeline with real-time preview
+- CapCut SDK integration for advanced editing features
+- Proxy-based editing for performance optimization
+- AI regeneration hooks for selected segments
+- Future: Native effects processing and custom shader support
 
-* Reduce churn rate of video creator customers by 25% through expanded browser-based workflows.
+**Technical Foundation:**
 
-* Shorten average project turnaround time for users by 30%, as measured through edit-to-export cycles.
-
-* Secure at least three pilot partnerships with digital media agencies in the first quarter.
-
-### User Goals
-
-* Easily assemble, rearrange, and preview video and audio clips in an intuitive, responsive timeline.
-
-* Leverage AI-powered regeneration for rapid iteration on video sequences or assets, without leaving the editor.
-
-* Quickly load and edit large video projects through streamed, low-latency proxies.
-
-* Collaborate and share timelines with teammates or clients via the browser.
-
-* Export or handoff completed compositions to downstream production tools seamlessly.
-
-### Non-Goals
-
-* Providing full-featured advanced color grading or 3D animation capabilities in the MVP.
-
-* Supporting legacy desktop-only workflows (e.g., integration with Final Cut Pro, Adobe Premiere in version one).
-
-* Building a mobile-first version or iPad-native experience for the initial launch.
+- WebAssembly (via CapCut's compiled C++ engine)
+- WebCodecs API for hardware-accelerated decoding
+- WebGL for compositing and effects
+- IndexedDB for local project caching
+- Canvas API for auxiliary rendering
 
 ---
 
 ## User Stories
 
-### Persona: Indie Video Creator (Maya)
+### Primary User: Video Editors and Content Creators
 
-* As a video creator, I want to upload, arrange, and trim clips on a timeline, so that I can build project drafts quickly.
+- As a video editor, I want to **arrange clips on a multi-track timeline** so that I can create complex compositions
+- As a content creator, I want to **preview edits in real-time** so that I can iterate quickly
+- As an editor, I want to **apply transitions between clips** so that my video flows smoothly
+- As a creator, I want to **regenerate specific segments with AI** so that I can improve weak sections
+- As a team member, I want to **collaborate on edits in real-time** so that we can work efficiently
 
-* As a video creator, I want to select a timeline region and trigger AI regeneration, so that I can experiment with different video styles or fixes with minimal effort.
+### Secondary User: Marketing Teams and Agencies
 
-* As a video creator, I want responsive playback and frame-accurate edits, so that I’m confident in timing-sensitive projects.
-
-### Persona: Agency Project Manager (Ethan)
-
-* As a project manager, I want to view and comment on timelines in the browser, so that I can give real-time feedback to my team.
-
-* As a project manager, I want to compare AI-generated versions with original edits, so that I can choose the best output for clients.
-
-### Persona: Audio Specialist (Priya)
-
-* As an audio editor, I want to synchronize background music and dialogue precisely with video, so that the final result feels polished.
-
-* As an audio editor, I want to adjust audio levels and fades on the timeline, so that transitions are smooth.
+- As a marketing manager, I want to **make quick adjustments without learning complex software** so that I can maintain campaign momentum
+- As an agency producer, I want to **export in multiple formats simultaneously** so that I can deliver to various platforms
 
 ---
 
-## Functional Requirements
+## Key Features
 
-* **Timeline Interaction (Priority: Highest)**
+### 1. Authentication System
 
-  * **Clip Arrangement:** Drag, drop, trim, split, and reorder video/audio clips directly on the timeline.
+**Must Have:**
 
-  * **Tracks:** Support multiple video and audio tracks for compositing.
+- Clerk authentication integration
+- Project-based access control
+- CapCut account linking (optional)
+- Workspace management
+- Edit history tracking per user
 
-  * **Scrub/Play/Zoom:** Real-time scrubbing, playback controls, and timeline zoom for fine edits.
+**Permission Structure:**
 
-* **Asset Management (Priority: High)**
+- Owner: Full editing and project control
+- Editor: Can edit timeline and regenerate
+- Reviewer: Can comment and preview only
+- Viewer: Read-only preview access
 
-  * **Import Assets:** Upload video, audio, and image files via browser.
+**Success Criteria:**
 
-  * **Proxy Editing:** Generate and load proxy files for fast preview/edit.
+- Seamless SSO with existing accounts
+- Clear permission boundaries
+- Secure project isolation
+- Complete edit attribution
 
-  * **Asset Bin:** Manage all project assets in an organized panel.
+### 2. Timeline Interface
 
-* **AI Regeneration (Priority: High)**
+**Must Have:**
 
-  * **Region Selection:** Highlight a time range or clip for AI regeneration.
+- Multi-track support (minimum 10 video, 10 audio tracks)
+- Zoom and pan navigation (1 second to 1 hour view)
+- Snap-to-grid with adjustable resolution
+- Magnetic timeline with ripple editing
+- Waveform visualization for audio tracks
 
-  * **AI Generate:** One-click AI regeneration of selected segment.
+**Timeline Components:**
 
-  * **Version Comparison:** View/compare regenerated outputs vs. original content.
+- Track headers with solo/mute controls
+- Clip thumbnails with automatic generation
+- Playhead with frame-accurate positioning
+- Time ruler with adjustable scale
+- Track height adjustment
 
-* **Audio Editing (Priority: Medium)**
+**Success Criteria:**
 
-  * **Waveform Display:** Show waveforms for audio tracks.
+- Smooth scrubbing at 60fps
+- Instant clip selection response
+- No lag with 100+ clips
+- Frame-accurate positioning
+- Responsive zoom/pan controls
 
-  * **Volume/Fade Controls:** Adjust levels and add fade in/out directly on timeline.
+### 3. CapCut Engine Integration
 
-  * **Audio Sync:** Snap audio cues to video frames.
+**Must Have:**
 
-* **Export & Collaboration (Priority: Medium)**
+- WebAssembly module loading and initialization
+- SIMD optimization for performance
+- WebGL compositing pipeline
+- WebCodecs for media handling
+- Memory management optimization
 
-  * **Export Video:** Render/export composition to video file.
+**CapCut Features:**
 
-  * **Share Timeline:** URL-based sharing for viewing and feedback.
+- Real-time preview rendering
+- Hardware acceleration support
+- Effects and filter processing
+- Transition rendering
+- Audio processing pipeline
+
+**Success Criteria:**
+
+- Engine loads in under 3 seconds
+- 30fps preview for 1080p content
+- Smooth playback with 5+ layers
+- Effects render in real-time
+- Memory usage under 2GB
+
+### 4. Proxy Editing System
+
+**Must Have:**
+
+- Automatic proxy generation for 4K+ content
+- Low-resolution preview files (480p/720p)
+- Seamless proxy switching
+- Background proxy creation
+- Smart cache management
+
+**Proxy Pipeline:**
+
+- Detect high-resolution imports
+- Generate optimized proxies via Workers
+- Store in IndexedDB/cloud
+- Switch between proxy/original
+- Export uses original media
+
+**Success Criteria:**
+
+- 4K footage edits smoothly
+- Proxy generation under 1x realtime
+- Automatic quality switching
+- Storage optimization achieved
+- No quality loss on export
+
+### 5. Clip Operations
+
+**Must Have:**
+
+- Trim in/out points with handles
+- Split clips at playhead
+- Copy/paste/duplicate functionality
+- Speed ramping (0.25x to 4x)
+- Reverse playback capability
+
+**Advanced Operations:**
+
+- Multi-clip selection and grouping
+- Linked audio/video clips
+- Cross-track editing
+- Slide, slip, and roll edits
+- Three-point editing
+
+**Success Criteria:**
+
+- Operations execute instantly
+- Undo/redo maintains full state
+- Multi-selection works smoothly
+- Speed changes preserve sync
+- No drift in long timelines
+
+### 6. Transitions and Effects
+
+**Must Have:**
+
+- 50+ built-in transitions via CapCut
+- Drag-and-drop application
+- Duration adjustment handles
+- Real-time preview
+- Keyframe animation support
+
+**Effect Categories:**
+
+- Basic cuts and fades
+- Wipes and slides
+- 3D transitions
+- Motion blur effects
+- Custom shader effects
+
+**Success Criteria:**
+
+- Transitions render in real-time
+- Smooth parameter adjustment
+- Preview updates immediately
+- Keyframes interpolate correctly
+- Effects stack properly
+
+### 7. AI Regeneration Interface
+
+**Must Have:**
+
+- Select segments for regeneration
+- Prompt input for modifications
+- Model selection interface
+- Side-by-side comparison view
+- One-click replacement
+
+**Regeneration Workflow:**
+
+- Mark in/out points on timeline
+- Describe desired changes
+- Choose generation model/quality
+- Preview regenerated segment
+- Accept or retry generation
+
+**Success Criteria:**
+
+- Clear segment selection
+- Prompt interface is intuitive
+- Generation integrates seamlessly
+- Comparison view is responsive
+- Replacement maintains timing
+
+### 8. Audio Editing
+
+**Must Have:**
+
+- Volume control with keyframes
+- Basic EQ and compression
+- Fade in/out curves
+- Audio ducking automation
+- Sync lock with video
+
+**Audio Features:**
+
+- Waveform display in timeline
+- Peak level indicators
+- Audio effects (via CapCut)
+- Voice-over recording
+- Music beat detection
+
+**Success Criteria:**
+
+- Audio remains in sync
+- Effects process in real-time
+- Waveforms draw quickly
+- Volume automation is smooth
+- No audio artifacts
+
+### 9. Real-Time Collaboration
+
+**Must Have:**
+
+- Live cursor tracking via Convex
+- Simultaneous multi-user editing
+- Conflict resolution for edits
+- Chat and comments in timeline
+- Change notifications
+
+**Collaboration Features:**
+
+- User presence indicators
+- Section locking mechanism
+- Real-time preview sharing
+- Version branching
+- Merge capabilities
+
+**Success Criteria:**
+
+- Updates appear within 100ms
+- No edit conflicts or overwrites
+- Clear user attribution
+- Smooth cursor movement
+- Stable with 5+ users
+
+### 10. Export and Delivery
+
+**Must Have:**
+
+- Multiple format export (MP4, MOV, WebM)
+- Resolution options (720p to 4K)
+- Bitrate control
+- Platform presets (YouTube, Instagram, TikTok)
+- Batch export capability
+
+**Export Pipeline:**
+
+- Server-side rendering for quality
+- Client-side for quick previews
+- Progress tracking
+- Queue management
+- Direct platform upload
+
+**Success Criteria:**
+
+- Export at 2x realtime minimum
+- Quality matches preview
+- All formats work correctly
+- Upload integration seamless
+- Batch processing efficient
 
 ---
 
-## User Experience
+## Data Model
 
-**Entry Point & First-Time User Experience**
+### Convex Collection: `projects`
 
-* Users access the Composition Layer via a web portal/dashboard or project link.
+**Document Structure:**
 
-* First-time users are presented with a short onboarding walkthrough showing timeline basics, asset import, and the AI regenerate feature.
+```json
+{
+  "projectId": "prj_abc123xyz",
+  "name": "Summer Campaign Edit",
+  "owner": "usr_123456",
+  "team": ["usr_789", "usr_012"],
+  "timeline": {
+    "duration": 30.5,
+    "framerate": 30,
+    "resolution": "1920x1080",
+    "tracks": [
+      {
+        "trackId": "trk_v1",
+        "type": "video",
+        "name": "Main",
+        "clips": [
+          {
+            "clipId": "clp_001",
+            "mediaId": "med_123",
+            "in": 0,
+            "out": 5.5,
+            "start": 0,
+            "duration": 5.5,
+            "speed": 1.0,
+            "effects": ["fade_in"],
+            "position": {"x": 0, "y": 0},
+            "scale": 1.0
+          }
+        ]
+      },
+      {
+        "trackId": "trk_a1",
+        "type": "audio",
+        "name": "Music",
+        "clips": [
+          {
+            "clipId": "clp_a001",
+            "mediaId": "med_audio_456",
+            "in": 0,
+            "out": 30.5,
+            "start": 0,
+            "volume": 0.8,
+            "keyframes": [
+              {"time": 0, "value": 0.5},
+              {"time": 5, "value": 0.8}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "media": {
+    "med_123": {
+      "type": "video",
+      "name": "intro_clip.mp4",
+      "url": "storage_url",
+      "proxyUrl": "proxy_storage_url",
+      "duration": 10.5,
+      "resolution": "3840x2160",
+      "fileSize": 156789000
+    }
+  },
+  "capcut": {
+    "engineVersion": "2.5.0",
+    "projectData": "serialized_capcut_data",
+    "lastSync": "timestamp"
+  },
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp",
+  "version": 15
+}
+```
 
-* Example project templates or demo assets are available for immediate experimentation.
+### Convex Collection: `editorSessions`
 
-**Core Experience**
+```json
+{
+  "sessionId": "ses_xyz789",
+  "projectId": "prj_abc123xyz",
+  "activeUsers": [
+    {
+      "userId": "usr_123456",
+      "displayName": "John Editor",
+      "color": "#FF5733",
+      "cursor": {
+        "time": 15.5,
+        "track": "trk_v1"
+      },
+      "selection": {
+        "clips": ["clp_001"],
+        "range": {"in": 2.5, "out": 4.5}
+      },
+      "lastActivity": "timestamp"
+    }
+  ],
+  "locks": [
+    {
+      "clipId": "clp_002",
+      "userId": "usr_789",
+      "timestamp": "timestamp",
+      "expires": "timestamp"
+    }
+  ],
+  "playbackState": {
+    "playing": false,
+    "position": 12.5,
+    "loop": {"enabled": true, "in": 5, "out": 15}
+  },
+  "createdAt": "timestamp",
+  "expiresAt": "timestamp"
+}
+```
 
-* **Step 1:** User creates or opens a project and sees an empty timeline.
+### Convex Collection: `renderJobs`
 
-  * Minimalist UI with clear “Import Assets” button.
-
-  * Drag-and-drop asset import validated with progress/status feedback.
-
-  * Error handling: Prompt for unsupported file types or failed uploads.
-
-* **Step 2:** User arranges video/audio clips on the timeline.
-
-  * Timeline is scrollable and zoomable.
-
-  * Clips can be trimmed by dragging clip ends or split via right-click/context menu.
-
-* **Step 3:** User plays back edited sequence.
-
-  * Responsive preview panel above timeline.
-
-  * Red proxy bar highlights areas still loading and unplayable content.
-
-  * Real-time error messaging for failed proxies or unavailable assets.
-
-* **Step 4:** User selects a segment for AI regeneration.
-
-  * Brush or select mode to highlight a region or clip.
-
-  * Clear “Regenerate with AI” button reveals AI options (style, fix, enhance).
-
-  * Progress indicator and eventual preview of regenerated clip directly in timeline.
-
-* **Step 5:** User reviews, compares, and optionally accepts/replaces with AI output.
-
-  * Version toggle UI for quick before/after comparison.
-
-  * User chooses to retain, discard, or further tweak AI segment.
-
-* **Step 6:** User adjusts audio (volume, fades, sync).
-
-  * Audio waveform visible, draggable handles for volume keyframes/fades.
-
-  * Snap to frame/clip for synchronization accuracy.
-
-* **Step 7:** User exports or shares the timeline.
-
-  * One-click export with progress and delivery notification.
-
-  * Generate shareable link for view/comment permissions.
-
-**Advanced Features & Edge Cases**
-
-* Power users can create multiple timeline versions (branching).
-
-* Graceful fallback/warnings if AI regeneration service is unavailable.
-
-* Handling very large files via progressive upload and proxy streaming.
-
-* Out-of-browser session recovery in case of accidental browser closure or crash.
-
-**UI/UX Highlights**
-
-* High-contrast, accessible UI design for color blindness and keyboard navigation.
-
-* Responsive layout supporting multiple screen sizes/laptop monitors.
-
-* Tooltips and contextual help for novel controls (e.g., AI regen).
-
-* Autosave with undo/redo stack visible on timeline.
+```json
+{
+  "jobId": "rnd_abc123",
+  "projectId": "prj_abc123xyz",
+  "type": "export",
+  "settings": {
+    "format": "mp4",
+    "codec": "h264",
+    "resolution": "1920x1080",
+    "bitrate": 10000,
+    "framerate": 30,
+    "platform": "youtube"
+  },
+  "segments": {
+    "total": 30,
+    "completed": 15,
+    "current": 16
+  },
+  "status": "processing",
+  "progress": 0.5,
+  "estimatedCompletion": "timestamp",
+  "output": {
+    "url": null,
+    "size": null
+  },
+  "error": null,
+  "createdBy": "usr_123456",
+  "createdAt": "timestamp",
+  "completedAt": null
+}
+```
 
 ---
 
-## Narrative
+## Recommended Tech Stack
 
-Maya, an independent video creator, is working on a YouTube documentary. She has a set of interview clips and B-roll footage scattered across her laptop. Previously, she struggled with heavyweight desktop editors that required slow exports and constant installations. Today, Maya opens her browser and loads the Composition Layer. In seconds, she imports her raw footage, dragging and dropping clips onto the timeline, trimming and rearranging them until the story flows. The live playback of her draft is fluid, thanks to fast proxy streaming—even for her 4K files.
+**Frontend:** Next.js 16.0.3 with App Router + React 19.2.0 + TypeScript 5  
+**Timeline Engine:** CapCut WebAssembly SDK (via Emscripten)  
+**Media Processing:** WebCodecs API + WebGL + Canvas API  
+**Storage:** IndexedDB for local cache + Convex for cloud persistence  
+**Real-time:** Convex for collaboration and state sync  
+**Authentication:** Clerk for user management  
+**Development:** Turbopack for fast builds  
+**Runtime:** Bun for performance  
 
-Midway, Maya identifies an awkward segment where the audio is too noisy and the visuals are bland. Highlighting this region, she triggers the AI regenerate feature, requesting a fix. Within moments, suggested improved versions appear, with cleaner audio and a more engaging visual style. With a side-by-side preview, she selects her favorite and continues refining the timeline, tweaking audio levels and syncing narration to music cues. Finally, she clicks “Export” and has a sharable, high-quality draft video—no desktop downloads, no fuss.
+**Rationale:** CapCut's proven WebAssembly engine provides professional editing capabilities while Convex enables real-time collaboration. This combination delivers desktop-class editing in the browser.
 
-For Maya and her collaborators, the Composition Layer has transformed iterative editing from a multi-hour struggle into a frictionless, creative experience that’s always accessible, always current, and always ready for collaboration.
+---
+
+## Out of Scope
+
+### Features NOT Included:
+
+- 3D editing and compositing
+- Motion tracking
+- Color grading suite
+- Advanced audio mixing console
+- Multi-cam editing
+- 360-degree video support
+- HDR editing
+- Plugin system
+
+### Technical Items NOT Included:
+
+- Desktop application
+- Mobile app development
+- Offline-only mode
+- Custom codec development
+- Hardware control surfaces
+- External monitor support
+- Render farm integration
+- Legacy format support
+
+---
+
+## Known Limitations & Trade-offs
+
+1. **Browser Memory**: Limited to 4GB in most browsers, affecting project size
+2. **Performance**: 4K editing requires proxy workflow for smooth playback
+3. **Concurrent Editors**: Maximum 10 simultaneous editors for stability
+4. **Timeline Length**: Practical limit of 60 minutes for performance
+5. **Track Count**: Maximum 20 video + 20 audio tracks
+6. **Effect Stacking**: Maximum 10 effects per clip
+7. **Undo History**: Limited to 100 operations
+8. **Export Speed**: Server-side limited to 2x realtime
 
 ---
 
 ## Success Metrics
 
-### User-Centric Metrics
-
-* Weekly/monthly active users engaging with timeline editing
-
-* Number of projects exported per user per month
-
-* AI regeneration adoption rate per user
-
-* Average user satisfaction (via post-export survey)
-
-### Business Metrics
-
-* New user sign-ups and retention rates
-
-* Paid subscription conversion (if freemium)
-
-* Partnerships signed with agencies/media production teams
-
-### Technical Metrics
-
-* Editor uptime/downtime percentages (>99.5%)
-
-* Median timeline load and playback latency (<500ms)
-
-* Proxy and export error rates (<2%)
-
-### Tracking Plan
-
-* Track asset uploads, timeline edits (add/trim/split), playbacks
-
-* Log AI regeneration events and outcomes
-
-* Export and share actions
-
-* Onboarding tutorial completions
-
-* Error/warning triggers and system diagnostics
+1. **Timeline responsiveness maintains 60fps** with 50+ clips
+2. **Preview playback achieves 30fps** for 1080p content
+3. **AI regeneration completes in under 2 minutes** for 30-second segments
+4. **Export time under 30 seconds** for 1-minute 1080p video
+5. **Collaboration sync latency under 100ms** for all operations
+6. **User can complete basic edit in under 10 minutes**
 
 ---
 
-## Technical Considerations
+## Testing Checklist
 
-### Technical Needs
+### Core Functionality:
 
-* Front-end SPA for responsive timeline editing UI
+- [ ] Timeline loads and displays correctly
+- [ ] Clips can be added and arranged
+- [ ] Playback works smoothly
+- [ ] Audio remains in sync
+- [ ] Export produces correct output
 
-* Backend for project/asset storage, proxy generation, user auth
+### CapCut Integration:
 
-* Real-time API for AI regeneration (clip-level, region-level) with status feedback
+- [ ] Engine initializes properly
+- [ ] Effects render correctly
+- [ ] Transitions work smoothly
+- [ ] WebAssembly loads efficiently
+- [ ] Memory management stable
 
-* Data model for compositions, tracks, assets, AI version metadata
+### Collaboration Features:
 
-### Integration Points
+- [ ] Multiple users can edit simultaneously
+- [ ] Changes sync in real-time
+- [ ] Conflicts resolve correctly
+- [ ] Cursors track smoothly
+- [ ] Comments appear instantly
 
-* Video and audio cloud storage for user assets
+### AI Features:
 
-* AI model/service hosted (internal/external) for on-demand regeneration
+- [ ] Segment selection works correctly
+- [ ] Regeneration integrates seamlessly
+- [ ] Model selection functions properly
+- [ ] Comparison view displays correctly
+- [ ] Replacement maintains timing
 
-* Optional: Real-time commenting or collaboration APIs
+### Performance:
 
-* Authentication/authorization provider for secure session management
-
-### Data Storage & Privacy
-
-* Uploaded assets stored in cloud object storage with project linkage
-
-* Minimally persistent user/project metadata, encrypted at rest and in transit
-
-* AI processing may temporarily access segments; privacy policy and explicit user opt-in for usage
-
-* Compliance with GDPR/CCPA as per user region, user deletion requests honored
-
-### Scalability & Performance
-
-* Designed for hundreds to thousands of active users; scalable via containerized services and CDNs
-
-* Proxy generation and AI tasks queuable and parallelizable for fast turnaround
-
-* Streaming/progressive asset loading for reduced UI latency
-
-### Potential Challenges
-
-* Ensuring accurate, smooth playback and latency with large videos in-browser
-
-* Handling failures/latency from AI regeneration backend gracefully
-
-* Safeguarding user data during upload, processing, and storage
-
-* Building undo/redo and session recovery logic robustly in a browser context
+- [ ] 4K proxy editing is smooth
+- [ ] 100+ clips remain responsive
+- [ ] Memory usage stays under 2GB
+- [ ] Export completes efficiently
+- [ ] No memory leaks over time
 
 ---
 
-## Milestones & Sequencing
+## Risk Mitigation
 
-### Project Estimate
+**Biggest Risk:** Browser memory limitations affecting large projects  
+**Mitigation:** Implement aggressive proxy strategy and segment-based loading; use streaming for preview instead of loading entire project
 
-* Medium: 2–4 weeks for functional MVP
+**Second Risk:** CapCut SDK integration complexity and maintenance  
+**Mitigation:** Maintain abstraction layer for SDK; implement fallback to basic editing if SDK fails; regular SDK version testing
 
-### Team Size & Composition
+**Third Risk:** Real-time sync causing edit conflicts  
+**Mitigation:** Implement granular locking at clip level; use operational transforms for conflict resolution; provide clear visual feedback
 
-* Small Team: 2 total people
-
-  * 1 Full-stack Engineer (front-end, back-end, integrations)
-
-  * 1 Product Designer (UX/UI, user flows, onboarding)
-
-### Suggested Phases
-
-**Phase 1: Foundation & Timeline Core (1 week)**
-
-* Deliverables: Baseline asset upload, timeline UI, editing (arrange, trim), responsive playback
-
-* Dependencies: Cloud storage for assets
-
-**Phase 2: Proxy & Export (1 week)**
-
-* Deliverables: Proxy generation for fast load/playback, export to video file
-
-* Dependencies: Video processing backend
-
-**Phase 3: AI Regeneration Integration (1 week)**
-
-* Deliverables: Select/regen timeline region, fetch and display AI results, comparison overlay UI
-
-* Dependencies: Linkage to AI backend/service
-
-**Phase 4: Collaboration, Refinement, & Polish (1 week)**
-
-* Deliverables: Timeline sharing, feedback/comments integration, onboarding walkthrough, UI accessibility improvements, error states handling
-
-* Dependencies: Real-time services and design review
-
----
+**Fourth Risk:** Export quality not matching preview  
+**Mitigation:** Use same rendering pipeline for preview and export; implement quality validation checks; provide preview-quality export option

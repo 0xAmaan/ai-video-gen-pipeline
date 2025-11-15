@@ -1,327 +1,498 @@
-# Prompt Parser: Creative Prompt Intake & Enrichment
+# Prompt Parser - Product Requirements Document
 
-### TL;DR
+**Project**: Prompt Parser - Intelligent prompt interpretation and enrichment system for AI video ad generation  
+**Goal**: Transform user-submitted video ad prompts into actionable, AI-ready metadata through intelligent parsing and interactive refinement
 
-Prompt Parser interprets user-submitted video ad prompts, proactively asks clarifying questions, and enriches inputs with actionable metadata. Designed for creative teams and marketers, it automates and streamlines ad script submission to ensure accurate, rich, and AI-ready inputs for high-quality, on-brand video ad generation.
+**Note**: This system serves as the entry point for all video generation workflows, ensuring high-quality inputs that lead to better outputs
 
 ---
 
-## Goals
+## Core Architecture
 
-### Business Goals
+**Intelligent Parsing Pipeline:**
 
-* Increase prompt submission to ad generation conversion rates by 30% within three months.
+- Natural language processing to extract key elements from user prompts
+- Multi-stage enrichment process that adds metadata, context, and structure
+- Interactive clarification system that proactively identifies ambiguities
+- Unified schema output that feeds seamlessly into downstream generation systems
+- Future: Advanced brand voice analysis and automatic style guide integration
 
-* Reduce manual creative clarification efforts by 50% via automated AI-driven enrichment.
+**Data Flow Structure:**
 
-* Improve data consistency for AI ad generation pipelines by enriching 90% of prompts with targeted metadata.
-
-* Accelerate creative intake for campaigns, reducing script turnaround time by 40%.
-
-* Boost customer satisfaction scores for creative teams using the ad generation suite.
-
-### User Goals
-
-* Simplify the process of submitting ad concepts and scripts.
-
-* Ensure submitted prompts are clearly understood and actionable for downstream AI tools.
-
-* Reduce back-and-forth clarifications with automated, intelligent follow-up questions.
-
-* Allow direct input or override of key metadata for creative control.
-
-* Access enriched and standardized prompts stored for future reuse or reference.
-
-### Non-Goals
-
-* Not responsible for the actual AI ad video generation (focus solely on intake & enrichment).
-
-* Not a long-term script/editor platform; excludes granular video editing features.
-
-* Does not provide multi-language prompt translation in the initial release.
+- Input: Raw text prompts, brand guidelines, reference materials
+- Processing: Parse → Analyze → Clarify → Enrich → Validate
+- Output: Structured JSON with comprehensive generation metadata
 
 ---
 
 ## User Stories
 
-**Persona: Creative Team Member**
+### Primary User: Creative Teams and Marketers
 
-* As a creative team member, I want to submit an initial ad concept prompt, so that I can quickly kick off new campaigns.
+- As a marketer, I want to **submit a brief description of my video ad concept** so that the system understands my creative intent
+- As a creative director, I want to **receive intelligent questions about ambiguous aspects** so that my vision is accurately captured
+- As a brand manager, I want to **have my brand guidelines automatically applied** so that all outputs remain on-brand
+- As a content creator, I want to **see extracted keywords and themes** so that I can verify the system's understanding
+- As a marketing team lead, I want to **save and reuse prompt templates** so that we maintain consistency across campaigns
 
-* As a creative team member, I want to clarify my intent through guided AI-generated questions, so that my ad scripts are accurately interpreted.
+### Secondary User: Agency Teams and Production Houses
 
-* As a creative team member, I want to view and edit the automatically enriched metadata before submission, so that I retain creative control.
-
-* As a creative team member, I want to manually bypass some steps, so that I can submit inputs quickly when I'm confident they're clear.
-
-**Persona: Marketing Manager**
-
-* As a marketing manager, I want to standardize prompt inputs across my team, so that all creative briefs are consistent and ready for AI processing.
-
-* As a marketing manager, I want to track which prompts are fully enriched, so that I can prioritize which assets are ready for production.
-
-**Persona: AI/AdOps Admin**
-
-* As an AdOps admin, I want enriched prompts stored in a searchable repository, so that I can retrieve and reuse high-performing scripts.
-
-* As an AdOps admin, I want to monitor prompt completion and enrichment rates, so that quality is consistent throughout the pipeline.
+- As an agency producer, I want to **batch process multiple prompt variations** so that we can explore different creative directions
+- As a production coordinator, I want to **track prompt history and iterations** so that we can understand creative evolution
 
 ---
 
-## Functional Requirements
+## Key Features
 
-* **Prompt Parsing & Intake (Priority: High)**
+### 1. Authentication System
 
-  * *Initial Prompt Capture*: Accepts free-form ad concepts/scripts via a text input field.
+**Must Have:**
 
-  * *Natural Language Parsing*: Processes input with NLP to extract key components (e.g., product, call-to-action, style).
+- User authentication via Clerk
+- Team workspace management
+- Role-based access control for prompt templates
+- Persistent user sessions
+- Brand profile association per user/team
 
-* **AI-Driven Clarification (Priority: High)**
+**Display Name Logic:**
 
-  * *Dynamic Question Generation*: Based on incomplete/missing info, generates clarifying questions for the user.
+- User email prefix as default
+- Custom display names in team settings
+- Team name prefix for collaborative prompts
 
-  * *Interactive Dialogue System*: Presents follow-up queries and collects structured responses.
+**Success Criteria:**
 
-* **Metadata Enrichment (Priority: High)**
+- Users maintain secure access to their prompt history
+- Team members can share and collaborate on prompt templates
+- Brand guidelines remain associated with appropriate users
 
-  * *Automatic Metadata Population*: Fills out fields such as tone, target audience, CTA, format, and product details using AI/NLP.
+### 2. Natural Language Processing Engine
 
-  * *Manual Metadata Edit/Override*: Users can review and modify any AI-suggested metadata before submission.
+**Must Have:**
 
-* **Manual Bypass & Submission (Priority: Medium)**
+- Extract product/service mentions with 95% accuracy
+- Identify target audience demographics and psychographics
+- Detect emotional tone and desired mood
+- Parse duration requirements and format specifications
+- Recognize brand elements and style preferences
+- Extract call-to-action statements
 
-  * *Bypass Option*: Let users skip AI questions or submit as-is if confident.
+**Entity Recognition:**
 
-  * *Validation Feedback*: Notify when metadata may be lacking for good AI results.
+- Product names and categories
+- Geographic locations and markets
+- Age ranges and demographic segments
+- Industry verticals and use cases
+- Competitor mentions for differentiation
 
-* **Storage & Integration (Priority: Medium)**
+**Success Criteria:**
 
-  * *Output Structuring*: Store enriched prompt and metadata for downstream pipelines (API/database).
+- Accurately identifies all major prompt elements
+- Processes prompts in under 2 seconds
+- Handles multiple languages (English priority)
+- Maintains context across compound sentences
 
-  * *API Hooks*: Integrate with ad generation backend, enabling seamless handoff.
+### 3. Interactive Clarification System
 
-* **Front-End Experience (Priority: High)**
+**Must Have:**
 
-  * *React/TypeScript UI*: Polished, responsive interface for prompt intake and dialogue.
+- Dynamic question generation based on prompt gaps
+- Priority-ordered clarification requests
+- Optional vs required field distinction
+- Progressive disclosure of advanced options
+- Context-aware suggestion system
 
-  * *Session Management*: Maintain state for multi-step clarification and edits.
+**Clarification Types:**
+
+- Target platform selection (Instagram Stories, YouTube Shorts, etc.)
+- Visual style preferences (realistic, animated, mixed)
+- Tone specification (professional, casual, humorous)
+- Pacing preferences (fast-cut, smooth, dramatic)
+- Music style and audio preferences
+
+**Success Criteria:**
+
+- Asks only relevant questions based on prompt content
+- Completes clarification in 3-5 questions maximum
+- Provides smart defaults for skipped questions
+- Maintains conversation context throughout session
+
+### 4. Metadata Enrichment Layer
+
+**Must Have:**
+
+- Automatic keyword expansion using semantic analysis
+- Industry-specific terminology injection
+- Trending hashtag and topic integration
+- Competitive landscape awareness
+- Brand voice calibration
+
+**Enrichment Categories:**
+
+- Visual descriptors (lighting, color palette, composition)
+- Audio attributes (tempo, genre, mood)
+- Motion characteristics (transitions, effects, pacing)
+- Text overlays (fonts, positions, animations)
+- Emotional journey mapping
+
+**Success Criteria:**
+
+- Adds 10-20 relevant metadata tags per prompt
+- Maintains semantic accuracy above 90%
+- Completes enrichment in under 1 second
+- Preserves user intent while adding detail
+
+### 5. Brand Consistency Engine
+
+**Must Have:**
+
+- Brand guideline document parsing (PDF, DOCX)
+- Color palette extraction and enforcement
+- Typography rules application
+- Logo placement specifications
+- Messaging tone validation
+
+**Brand Profile Components:**
+
+- Primary and secondary color schemes
+- Approved font families and hierarchies
+- Logo variations and usage rules
+- Approved terminology and phrases
+- Prohibited elements and competitors
+
+**Success Criteria:**
+
+- Automatically applies brand rules to all prompts
+- Flags potential brand violations before generation
+- Maintains brand profile versioning
+- Supports multiple brands per organization
+
+### 6. Template Management System
+
+**Must Have:**
+
+- Save successful prompts as reusable templates
+- Categorize templates by campaign, product, or theme
+- Variable placeholders for dynamic content
+- Version control for template iterations
+- Sharing mechanisms within teams
+
+**Template Features:**
+
+- Rich metadata preservation
+- Performance metrics tracking
+- A/B testing variant creation
+- Approval workflow integration
+- Template marketplace (future)
+
+**Success Criteria:**
+
+- Templates load instantly
+- Variables populate correctly
+- Sharing maintains all metadata
+- Version history is accessible
+
+### 7. Output Schema Generation
+
+**Must Have:**
+
+- Standardized JSON output format
+- Comprehensive metadata inclusion
+- Downstream system compatibility
+- Validation against generation requirements
+- Error handling for incomplete data
+
+**Schema Structure:**
+
+- Core prompt elements
+- Enriched metadata tags
+- Brand specifications
+- Platform requirements
+- Generation parameters
+
+**Success Criteria:**
+
+- 100% schema compliance for all outputs
+- Validates against Zod schemas
+- Includes all required generation fields
+- Maintains backward compatibility
+
+### 8. Analytics and Insights
+
+**Must Have:**
+
+- Prompt complexity scoring
+- Common element tracking
+- Success rate monitoring
+- User behavior analytics
+- Performance optimization data
+
+**Success Criteria:**
+
+- Real-time analytics dashboard
+- Actionable insights generation
+- Performance trend identification
+- User journey optimization
+
+### 9. Integration Layer
+
+**Must Have:**
+
+- Seamless connection to Generation Engine
+- Content Planner compatibility
+- Brand asset library access
+- External API support
+- Webhook notifications
+
+**Success Criteria:**
+
+- Zero-friction handoff to next systems
+- Maintains data integrity across systems
+- Supports async and sync operations
+- Handles high throughput efficiently
 
 ---
 
-## User Experience
+## Data Model
 
-**Entry Point & First-Time User Experience**
+### Convex Collection: `prompts`
 
-* Users access Prompt Parser via the main “New Video Ad Concept” button on the campaign dashboard.
+**Document Structure:**
 
-* On first use, a brief onboarding popup introduces the guided prompt enrichment process (1–2 screens).
+```json
+{
+  "promptId": "prm_abc123xyz",
+  "userId": "usr_123456",
+  "teamId": "team_789",
+  "originalText": "Create a 30-second Instagram ad for our new organic smoothie line targeting health-conscious millennials",
+  "parsedElements": {
+    "duration": 30,
+    "platform": "instagram",
+    "product": "organic smoothie line",
+    "targetAudience": "health-conscious millennials",
+    "format": "video_ad"
+  },
+  "clarifications": {
+    "visualStyle": "bright_modern",
+    "musicPreference": "upbeat_electronic",
+    "callToAction": "shop_now",
+    "aspectRatio": "9:16"
+  },
+  "enrichedMetadata": {
+    "keywords": ["organic", "healthy", "smoothie", "wellness", "natural"],
+    "colorSuggestions": ["green", "white", "earth_tones"],
+    "emotionalTone": "energetic_positive",
+    "pacingScore": 8,
+    "visualElements": ["fresh_fruits", "active_lifestyle", "morning_routine"]
+  },
+  "brandProfile": {
+    "brandId": "brd_456",
+    "primaryColors": ["#2ECC71", "#FFFFFF"],
+    "fontFamily": "Helvetica Neue",
+    "logoPosition": "bottom_right",
+    "toneOfVoice": "friendly_expert"
+  },
+  "outputSchema": {
+    "version": "1.0",
+    "generationReady": true,
+    "validationStatus": "passed",
+    "warnings": []
+  },
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp",
+  "status": "ready_for_generation"
+}
+```
 
-* Example prompts and a “Start” button orient users to begin.
+### Convex Collection: `promptTemplates`
 
-**Core Experience**
+```json
+{
+  "templateId": "tpl_xyz789",
+  "teamId": "team_789",
+  "name": "Product Launch - Social",
+  "category": "product_launch",
+  "basePrompt": "Create a {{duration}}-second {{platform}} ad for {{product}} targeting {{audience}}",
+  "defaultValues": {
+    "duration": 30,
+    "platform": "instagram",
+    "visualStyle": "modern_clean"
+  },
+  "requiredVariables": ["product", "audience"],
+  "optionalVariables": ["location", "season", "promotion"],
+  "performanceMetrics": {
+    "usageCount": 47,
+    "averageEngagement": 0.82,
+    "conversionRate": 0.045
+  },
+  "createdBy": "usr_123456",
+  "createdAt": "timestamp",
+  "lastModified": "timestamp",
+  "version": 3
+}
+```
 
-* **Step 1:** User enters a free-form video ad concept or script in the provided text field.
+### Convex Collection: `brandProfiles`
 
-  * Minimal friction UI: large input box, placeholder for examples.
-
-  * Input is validated for length and basic content.
-
-  * On submit, user receives confirmation the prompt is received.
-
-* **Step 2:** AI analyzes input for missing details.
-
-  * Clarifying questions appear conversationally in a side-panel or modal (e.g., “What’s the target audience?”).
-
-  * Users select or enter answers; can skip any question.
-
-* **Step 3:** AI enriches prompt with structured metadata—displays summary card (e.g., script, key product, intended platform, style, etc.).
-
-  * Users can review and directly edit any field for accuracy or completeness.
-
-  * UI highlights required vs. optional metadata.
-
-* **Step 4:** User finalizes and submits the enriched prompt package.
-
-  * Success message, confirmation that prompt is now AI-ready and stored.
-
-  * Option to “create another prompt” or view all past prompts.
-
-**Advanced Features & Edge Cases**
-
-* Power users can toggle off AI guidance and submit metadata manually.
-
-* When ambiguous or insufficient input is detected, prominent warnings are displayed.
-
-* Autosave ensures data won’t be lost if the session disconnects.
-
-* Handles API or enrichment errors gracefully with clear error states and retry options.
-
-**UI/UX Highlights**
-
-* High-contrast, accessible color schemes for readability.
-
-* Responsive design for desktop and tablet workflows.
-
-* Clear progress indicators for multi-step flows.
-
-* Keyboard navigation and screen reader support.
-
-* Editable metadata displayed in an intuitive card layout.
+```json
+{
+  "brandId": "brd_456",
+  "teamId": "team_789",
+  "brandName": "GreenLife Smoothies",
+  "guidelines": {
+    "colors": {
+      "primary": ["#2ECC71", "#27AE60"],
+      "secondary": ["#ECF0F1", "#BDC3C7"],
+      "accent": ["#F39C12"]
+    },
+    "typography": {
+      "heading": "Montserrat",
+      "body": "Open Sans",
+      "sizes": {
+        "h1": "32px",
+        "h2": "24px",
+        "body": "16px"
+      }
+    },
+    "imagery": {
+      "style": "bright_natural_photography",
+      "filters": "high_contrast_warm",
+      "prohibitedElements": ["processed_foods", "artificial_ingredients"]
+    },
+    "messaging": {
+      "tone": "friendly_knowledgeable",
+      "keywords": ["organic", "natural", "wellness", "energy"],
+      "avoidWords": ["cheap", "discount", "artificial"]
+    }
+  },
+  "assets": {
+    "logos": ["logo_primary_url", "logo_white_url"],
+    "fontFiles": ["font_url_1", "font_url_2"]
+  },
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
+}
+```
 
 ---
 
-## Narrative
+## Recommended Tech Stack
 
-Creative teams and marketers juggle tight timelines and ever-evolving campaign needs. In a typical ad campaign kickoff, a creative lead drafts a prompt for a new promotional video, but the process stalls as back-and-forth clarifications arise—what’s the product? preferred audience? campaign feel? Weeks slip by, and creative intent is diluted through repetitive email threads.
+**Frontend:** Next.js 16.0.3 with App Router + React 19.2.0 + TypeScript 5  
+**UI Components:** Radix UI + shadcn/ui + Tailwind CSS v4  
+**Backend:** Convex for real-time database and backend functions  
+**Authentication:** Clerk for user management and team workspaces  
+**AI Integration:** Vercel AI SDK with OpenAI for NLP processing  
+**Validation:** Zod for schema validation  
+**Runtime:** Bun for package management and runtime  
 
-Enter Prompt Parser. The creative lead drops their raw idea into the system. Instantly, the AI highlights missing info, asking for target demographic and desired tone in a conversational, no-nonsense way. The team edits auto-filled metadata, tweaking key fields to match campaign intent. Everything’s validated, AI-ready, and visible in a single view.
+**Rationale:** This stack provides real-time capabilities through Convex, robust authentication via Clerk, and powerful AI integration through Vercel AI SDK, all essential for intelligent prompt processing and team collaboration.
 
-Now, scripts are enriched, standardized, and stored—ready for the AI video generator. Turnaround time shrinks. Creative intent is preserved. Marketers work smarter, not harder, launching campaigns faster while staying on-message. The Prompt Parser quietly powers this transformation—reducing manual toil and helping teams focus on actual storytelling.
+---
+
+## Out of Scope
+
+### Features NOT Included:
+
+- Video preview generation at this stage
+- Direct video editing capabilities
+- Multi-language prompt translation
+- Voice-to-text prompt input
+- Historical performance prediction
+- Automated A/B test generation
+- Direct social media posting
+- Budget estimation tools
+
+### Technical Items NOT Included:
+
+- Custom NLP model training
+- Offline prompt processing
+- Blockchain verification
+- Federated learning systems
+- Custom authentication system
+- Direct cloud storage integration
+- Native mobile applications
+- Browser extensions
+
+---
+
+## Known Limitations & Trade-offs
+
+1. **Language Support**: Initially English-only with other languages planned for future phases
+2. **Prompt Length**: Maximum 1000 characters to maintain processing efficiency
+3. **Brand Profiles**: Limited to 10 active brands per organization initially
+4. **Template Sharing**: Within organization only, no public marketplace yet
+5. **Processing Time**: 2-5 second total processing time for complex prompts
+6. **Clarification Rounds**: Maximum 2 rounds of clarification to prevent user fatigue
+7. **File Uploads**: Brand guidelines limited to 10MB PDF/DOCX files
+8. **API Rate Limits**: 100 prompts per minute per organization
 
 ---
 
 ## Success Metrics
 
-### User-Centric Metrics
-
-* Adoption rate: number of unique users employing Prompt Parser weekly.
-
-* Session completion: percentage of initiated journeys that reach submission.
-
-* User satisfaction: periodic in-app ratings and Net Promoter Score (NPS).
-
-* Manual bypass usage: % of users skipping AI clarification (actionable UX feedback).
-
-### Business Metrics
-
-* Increased throughput: number of AI-ready scripts per month.
-
-* Time-to-production: average time from concept intake to AI pipeline handoff.
-
-* Error reduction: decrease in manual correction interventions by ops/creative leads.
-
-### Technical Metrics
-
-* API response time: Average response <2 seconds.
-
-* Front-end error rate: <1% session failures or crashes.
-
-* Data loss incidents: Zero unsaved sessions under typical usage.
-
-### Tracking Plan
-
-* Prompt submission started
-
-* Prompt clarification question displayed/answered/skipped
-
-* Metadata auto-filled vs. manually edited
-
-* Final enriched prompt submitted
-
-* Manual bypass invoked
-
-* Errors encountered/handled
-
-* Session completion/abandonment
+1. **95% prompt parsing accuracy** for standard ad descriptions
+2. **Under 3 seconds total processing time** for 90% of prompts
+3. **80% of users complete clarification** when prompted
+4. **60% prompt template reuse rate** after first month
+5. **90% schema validation success** on first attempt
+6. **Zero data loss** during enrichment pipeline
 
 ---
 
-## Technical Considerations
+## Testing Checklist
 
-### Technical Needs
+### Core Functionality:
 
-* Front-End: React with TypeScript for the dynamic, interactive prompt/intake interface.
+- [ ] User can authenticate and access workspace
+- [ ] Prompt submission processes successfully
+- [ ] NLP extraction identifies key elements
+- [ ] System generates relevant clarification questions
 
-* Back-End API: REST/GraphQL endpoint to receive prompts, return clarifying questions, and store enriched output.
+### Parsing Operations:
 
-* AI/NLP Service: Integrated engine (internal or via partner) for parsing and generating metadata/questions.
+- [ ] Product names extracted accurately
+- [ ] Target audience identified correctly
+- [ ] Duration and format parsed properly
+- [ ] Emotional tone detected appropriately
+- [ ] Platform requirements recognized
 
-* Session Storage: Temporary state for in-progress prompt enrichment (can use local storage/session backend).
+### Enrichment Features:
 
-* Database: Persistent storage for standardized, enriched prompts (with relevant schema).
+- [ ] Metadata tags added appropriately
+- [ ] Brand guidelines applied when available
+- [ ] Keywords expanded semantically
+- [ ] Color suggestions match brand profile
+- [ ] Validation passes for complete prompts
 
-### Integration Points
+### Integration Points:
 
-* Backend ad generation API: Seamless prompt transfer post-enrichment.
+- [ ] Output schema generates correctly
+- [ ] Data flows to Generation Engine
+- [ ] Templates save and load properly
+- [ ] Team sharing works as expected
+- [ ] Analytics track all events
 
-* Authentication system: Enforce access control (tie to existing user accounts).
+### Performance:
 
-* Analytics provider: For event and session tracking.
-
-### Data Storage & Privacy
-
-* All prompt data encrypted in transit and at rest.
-
-* Retains only necessary user and metadata for enrichment—no unnecessary PII.
-
-* Clear data retention and deletion policy per organization.
-
-* Compliant with major privacy frameworks (GDPR, CCPA) for user data handling.
-
-### Scalability & Performance
-
-* Designed to handle hundreds of concurrent users (initial phase).
-
-* API endpoints optimized for rapid turnaround (<2s response time).
-
-* Supports future scaling to thousands of sessions/day.
-
-### Potential Challenges
-
-* Ambiguous prompts may still require manual follow-up.
-
-* AI-generated questions may occasionally be irrelevant or repetitive: requires quality tuning.
-
-* Complex or lengthy prompt flows could impact UX—session management and autosave crucial.
-
-* Maintenance of prompt/metadata schema as downstream requirements evolve.
+- [ ] Processing completes under 5 seconds
+- [ ] System handles concurrent users
+- [ ] Database queries remain responsive
+- [ ] API endpoints respond quickly
+- [ ] UI remains responsive during processing
 
 ---
 
-## Milestones & Sequencing
+## Risk Mitigation
 
-### Project Estimate
+**Biggest Risk:** Inaccurate prompt parsing leading to poor video generation  
+**Mitigation:** Implement confidence scoring with human-in-the-loop validation for low-confidence extractions; maintain feedback loop for continuous improvement
 
-* Small: 2–3 weeks from kickoff to functional MVP and user testing.
+**Second Risk:** Brand guideline violations in generated content  
+**Mitigation:** Strict validation layer with brand compliance scoring; require explicit override for guideline deviations
 
-### Team Size & Composition
+**Third Risk:** User abandonment during clarification process  
+**Mitigation:** Smart defaults for all optional fields; progressive disclosure to minimize cognitive load
 
-* Small Team: 2 total people
-
-  * 1 Full-stack developer (front-end, backend/APIs, integration)
-
-  * 1 Product/Design owner (UI/UX, user research, test coordination)
-
-### Suggested Phases
-
-**1. Interactive Intake MVP (Week 1)**
-
-* Key Deliverables: Core prompt text input, basic parsing, display clarifying questions, local session storage.
-
-  * Responsible: Developer, Product/Design owner (joint for UI mockups).
-
-* Dependencies: Access to test AI/NLP clarification API (stub if needed).
-
-**2. Metadata Enrichment & UI Polishing (Week 2)**
-
-* Key Deliverables: AI metadata extraction, manual override UI, validation, and output structuring for API/backend.
-
-  * Responsible: Developer (feature build), Product/Design owner (user flows).
-
-* Dependencies: Database/API scaffolding ready for submission.
-
-**3. Integration & User Testing (Week 3)**
-
-* Key Deliverables: Full flow integration with storage, API hooks, analytics/events tracking, UX refinements, bug fixes, initial user cohort trial.
-
-  * Responsible: Both (joint bug triage, user feedback).
-
-* Dependencies: Access to ad generation backend, analytics provider set up.
-
-**4. Launch & Feedback Refinement (Optional, Ongoing)**
-
-* Key Deliverables: Deployment, real-world usage tuning, refining AI question set, tracking adoption metrics.
-
-  * Responsible: Both, ongoing.
-
-* Dependencies: Live usage data/feedback, stakeholder input.
+**Fourth Risk:** Performance degradation with complex prompts  
+**Mitigation:** Implement caching strategies and optimize NLP processing; use background jobs for non-critical enrichment

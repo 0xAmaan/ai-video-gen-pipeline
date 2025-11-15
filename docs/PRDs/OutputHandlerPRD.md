@@ -1,387 +1,634 @@
-# Output Handler (Final Video Export, Rendering, and Delivery)
+# Output Handler - Product Requirements Document
 
-### TL;DR
+**Project**: Output Handler - Rapid video export and multi-platform distribution system  
+**Goal**: Enable creators to export AI-generated videos in optimized formats and share directly to major platforms with one-click distribution
 
-The Output Handler enables creators and marketers to rapidly export AI-generated videos in optimized formats and share directly to major social/advertising platforms. This feature eliminates the friction between video creation and distribution by providing lightning-fast rendering, format optimization, and one-click sharing to platforms like Facebook, Instagram, LinkedIn, and YouTube.
+**Note**: This system eliminates friction between creation and distribution, ensuring videos reach audiences quickly with platform-optimized formatting
 
 ---
 
-## Goals
+## Core Architecture
 
-### Business Goals
+**Export and Distribution Pipeline:**
 
-* Increase user retention by 25% through seamless export-to-publish workflow
+- Lightning-fast rendering with format optimization
+- Platform-specific encoding presets
+- Direct API integration with social/advertising platforms
+- Batch processing for multiple formats
+- Future: CDN distribution and edge caching for global delivery
 
-* Drive platform adoption by reducing time-to-publish from hours to minutes
+**Platform Integrations:**
 
-* Generate additional revenue through premium export features and higher-quality rendering options
-
-* Establish partnerships with major social platforms through OAuth integrations
-
-* Reduce customer support tickets by 40% related to export and sharing issues
-
-### User Goals
-
-* Export videos in under 2 minutes regardless of complexity or length
-
-* Share content directly to social platforms without leaving the application
-
-* Access multiple format options optimized for different platforms and use cases
-
-* Maintain video quality while ensuring fast delivery and small file sizes
-
-* Track export history and manage multiple versions of the same project
-
-### Non-Goals
-
-* Advanced video editing capabilities beyond export settings
-
-* Real-time collaboration features during the export process
-
-* Integration with enterprise-level digital asset management systems
+- Facebook/Instagram (Meta Business API)
+- YouTube (YouTube Data API v3)
+- LinkedIn (LinkedIn Marketing API)
+- TikTok (TikTok Marketing API)
+- Twitter/X (Twitter API v2)
 
 ---
 
 ## User Stories
 
-**Content Creator Persona**
+### Primary User: Creators and Marketers
 
-* As a content creator, I want to export my video in multiple formats simultaneously, so that I can distribute across different platforms without re-rendering.
+- As a creator, I want to **export my video in multiple formats simultaneously** so that I can post to all platforms quickly
+- As a marketer, I want to **publish directly to social platforms** so that I can maintain campaign momentum
+- As a content manager, I want to **schedule posts for optimal times** so that I maximize engagement
+- As a brand manager, I want to **ensure consistent quality across platforms** so that brand standards are maintained
+- As an advertiser, I want to **track export and publishing status** so that I can manage campaigns effectively
 
-* As a content creator, I want to preview my video before final export, so that I can catch any issues and avoid wasted rendering time.
+### Secondary User: Agencies and Production Teams
 
-* As a content creator, I want to share directly to my social media accounts, so that I can publish content immediately after creation.
-
-* As a content creator, I want to save my export presets, so that I can maintain consistency across my content library.
-
-* As a content creator, I want to track my export history, so that I can easily re-download or reshare previous versions.
-
-**Marketing Professional Persona**
-
-* As a marketing professional, I want to export videos optimized for specific ad platforms, so that my campaigns meet technical requirements automatically.
-
-* As a marketing professional, I want to batch export multiple video variations, so that I can A/B test different creative versions efficiently.
-
-* As a marketing professional, I want to add campaign tracking parameters during export, so that I can measure performance across channels.
-
-* As a marketing professional, I want to schedule posts directly from the export interface, so that I can coordinate campaign launches.
-
-**Agency User Persona**
-
-* As an agency user, I want to export videos with client-specific branding overlays, so that deliverables are ready for immediate use.
-
-* As an agency user, I want to export in client-requested formats and resolutions, so that I can meet diverse technical specifications.
-
-* As an agency user, I want to organize exports by client and campaign, so that I can manage multiple projects efficiently.
+- As an agency producer, I want to **batch export entire campaigns** so that we can deliver efficiently
+- As a production coordinator, I want to **create distribution packages** so that clients can self-publish
 
 ---
 
-## Functional Requirements
+## Key Features
 
-* **Core Export Engine** (Priority: High)
+### 1. Authentication System
 
-  * **Fast Rendering:** Sub-2-minute export times for videos up to 2 minutes in length
+**Must Have:**
 
-  * **Format Support:** MP4, MOV, WebM, GIF export options with platform-specific optimizations
+- Clerk authentication with team management
+- OAuth connections to social platforms
+- API key management for each platform
+- Token refresh automation
+- Multi-account support per platform
 
-  * **Quality Settings:** Multiple resolution options (720p, 1080p, 4K) with automatic compression
+**Platform Connections:**
 
-  * **Progress Tracking:** Real-time rendering progress with estimated completion times
+- Secure OAuth flow for each platform
+- Token encryption and storage
+- Automatic token refresh
+- Connection status monitoring
+- Account switching capability
 
-  * **Error Recovery:** Automatic retry mechanisms and clear error messaging
+**Success Criteria:**
 
-* **Platform Integration** (Priority: High)
+- One-click platform authorization
+- Tokens refresh automatically
+- Multiple accounts per platform supported
+- Connection status clearly visible
 
-  * **OAuth Connections:** Secure authentication with Facebook, Instagram, LinkedIn, YouTube, TikTok
+### 2. Format Optimization Engine
 
-  * **Direct Publishing:** One-click sharing with platform-specific metadata and formatting
+**Must Have:**
 
-  * **Format Optimization:** Automatic aspect ratio and codec selection per platform
+- Platform-specific encoding presets
+- Automatic aspect ratio adjustment
+- Resolution optimization per platform
+- Bitrate optimization for quality/size
+- Format conversion (MP4, MOV, WebM)
 
-  * **Caption Integration:** Subtitle embedding and platform-specific accessibility features
+**Platform Specifications:**
 
-  * **Publishing Status:** Real-time feedback on upload progress and success confirmation
+```
+Instagram Feed: 1:1 or 4:5, max 60s, H.264
+Instagram Stories: 9:16, max 60s, H.264
+Instagram Reels: 9:16, max 90s, H.264
+YouTube: 16:9, no limit, H.264/VP9
+YouTube Shorts: 9:16, max 60s, H.264
+TikTok: 9:16, max 10min, H.264
+LinkedIn: 16:9 or 1:1, max 10min, H.264
+Facebook: Multiple ratios, max 240min, H.264
+Twitter/X: 16:9 or 1:1, max 140s, H.264
+```
 
-* **User Interface** (Priority: Medium)
+**Success Criteria:**
 
-  * **Export Preview:** Real-time preview window with playback controls
+- Automatic format detection
+- Optimal quality within size limits
+- Platform compliance achieved
+- Batch processing efficient
+- Quality preservation maximized
 
-  * **Preset Management:** Save, edit, and organize custom export configurations
+### 3. Rapid Rendering Pipeline
 
-  * **Batch Processing:** Queue multiple exports with different settings
+**Must Have:**
 
-  * **Download Management:** Organized file browser with search and filter capabilities
+- GPU-accelerated encoding
+- Parallel processing for multiple formats
+- Progressive rendering with preview
+- Queue management system
+- Real-time progress tracking
 
-  * **Export History:** Timeline view of all previous exports with re-download options
+**Rendering Optimization:**
 
-* **Advanced Features** (Priority: Low)
+- Segment-based parallel encoding
+- Hardware acceleration detection
+- Adaptive quality settings
+- Smart caching for re-exports
+- Background processing capability
 
-  * **Watermark Options:** Custom branding overlay capabilities
+**Success Criteria:**
 
-  * **Thumbnail Generation:** Automatic thumbnail creation with manual override options
+- 2x faster than real-time minimum
+- Multiple formats render simultaneously
+- Preview available during render
+- Queue processes efficiently
+- No quality degradation
 
-  * **Analytics Integration:** UTM parameter injection for campaign tracking
+### 4. Direct Platform Publishing
 
-  * **Webhook Support:** API notifications for enterprise workflow integration
+**Must Have:**
+
+- One-click publish to connected platforms
+- Multi-platform simultaneous posting
+- Caption and metadata management
+- Hashtag optimization suggestions
+- Thumbnail selection/generation
+
+**Publishing Features:**
+
+- Platform-specific metadata fields
+- Automatic caption formatting
+- Hashtag research and suggestions
+- Location tagging
+- Audience targeting options
+
+**Success Criteria:**
+
+- Publish completes within 30 seconds
+- All metadata transfers correctly
+- Multi-platform posting synchronized
+- Error handling graceful
+- Retry logic functions properly
+
+### 5. Scheduling System
+
+**Must Have:**
+
+- Calendar-based scheduling interface
+- Optimal time suggestions per platform
+- Bulk scheduling capabilities
+- Time zone management
+- Conflict detection and resolution
+
+**Scheduling Features:**
+
+- Drag-and-drop calendar interface
+- Platform-specific best times
+- Recurring schedule templates
+- Campaign coordination
+- Publishing queue visibility
+
+**Success Criteria:**
+
+- Posts publish within 1 minute of scheduled time
+- Time zones handled correctly
+- Bulk scheduling processes quickly
+- Calendar updates in real-time
+- Conflicts prevented automatically
+
+### 6. Caption and Metadata Management
+
+**Must Have:**
+
+- AI-powered caption generation
+- Platform-specific character limits
+- Emoji and special character support
+- Link shortening and tracking
+- A/B testing for captions
+
+**Caption Features:**
+
+- Template library for captions
+- Variable substitution
+- Platform adaptation
+- Translation support
+- Performance tracking
+
+**Success Criteria:**
+
+- Captions generate in under 2 seconds
+- Character limits enforced
+- Links track correctly
+- Templates apply accurately
+- A/B tests deploy properly
+
+### 7. Thumbnail Generation
+
+**Must Have:**
+
+- Automatic frame extraction
+- AI-powered best frame selection
+- Custom thumbnail upload
+- Text overlay tools
+- Platform-specific sizing
+
+**Thumbnail Features:**
+
+- Multiple frame suggestions
+- Face/object detection for centering
+- Brand template application
+- Quick edit tools
+- Batch thumbnail generation
+
+**Success Criteria:**
+
+- Thumbnails generate in 5 seconds
+- Quality maintains sharpness
+- Platform specs matched
+- Batch processing efficient
+- AI selections relevant
+
+### 8. Analytics Integration
+
+**Must Have:**
+
+- Post-publishing performance tracking
+- Cross-platform analytics dashboard
+- Engagement metrics collection
+- Export success/failure tracking
+- Distribution report generation
+
+**Analytics Features:**
+
+- Real-time performance data
+- Platform comparison charts
+- Audience insights
+- Optimal timing analysis
+- ROI tracking
+
+**Success Criteria:**
+
+- Metrics update within 5 minutes
+- All platforms tracked
+- Reports generate on-demand
+- Data accuracy maintained
+- Historical data preserved
+
+### 9. Batch Operations
+
+**Must Have:**
+
+- Multi-video selection and export
+- Campaign-level operations
+- Template-based batch processing
+- Parallel export pipelines
+- Batch status monitoring
+
+**Batch Features:**
+
+- Select all/none/custom
+- Apply settings to multiple
+- Campaign grouping
+- Priority queuing
+- Estimated completion times
+
+**Success Criteria:**
+
+- 100+ videos batch process smoothly
+- Settings apply consistently
+- Progress tracked accurately
+- Failures don't block queue
+- Completion notifications work
+
+### 10. Distribution Packages
+
+**Must Have:**
+
+- Downloadable export packages
+- Multiple format bundling
+- Metadata export (CSV/JSON)
+- Platform-ready file naming
+- Zip compression with structure
+
+**Package Contents:**
+
+- All format variations
+- Thumbnails for each platform
+- Captions in text files
+- Metadata spreadsheet
+- Publishing instructions
+
+**Success Criteria:**
+
+- Packages generate completely
+- File structure logical
+- Metadata accurate
+- Compression efficient
+- Download reliable
 
 ---
 
-## User Experience
+## Data Model
 
-**Entry Point & First-Time User Experience**
+### Convex Collection: `exportJobs`
 
-* Users access the Output Handler through a prominent "Export" button in the main video editor interface
+**Document Structure:**
 
-* First-time users see a brief tooltip highlighting key features: fast rendering, direct sharing, and multiple formats
+```json
+{
+  "jobId": "exp_abc123xyz",
+  "projectId": "prj_789",
+  "userId": "usr_123456",
+  "source": {
+    "type": "composition",
+    "sourceId": "cmp_456",
+    "duration": 30,
+    "resolution": "1920x1080"
+  },
+  "targets": [
+    {
+      "platform": "instagram_feed",
+      "format": {
+        "codec": "h264",
+        "container": "mp4",
+        "resolution": "1080x1080",
+        "bitrate": 5000,
+        "fps": 30
+      },
+      "status": "rendering",
+      "progress": 0.65,
+      "output": {
+        "url": null,
+        "size": null,
+        "duration": null
+      }
+    },
+    {
+      "platform": "youtube",
+      "format": {
+        "codec": "h264",
+        "container": "mp4",
+        "resolution": "1920x1080",
+        "bitrate": 8000,
+        "fps": 30
+      },
+      "status": "queued",
+      "progress": 0,
+      "output": null
+    }
+  ],
+  "settings": {
+    "priority": "high",
+    "quality": "maximum",
+    "optimization": "balanced"
+  },
+  "createdAt": "timestamp",
+  "estimatedCompletion": "timestamp",
+  "completedAt": null,
+  "status": "processing"
+}
+```
 
-* System automatically detects optimal settings based on video content and suggests best practices
+### Convex Collection: `publishingJobs`
 
-**Core Experience**
+```json
+{
+  "publishId": "pub_xyz789",
+  "exportId": "exp_abc123xyz",
+  "userId": "usr_123456",
+  "platforms": [
+    {
+      "platform": "instagram",
+      "accountId": "acc_ig_123",
+      "type": "feed_video",
+      "content": {
+        "caption": "Check out our new product! 🚀 #innovation #tech",
+        "hashtags": ["innovation", "tech", "product"],
+        "location": "San Francisco, CA",
+        "thumbnail": "thumb_url"
+      },
+      "scheduling": {
+        "type": "immediate",
+        "scheduledTime": null
+      },
+      "status": "published",
+      "result": {
+        "postId": "ig_post_456",
+        "url": "https://instagram.com/p/xyz",
+        "publishedAt": "timestamp"
+      }
+    },
+    {
+      "platform": "youtube",
+      "accountId": "acc_yt_456",
+      "type": "video",
+      "content": {
+        "title": "Product Launch 2025",
+        "description": "Introducing our latest innovation...",
+        "tags": ["product", "launch", "2025"],
+        "category": "22",
+        "thumbnail": "thumb_url",
+        "privacy": "public"
+      },
+      "scheduling": {
+        "type": "scheduled",
+        "scheduledTime": "timestamp"
+      },
+      "status": "scheduled",
+      "result": null
+    }
+  ],
+  "campaign": {
+    "id": "cmp_789",
+    "name": "Summer Launch 2025"
+  },
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
+}
+```
 
-* **Step 1:** User initiates export from completed video project
+### Convex Collection: `platformConnections`
 
-  * Clean, modal interface opens with three main sections: Format Selection, Platform Integration, and Advanced Options
+```json
+{
+  "connectionId": "conn_abc123",
+  "userId": "usr_123456",
+  "platform": "instagram",
+  "accounts": [
+    {
+      "accountId": "acc_ig_123",
+      "username": "brandaccount",
+      "displayName": "Brand Official",
+      "profileImage": "image_url",
+      "accessToken": "encrypted_token",
+      "refreshToken": "encrypted_refresh",
+      "tokenExpiry": "timestamp",
+      "permissions": ["publish_content", "read_insights"],
+      "status": "active",
+      "lastUsed": "timestamp"
+    }
+  ],
+  "connectionStatus": "active",
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
+}
+```
 
-  * Default settings are pre-selected based on video dimensions and user's most common export preferences
+### Convex Collection: `exportTemplates`
 
-  * Clear visual hierarchy with primary action button "Start Export" prominently displayed
-
-  * Real-time file size estimates update as user modifies settings
-
-* **Step 2:** User selects export format and quality settings
-
-  * Visual format selector with platform icons (Instagram square, YouTube landscape, TikTok vertical, etc.)
-
-  * Quality slider with clear labels (Web, HD, Ultra) and corresponding file size/quality indicators
-
-  * Advanced users can access detailed codec and bitrate settings via collapsible "Advanced Settings" section
-
-  * Preview thumbnail updates in real-time to reflect selected format and quality
-
-* **Step 3:** User chooses distribution method
-
-  * Toggle between "Download Only" and "Share to Platforms" options
-
-  * If sharing selected, OAuth-connected platforms appear with account names and profile pictures
-
-  * Platform-specific options appear (Instagram caption, LinkedIn post text, YouTube description)
-
-  * Multiple platforms can be selected simultaneously with individual customization
-
-* **Step 4:** User initiates export process
-
-  * Single "Export & Share" button triggers the rendering process
-
-  * Modal transitions to progress view with detailed rendering status
-
-  * Progress bar shows current stage: "Processing Audio", "Rendering Video", "Uploading to Platforms"
-
-  * Estimated completion time updates dynamically based on system load and file complexity
-
-* **Step 5:** User receives completion confirmation
-
-  * Success screen displays download links, platform confirmation messages, and sharing URLs
-
-  * Option to immediately view published content on respective platforms
-
-  * Export details saved to user's export history with timestamps and settings used
-
-  * Quick action buttons for "Export Another Version" or "Share to Additional Platforms"
-
-**Advanced Features & Edge Cases**
-
-* Queue system handles multiple simultaneous exports with priority management
-
-* Error states provide specific guidance (e.g., "Platform authentication expired", "File too large for TikTok")
-
-* Offline detection pauses exports and resumes when connection restored
-
-* Memory optimization ensures export process doesn't impact other application features
-
-**UI/UX Highlights**
-
-* High contrast progress indicators ensure visibility across different lighting conditions
-
-* Keyboard shortcuts (Cmd/Ctrl + E for export, Enter to confirm) speed up power user workflows
-
-* Mobile-responsive design maintains full functionality on tablet devices
-
-* Colorblind-friendly status indicators use icons alongside color coding
-
-* Loading states use skeleton screens rather than spinners to reduce perceived wait time
+```json
+{
+  "templateId": "tpl_exp_001",
+  "name": "Social Media Package",
+  "description": "All major social platforms",
+  "userId": "usr_123456",
+  "team": "team_789",
+  "platforms": [
+    {
+      "platform": "instagram_feed",
+      "enabled": true,
+      "settings": {
+        "resolution": "1080x1080",
+        "quality": "high",
+        "captions": true
+      }
+    },
+    {
+      "platform": "youtube",
+      "enabled": true,
+      "settings": {
+        "resolution": "1920x1080",
+        "quality": "maximum",
+        "thumbnail": "auto"
+      }
+    },
+    {
+      "platform": "tiktok",
+      "enabled": true,
+      "settings": {
+        "resolution": "1080x1920",
+        "quality": "high",
+        "watermark": false
+      }
+    }
+  ],
+  "metadata": {
+    "defaultCaptions": true,
+    "autoHashtags": true,
+    "includeThumbnails": true
+  },
+  "usageCount": 47,
+  "lastUsed": "timestamp",
+  "createdAt": "timestamp"
+}
+```
 
 ---
 
-## Narrative
+## Recommended Tech Stack
 
-Sarah, a social media manager for a growing SaaS company, has just finished creating a product demo video using the AI video platform. Her campaign launches in two hours across Instagram, LinkedIn, and YouTube, each requiring different formats and specifications. Previously, this meant using separate tools to resize, compress, and manually upload to each platform - a process that could take 45 minutes and often resulted in format errors or quality issues.
+**Frontend:** Next.js 16.0.3 with App Router + React 19.2.0 + TypeScript 5  
+**UI Components:** Radix UI + shadcn/ui + Tailwind CSS v4  
+**Backend:** Convex for job processing and real-time updates  
+**Authentication:** Clerk + OAuth for platform connections  
+**Video Processing:** FFmpeg.wasm for client-side, cloud encoding for server  
+**Storage:** Convex file storage + CDN for distribution  
+**APIs:** Direct platform SDK integrations  
+**Runtime:** Bun for performance optimization  
 
-With the Output Handler, Sarah clicks the export button and immediately sees format recommendations for each platform. She selects all three destinations, customizes the captions and descriptions for each audience, and clicks "Export & Share." Within 90 seconds, her video is rendered in three optimized formats and automatically published to all platforms with perfect specifications.
+**Rationale:** Convex provides real-time job tracking essential for export monitoring, while platform SDKs ensure reliable publishing. The modern stack enables rapid development and scaling.
 
-The system sends her confirmation notifications with direct links to each post, and she can see the videos are already generating engagement. Sarah has saved 40 minutes of technical work and eliminated the risk of format errors, allowing her to focus on strategy and content creation instead of technical logistics. For the business, this seamless workflow increases the likelihood that users will actually publish and share their created content, driving organic growth and platform visibility.
+---
+
+## Out of Scope
+
+### Features NOT Included:
+
+- Live streaming to platforms
+- Platform-native editing tools
+- Comment management
+- Audience interaction features
+- Paid promotion setup
+- Influencer collaboration tools
+- Rights management
+- Content moderation
+
+### Technical Items NOT Included:
+
+- Custom CDN development
+- Peer-to-peer distribution
+- Blockchain verification
+- Platform algorithm optimization
+- Custom analytics platform
+- Social listening tools
+- Competitor analysis
+- Trend prediction
+
+---
+
+## Known Limitations & Trade-offs
+
+1. **Platform API Limits**: Rate limits vary by platform (Instagram: 200/hour, YouTube: 10,000/day)
+2. **File Size Limits**: Platform-specific (Instagram: 650MB, TikTok: 287MB)
+3. **Concurrent Exports**: Maximum 20 simultaneous renders per user
+4. **Schedule Window**: Maximum 6 months advance scheduling
+5. **Batch Size**: Maximum 100 videos per batch operation
+6. **Storage Duration**: Exported files retained for 30 days
+7. **Platform Accounts**: Maximum 10 accounts per platform
+8. **Caption Length**: Platform limits enforced (Instagram: 2200 chars)
 
 ---
 
 ## Success Metrics
 
-### User-Centric Metrics
-
-* **Export Completion Rate:** 95% of initiated exports successfully complete within expected timeframe
-
-* **Direct Sharing Adoption:** 70% of users utilize direct platform sharing within their first month
-
-* **User Satisfaction Score:** Average rating of 4.5+ stars for export experience in user surveys
-
-* **Time to Publish:** Average time from export initiation to content being live on platforms under 3 minutes
-
-### Business Metrics
-
-* **Feature Adoption:** 85% of active users utilize export functionality within 7 days of account creation
-
-* **Platform Integration Usage:** 60% of exports include direct sharing to at least one connected platform
-
-* **Premium Conversion:** 25% of users upgrade to access advanced export features (4K, batch processing)
-
-* **User Retention Impact:** 20% improvement in 30-day retention for users who complete their first export
-
-### Technical Metrics
-
-* **Rendering Performance:** 98% uptime for export services with average processing time under 2 minutes
-
-* **API Success Rate:** 99.5% success rate for platform OAuth integrations and publishing
-
-* **Error Recovery:** Less than 1% of exports require manual intervention or fail permanently
-
-* **System Load:** Export processes consume less than 15% of total system resources during peak usage
-
-### Tracking Plan
-
-* User clicks "Export" button from video editor
-
-* Format selection changes and advanced settings modifications
-
-* Platform authentication connections and disconnections
-
-* Export initiation events with selected parameters
-
-* Rendering progress milestones (25%, 50%, 75%, 100%)
-
-* Successful export completions with file size and processing time
-
-* Direct sharing attempts and success rates by platform
-
-* Download events for completed exports
-
-* Export history page views and file re-downloads
-
-* User feedback submissions and satisfaction ratings
+1. **Export completes in under 30 seconds** for 1-minute 1080p video
+2. **Multi-platform publishing within 1 minute** of export completion
+3. **95% publishing success rate** on first attempt
+4. **Platform optimization improves engagement by 25%** versus generic exports
+5. **Batch operations process at 10+ videos per minute**
+6. **Zero data loss during export/publishing pipeline**
 
 ---
 
-## Technical Considerations
+## Testing Checklist
 
-### Technical Needs
+### Core Functionality:
 
-* **High-Performance Rendering Engine:** GPU-accelerated video processing capable of handling multiple concurrent export requests
+- [ ] Videos export in correct formats
+- [ ] Platform specifications matched
+- [ ] Quality maintains across formats
+- [ ] Batch export works correctly
+- [ ] Progress tracking accurate
 
-* **Distributed Queue System:** Job queue management with priority handling and automatic scaling based on demand
+### Platform Integration:
 
-* **Multi-Format Encoder:** Support for various codecs and containers optimized for different platforms and use cases
+- [ ] OAuth flows complete successfully
+- [ ] Tokens refresh automatically
+- [ ] Publishing works for each platform
+- [ ] Metadata transfers correctly
+- [ ] Scheduling publishes on time
 
-* **OAuth Integration Layer:** Secure authentication flow management for multiple social platforms with token refresh handling
+### Optimization Features:
 
-* **File Storage System:** Temporary storage for rendered files with automatic cleanup and CDN distribution for fast downloads
+- [ ] Format optimization reduces file size
+- [ ] Aspect ratios adjust correctly
+- [ ] Bitrates optimize for platform
+- [ ] Thumbnails generate properly
+- [ ] Captions format for platform
 
-* **Real-Time Communication:** WebSocket connections for live progress updates and completion notifications
+### Distribution Features:
 
-### Integration Points
+- [ ] Multi-platform posting synchronized
+- [ ] Distribution packages complete
+- [ ] Download links work reliably
+- [ ] CDN delivery fast globally
+- [ ] Retry logic handles failures
 
-* **Social Platform APIs:** Facebook Graph API, YouTube Data API, LinkedIn Marketing API, TikTok Business API
+### Performance:
 
-* **Cloud Storage Services:** Integration with AWS S3, Google Cloud Storage, or Azure Blob Storage for scalable file handling
-
-* **CDN Networks:** Content delivery network for fast global file distribution and download optimization
-
-* **Analytics Platforms:** Google Analytics, Mixpanel, or similar for comprehensive usage tracking and user behavior analysis
-
-* **Notification Services:** Email and push notification systems for export completion alerts
-
-### Data Storage & Privacy
-
-* **Temporary File Handling:** Rendered videos stored temporarily with automatic deletion after 48 hours unless explicitly saved
-
-* **User Credentials:** OAuth tokens encrypted and stored with industry-standard security practices
-
-* **Export History:** Metadata retention for user convenience while respecting data minimization principles
-
-* **Privacy Compliance:** GDPR and CCPA compliant data handling with user control over export history and connected accounts
-
-* **Cross-Border Considerations:** Geo-distributed rendering to keep data within appropriate jurisdictions
-
-### Scalability & Performance
-
-* **Auto-Scaling Infrastructure:** Dynamic resource allocation based on export queue depth and rendering demands
-
-* **Load Balancing:** Intelligent distribution of rendering tasks across available processing nodes
-
-* **Caching Strategy:** Smart caching of common export settings and platform-specific optimizations
-
-* **Performance Monitoring:** Real-time system health tracking with automated alerting for performance degradation
-
-* **Expected Load:** Support for 1000+ concurrent exports during peak usage periods
-
-### Potential Challenges
-
-* **Platform API Rate Limits:** Managing quota restrictions across multiple social media platforms
-
-* **Video Processing Complexity:** Handling edge cases in video formats, codecs, and rendering requirements
-
-* **OAuth Token Management:** Maintaining valid authentication across multiple platforms with varying expiration policies
-
-* **Quality vs. Speed Trade-offs:** Balancing rendering speed with output quality based on user preferences and platform requirements
-
-* **Error Recovery:** Graceful handling of partial failures in multi-platform sharing scenarios
+- [ ] Rendering achieves 2x realtime
+- [ ] Concurrent exports don't conflict
+- [ ] Large batches process smoothly
+- [ ] API rate limits respected
+- [ ] System scales with load
 
 ---
 
-## Milestones & Sequencing
+## Risk Mitigation
 
-### Project Estimate
+**Biggest Risk:** Platform API changes breaking publishing integration  
+**Mitigation:** Implement version detection and compatibility layer; maintain fallback to manual download; monitor API deprecation notices
 
-Medium: 3-4 weeks for full implementation including platform integrations and advanced features
+**Second Risk:** Export queue bottlenecks during peak usage  
+**Mitigation:** Implement dynamic scaling for render workers; add priority queuing for premium users; provide queue position visibility
 
-### Team Size & Composition
+**Third Risk:** Platform rate limiting blocking batch operations  
+**Mitigation:** Implement intelligent rate limiting with backoff; spread batch operations across time; provide clear limit visibility
 
-Small Team: 2-3 total people
-
-* 1 Full-Stack Engineer (backend rendering engine, API integrations)
-
-* 1 Frontend Engineer (UI/UX implementation, real-time updates)
-
-* 1 Product Lead (requirements coordination, testing, launch preparation)
-
-### Suggested Phases
-
-**Phase 1: Core Export Engine** (1 week)
-
-* Key Deliverables: Backend Engineer implements basic video rendering and format conversion, Frontend Engineer creates export UI with progress tracking
-
-* Dependencies: Existing video processing pipeline, cloud storage infrastructure
-
-**Phase 2: Platform Integrations** (1 week)
-
-* Key Deliverables: Backend Engineer implements OAuth flows and publishing APIs for top 3 platforms, Frontend Engineer adds platform selection and sharing UI
-
-* Dependencies: Platform developer account approvals, API credentials
-
-**Phase 3: Advanced Features & Polish** (1 week)
-
-* Key Deliverables: Full team implements batch processing, export history, preset management, and comprehensive error handling
-
-* Dependencies: User feedback from internal testing, performance optimization requirements
-
-**Phase 4: Launch & Optimization** (3-5 days)
-
-* Key Deliverables: Product Lead coordinates soft launch with monitoring, team implements performance improvements and bug fixes based on initial usage
-
-* Dependencies: Production infrastructure readiness, customer support documentation
+**Fourth Risk:** Large file uploads failing to platforms  
+**Mitigation:** Implement chunked upload with resume capability; add compression options; provide fallback to platform-native uploaders

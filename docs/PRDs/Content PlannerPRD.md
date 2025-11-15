@@ -1,377 +1,556 @@
-# Content Planner – Scene Refinement and Visual Storyboarding
+# Content Planner - Product Requirements Document
 
-### TL;DR
+**Project**: Content Planner - Collaborative visual storyboarding and scene planning system for AI video campaigns  
+**Goal**: Enable ad directors and marketing teams to transform campaign concepts into detailed visual storyboards through structured planning workflows
 
-The Content Planner enables ad directors and marketing teams to systematically refine campaign concepts into detailed visual storyboards through collaborative scene planning, asset organization, and iterative refinement tools. This feature bridges the gap between initial creative concepts and production-ready materials by providing structured workflows for visual storytelling and stakeholder alignment. Target users include ad directors, creative directors, and marketing managers who need to translate campaign ideas into actionable visual narratives.
+**Note**: This system bridges creative ideation and production, ensuring all stakeholders align on visual narratives before generation begins
 
 ---
 
-## Goals
+## Core Architecture
 
-### Business Goals
+**Storyboard Planning Pipeline:**
 
-* Reduce campaign development time by 40% through streamlined scene planning and storyboard creation workflows
+- Visual scene composition with drag-and-drop interface
+- Asset organization system for media, graphics, and brand elements
+- Collaborative annotation and feedback mechanisms
+- Timeline-based narrative flow management
+- Future: AI-powered scene suggestions and automatic shot composition
 
-* Increase client approval rates by 25% with clearer visual communication and iterative refinement capabilities
+**Workflow Structure:**
 
-* Generate 15% more billable project value by enabling more sophisticated campaign planning and presentation
-
-* Capture 20% more repeat business through improved campaign planning collaboration and outcomes
-
-* Establish market differentiation as a comprehensive creative planning platform
-
-### User Goals
-
-* Transform abstract campaign concepts into clear, actionable visual storyboards with minimal friction
-
-* Collaborate effectively with team members and stakeholders throughout the creative development process
-
-* Maintain organized asset libraries and scene references that can be reused across multiple campaigns
-
-* Present compelling visual narratives to clients that clearly communicate campaign vision and execution
-
-* Iterate rapidly on creative concepts based on feedback without losing previous versions or context
-
-### Non-Goals
-
-* Advanced video editing or post-production capabilities beyond basic scene assembly
-
-* Direct integration with external rendering or animation software at this phase
-
-* Complex project management features like resource allocation or budget tracking
+- Concept brief ingestion from Prompt Parser
+- Scene breakdown and sequencing
+- Asset assignment and placeholder management
+- Review cycles with stakeholder feedback
+- Export to generation-ready specifications
 
 ---
 
 ## User Stories
 
-**Ad Director**
+### Primary User: Ad Directors and Creative Directors
 
-* As an ad director, I want to break down campaign concepts into individual scenes, so that I can systematically plan each moment of the customer journey.
+- As an ad director, I want to **break down my concept into individual scenes** so that I can plan the visual flow
+- As a creative director, I want to **assign specific assets to each scene** so that production has clear references
+- As a creative team lead, I want to **annotate scenes with direction notes** so that my vision is clearly communicated
+- As an art director, I want to **specify camera angles and movements** so that the dynamic feel is captured
+- As a brand manager, I want to **review and approve storyboards** so that brand standards are maintained
 
-* As an ad director, I want to attach visual references and mood boards to each scene, so that my team understands the aesthetic direction without lengthy explanations.
+### Secondary User: Marketing Managers and Stakeholders
 
-* As an ad director, I want to rearrange scene sequences through drag-and-drop functionality, so that I can experiment with narrative flow and pacing.
-
-* As an ad director, I want to add detailed notes and requirements to each scene, so that production teams have clear guidance during execution.
-
-* As an ad director, I want to export polished storyboards for client presentations, so that I can secure approvals and demonstrate campaign vision effectively.
-
-**Creative Director**
-
-* As a creative director, I want to review and provide feedback on scene compositions, so that the final campaign aligns with brand standards and creative vision.
-
-* As a creative director, I want to compare different storyboard versions side-by-side, so that I can evaluate creative directions and make informed decisions.
-
-* As a creative director, I want to access a library of previous successful scenes, so that I can leverage proven concepts for new campaigns.
-
-**Marketing Manager**
-
-* As a marketing manager, I want to understand how each scene contributes to campaign objectives, so that I can ensure alignment with business goals and target audience needs.
-
-* As a marketing manager, I want to share storyboards with stakeholders for feedback, so that I can gather input and secure buy-in before production begins.
+- As a marketing manager, I want to **provide feedback on specific scenes** so that campaigns align with objectives
+- As a stakeholder, I want to **track revision history** so that I understand how concepts evolved
 
 ---
 
-## Functional Requirements
+## Key Features
 
-* **Scene Management** (Priority: High)
+### 1. Authentication System
 
-  * Scene Creation: Add, duplicate, and organize individual scenes within campaign timelines with customizable templates
+**Must Have:**
 
-  * Scene Sequencing: Drag-and-drop interface for reordering scenes with automatic timeline updates and transition previews
+- Integrated Clerk authentication
+- Project-based access control
+- Stakeholder permission levels
+- Review and approval workflows
+- Audit trail for all changes
 
-  * Scene Properties: Attach duration, transition types, and priority levels to each scene for production planning
+**Permission Levels:**
 
-* **Visual Storyboarding** (Priority: High)
+- Owner: Full control over storyboard
+- Editor: Can modify scenes and assets
+- Reviewer: Can comment and approve
+- Viewer: Read-only access
 
-  * Asset Integration: Upload and organize images, sketches, and reference materials with tagging and search capabilities
+**Success Criteria:**
 
-  * Storyboard Canvas: Visual composition tools for arranging assets, adding annotations, and defining scene layouts
+- Seamless permission management
+- Clear role distinctions
+- Secure project isolation
+- Complete activity logging
 
-  * Template Library: Pre-built scene templates for common advertising formats and campaign types
+### 2. Scene Composition Interface
 
-* **Collaborative Refinement** (Priority: High)
+**Must Have:**
 
-  * Comment System: Scene-specific feedback threads with @mentions, status tracking, and resolution workflows
+- Grid-based storyboard layout (2x3, 3x4, custom)
+- Drag-and-drop scene reordering
+- Scene duration specification (seconds/frames)
+- Thumbnail preview generation
+- Scene numbering and labeling system
 
-  * Version Control: Automatic saving of storyboard iterations with comparison tools and rollback capabilities
+**Scene Components:**
 
-  * Real-time Collaboration: Live editing sessions with multiple users and conflict resolution
+- Visual placeholder/reference image
+- Duration and timing markers
+- Transition type specification
+- Audio cue indicators
+- Text overlay positions
 
-* **Export and Presentation** (Priority: Medium)
+**Success Criteria:**
 
-  * Storyboard Export: Generate PDF presentations, image sequences, and interactive previews for client sharing
+- Smooth drag-and-drop interaction
+- Instant visual feedback
+- Responsive layout adaptation
+- Clear scene relationships
+- Intuitive navigation between scenes
 
-  * Client Portal: Secure sharing links with controlled access and feedback collection capabilities
+### 3. Asset Management System
 
-  * Print Formatting: Optimized layouts for physical storyboard printing and presentation materials
+**Must Have:**
 
-* **Asset Management** (Priority: Medium)
+- Central asset library per project
+- Support for images, videos, audio, graphics
+- Cloud storage integration via Convex
+- Asset tagging and categorization
+- Quick search and filter capabilities
 
-  * Asset Library: Centralized storage for visual references, brand assets, and reusable scene elements
+**Asset Types:**
 
-  * Asset Search: Intelligent tagging and search functionality across all uploaded materials and scene components
+- Stock footage references
+- Brand assets (logos, graphics)
+- Music and sound effects
+- Voice-over scripts
+- Color palettes and style guides
 
-  * Asset Permissions: Role-based access controls for sensitive or client-specific materials
+**Success Criteria:**
+
+- Fast asset upload and processing
+- Efficient search across large libraries
+- Thumbnail generation for all media
+- Seamless asset-to-scene assignment
+- Version control for asset updates
+
+### 4. Visual Annotation Tools
+
+**Must Have:**
+
+- Drawing tools for markup (arrows, circles, highlights)
+- Text annotation with rich formatting
+- Color coding for different feedback types
+- Pin comments to specific scene regions
+- Resolution tracking for feedback items
+
+**Annotation Categories:**
+
+- Composition notes (framing, layout)
+- Motion direction (camera, object movement)
+- Timing adjustments (pacing, duration)
+- Brand compliance issues
+- Creative suggestions
+
+**Success Criteria:**
+
+- Annotations remain precisely positioned
+- Clear visual hierarchy of feedback
+- Threaded discussion capability
+- Status tracking (open/resolved)
+- Notification system for updates
+
+### 5. Timeline and Pacing Editor
+
+**Must Have:**
+
+- Visual timeline representation of full storyboard
+- Scene duration adjustment via drag handles
+- Beat marker placement for music sync
+- Total runtime calculator
+- Transition timing controls
+
+**Timeline Features:**
+
+- Scene grouping into acts/segments
+- Audio waveform display
+- Keyframe markers for important moments
+- Pacing rhythm visualization
+- Export timing sheets
+
+**Success Criteria:**
+
+- Real-time duration updates
+- Smooth timeline scrubbing
+- Accurate frame counting
+- Clear visual relationships
+- Precise timing control
+
+### 6. Collaborative Review System
+
+**Must Have:**
+
+- Share links with controlled access
+- Comment threads per scene
+- Approval workflow stages
+- Version comparison tools
+- Notification system for updates
+
+**Review Stages:**
+
+- Draft (internal team review)
+- Internal Review (creative team)
+- Client Review (stakeholder feedback)
+- Final Approval (sign-off ready)
+- Locked (production ready)
+
+**Success Criteria:**
+
+- Clear approval status visibility
+- Efficient feedback collection
+- Stakeholder notification system
+- Version control integrity
+- Audit trail completeness
+
+### 7. Template Library
+
+**Must Have:**
+
+- Pre-built storyboard templates by industry/platform
+- Custom template creation from successful projects
+- Template sharing within organization
+- Variable placeholders for quick customization
+- Style preset management
+
+**Template Categories:**
+
+- Platform-specific (TikTok, Instagram, YouTube)
+- Industry verticals (retail, tech, healthcare)
+- Campaign types (launch, seasonal, awareness)
+- Duration variants (15s, 30s, 60s)
+- Visual styles (minimal, dynamic, narrative)
+
+**Success Criteria:**
+
+- Quick template application
+- Flexible customization options
+- Template performance tracking
+- Easy sharing mechanisms
+- Version management
+
+### 8. Export and Handoff
+
+**Must Have:**
+
+- Generation-ready JSON export with all specifications
+- PDF storyboard export for offline review
+- Shot list generation with technical details
+- Asset package bundling
+- Direct integration with Generation Engine
+
+**Export Formats:**
+
+- Structured data for AI generation
+- Visual PDF presentations
+- Excel shot lists
+- Markdown documentation
+- ZIP asset packages
+
+**Success Criteria:**
+
+- One-click export functionality
+- Complete data preservation
+- Format compatibility
+- Batch export capability
+- Handoff validation
+
+### 9. AI-Powered Assistance
+
+**Must Have:**
+
+- Scene suggestion based on brief
+- Auto-arrangement of scenes for narrative flow
+- Shot type recommendations
+- Transition suggestions between scenes
+- Music beat matching assistance
+
+**Success Criteria:**
+
+- Relevant suggestions provided
+- User control over AI assistance
+- Quick suggestion generation
+- Learning from user preferences
+- Non-intrusive integration
 
 ---
 
-## User Experience
+## Data Model
 
-**Entry Point & First-Time User Experience**
+### Convex Collection: `storyboards`
 
-* Users access the Content Planner through the main dashboard navigation or campaign-specific project pages
+**Document Structure:**
 
-* First-time users see a guided tour highlighting scene creation, storyboard tools, and collaboration features
+```json
+{
+  "storyboardId": "stb_abc123xyz",
+  "projectId": "proj_789",
+  "title": "Summer Campaign 2025 - Social Cut",
+  "briefId": "prm_reference123",
+  "status": "in_review",
+  "owner": "usr_123456",
+  "team": ["usr_789", "usr_012"],
+  "scenes": [
+    {
+      "sceneId": "scn_001",
+      "order": 1,
+      "title": "Opening - Brand Logo",
+      "duration": 2.5,
+      "thumbnail": "thumbnail_url",
+      "composition": {
+        "shotType": "wide_establishing",
+        "cameraMovement": "slow_zoom_in",
+        "depth": "shallow_focus"
+      },
+      "assets": {
+        "primary": "asset_id_123",
+        "secondary": ["asset_id_456", "asset_id_789"],
+        "audio": "audio_id_001"
+      },
+      "annotations": [
+        {
+          "id": "ann_001",
+          "type": "composition",
+          "content": "Ensure logo has breathing room",
+          "position": {"x": 0.5, "y": 0.3},
+          "author": "usr_789",
+          "status": "resolved"
+        }
+      ],
+      "transitions": {
+        "in": "fade",
+        "out": "cut"
+      },
+      "metadata": {
+        "colorPalette": ["#2ECC71", "#FFFFFF"],
+        "mood": "energetic",
+        "pace": "medium"
+      }
+    }
+  ],
+  "timeline": {
+    "totalDuration": 30,
+    "beatMarkers": [0, 7.5, 15, 22.5, 30],
+    "acts": [
+      {
+        "name": "Introduction",
+        "scenes": ["scn_001", "scn_002"],
+        "duration": 7.5
+      }
+    ]
+  },
+  "reviews": {
+    "currentStage": "client_review",
+    "approvals": [
+      {
+        "stage": "internal_review",
+        "approvedBy": "usr_456",
+        "timestamp": "timestamp",
+        "notes": "Ready for client"
+      }
+    ],
+    "feedback": [
+      {
+        "id": "fb_001",
+        "sceneId": "scn_003",
+        "content": "Can we make this more dynamic?",
+        "author": "usr_012",
+        "timestamp": "timestamp",
+        "resolved": false
+      }
+    ]
+  },
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp",
+  "version": 3
+}
+```
 
-* Onboarding includes template selection for common campaign types (product launch, brand awareness, promotional)
+### Convex Collection: `projectAssets`
 
-**Core Experience**
+```json
+{
+  "assetId": "ast_123xyz",
+  "projectId": "proj_789",
+  "type": "image",
+  "name": "hero-product-shot.jpg",
+  "url": "storage_url",
+  "thumbnail": "thumbnail_url",
+  "metadata": {
+    "dimensions": {"width": 1920, "height": 1080},
+    "fileSize": 2456789,
+    "format": "jpeg",
+    "colorProfile": "sRGB"
+  },
+  "tags": ["product", "hero", "primary"],
+  "usedInScenes": ["scn_002", "scn_005"],
+  "uploadedBy": "usr_123456",
+  "uploadedAt": "timestamp",
+  "version": 1,
+  "status": "active"
+}
+```
 
-* **Step 1:** User creates a new campaign or opens an existing project from their dashboard
+### Convex Collection: `storyboardTemplates`
 
-  * Clean interface with prominent "Create Campaign" button and recent project shortcuts
-
-  * Campaign setup wizard guides users through basic parameters (name, objectives, timeline, team members)
-
-  * System validates required fields and provides helpful prompts for incomplete information
-
-  * Success leads to the main Content Planner workspace with empty scene timeline ready for population
-
-* **Step 2:** User begins scene planning by adding the first scene to the timeline
-
-  * Large "Add Scene" button prominently displayed in empty timeline with helpful getting-started tips
-
-  * Scene creation modal offers templates (hero shot, product demo, testimonial) or blank scene options
-
-  * User inputs scene title, estimated duration, and selects initial template if desired
-
-  * New scene appears in timeline with thumbnail placeholder and editing options immediately available
-
-* **Step 3:** User develops scene content through the visual storyboard editor
-
-  * Split-screen interface showing scene timeline on left and storyboard canvas on right for optimal workflow
-
-  * Asset upload area supports drag-and-drop for images, sketches, and reference materials with instant previews
-
-  * Canvas tools allow positioning, scaling, and annotation of visual elements with intuitive controls
-
-  * Auto-save functionality prevents work loss with visible save status indicators
-
-* **Step 4:** User adds detailed scene notes and requirements for production teams
-
-  * Expandable notes panel with rich text formatting for comprehensive scene documentation
-
-  * Structured fields for key information (lighting requirements, talent needs, location details, special effects)
-
-  * Tag system enables categorization and filtering of scenes by production requirements
-
-  * Notes link directly to specific canvas elements for precise communication
-
-* **Step 5:** User collaborates with team members through comments and feedback systems
-
-  * Comment threads attach to specific scenes or canvas elements for targeted discussions
-
-  * @mention system notifies relevant team members with email and in-app notifications
-
-  * Status tracking (pending review, approved, needs revision) provides clear workflow progression
-
-  * Activity feed shows all project updates and team interactions in chronological order
-
-* **Step 6:** User refines and iterates on storyboards based on stakeholder feedback
-
-  * Version comparison tool displays before/after views for tracking changes and improvements
-
-  * Comment resolution workflow ensures all feedback is addressed systematically
-
-  * Quick revision tools enable rapid updates without disrupting overall storyboard structure
-
-  * Change history provides complete audit trail of all modifications and decisions
-
-* **Step 7:** User exports finalized storyboards for client presentation and production handoff
-
-  * Export wizard offers multiple formats (PDF presentation, image sequence, interactive preview)
-
-  * Customizable templates ensure brand consistency and professional presentation quality
-
-  * Secure sharing links provide controlled access with optional password protection and expiration dates
-
-  * Production package includes all assets, notes, and technical requirements for seamless handoff
-
-**Advanced Features & Edge Cases**
-
-* Bulk scene operations for large campaigns including mass updates, duplicate detection, and batch modifications
-
-* Integration hooks for external asset management systems and brand guideline databases
-
-* Offline mode capabilities for field work with automatic synchronization upon reconnection
-
-* Advanced permission systems for agency-client relationships with granular access controls
-
-**UI/UX Highlights**
-
-* High contrast visual indicators for scene status, priority levels, and approval workflows to ensure accessibility
-
-* Responsive grid system adapts storyboard layouts to different screen sizes while maintaining visual hierarchy
-
-* Keyboard shortcuts for power users enable rapid scene navigation, asset manipulation, and workflow execution
-
-* Color-coded organizational system helps users quickly identify scene types, status, and assigned team members
+```json
+{
+  "templateId": "tpl_stb_001",
+  "name": "Product Launch - Instagram Stories",
+  "category": "product_launch",
+  "platform": "instagram_stories",
+  "duration": 15,
+  "sceneCount": 5,
+  "structure": [
+    {
+      "order": 1,
+      "type": "hook",
+      "duration": 2,
+      "description": "Attention-grabbing opener",
+      "suggestedShot": "close_up",
+      "transition": "swipe"
+    },
+    {
+      "order": 2,
+      "type": "problem",
+      "duration": 3,
+      "description": "Problem identification",
+      "suggestedShot": "medium",
+      "transition": "cut"
+    }
+  ],
+  "defaultAssets": {
+    "music": "upbeat_electronic",
+    "colorScheme": "vibrant",
+    "typography": "modern_bold"
+  },
+  "usageStats": {
+    "timesUsed": 156,
+    "averageRating": 4.7,
+    "conversionRate": 0.082
+  },
+  "createdBy": "usr_admin",
+  "createdAt": "timestamp",
+  "public": false
+}
+```
 
 ---
 
-## Narrative
+## Recommended Tech Stack
 
-Sarah, a seasoned ad director at a growing creative agency, faces a challenging deadline: developing a comprehensive campaign storyboard for a major retail client's holiday promotion. The client has provided abstract concepts about "emotional connection" and "family moments," but needs detailed visual execution plans within 48 hours for their approval meeting.
+**Frontend:** Next.js 16.0.3 with App Router + React 19.2.0 + TypeScript 5  
+**UI Components:** Radix UI + shadcn/ui + Tailwind CSS v4  
+**Backend:** Convex for real-time collaboration and data persistence  
+**Authentication:** Clerk for team management and permissions  
+**AI Integration:** Vercel AI SDK for intelligent suggestions  
+**Development:** Turbopack for fast development builds  
+**Runtime:** Bun for package management  
 
-Opening the Content Planner, Sarah quickly creates scene templates for the campaign's key moments: family gathering, product interaction, and call-to-action sequences. She uploads mood board images and brand assets, then begins composing each scene on the visual canvas. The drag-and-drop interface allows her to experiment with different narrative flows, moving the emotional climax scene earlier in the sequence based on her experience with similar campaigns.
+**Rationale:** Real-time collaboration through Convex is essential for team storyboarding, while the modern React stack ensures smooth interaction for complex visual interfaces.
 
-Her creative team joins the collaborative workspace, adding detailed production notes and technical requirements to each scene. The commenting system enables real-time discussion about lighting requirements and talent casting without disrupting the visual development process. When the client provides feedback through the secure sharing portal, Sarah can quickly iterate on specific scenes while maintaining the overall campaign cohesion.
+---
 
-The final storyboard export impresses both the internal team and the client, clearly communicating the campaign's emotional arc through professional visual presentation. The client approves the concept immediately, and the production team has comprehensive documentation for seamless execution. Sarah's agency completes the project under budget and ahead of schedule, strengthening their relationship with the client and establishing a reusable template for future holiday campaigns.
+## Out of Scope
+
+### Features NOT Included:
+
+- Full video editing capabilities
+- 3D scene composition
+- Motion graphics creation
+- Character animation tools
+- Audio editing beyond basic trimming
+- Live camera feed integration
+- VR/AR scene planning
+- Automated video generation at this stage
+
+### Technical Items NOT Included:
+
+- Desktop application development
+- Offline mode with sync
+- Custom rendering engine
+- RAW image processing
+- Video codec transcoding
+- Direct camera control
+- Hardware acceleration
+- Plugin architecture
+
+---
+
+## Known Limitations & Trade-offs
+
+1. **Scene Limit**: Maximum 50 scenes per storyboard for performance
+2. **Asset Size**: Individual assets limited to 100MB
+3. **Concurrent Editors**: Maximum 10 simultaneous editors per project
+4. **Export Resolution**: PDF exports capped at 300 DPI
+5. **Annotation Density**: Maximum 20 annotations per scene
+6. **Timeline Duration**: Maximum 5-minute total duration
+7. **Undo History**: Limited to last 50 actions
+8. **Template Complexity**: Maximum 20 scenes per template
 
 ---
 
 ## Success Metrics
 
-### User-Centric Metrics
-
-* Scene Planning Efficiency: Average time to create complete campaign storyboard reduces from 8 hours to 4 hours
-
-* User Adoption Rate: 85% of active users engage with storyboarding features within first month of access
-
-* Collaboration Engagement: Average of 12 comments and 3 team members per campaign storyboard project
-
-* Feature Utilization: 70% of users regularly use asset library and template systems for scene creation
-
-### Business Metrics
-
-* Client Approval Rate: Increase from 60% to 80% first-round approval for storyboard presentations
-
-* Project Value Growth: 15% increase in average campaign budgets through enhanced planning capabilities
-
-* Customer Retention: 20% improvement in client retention rates among agencies using storyboarding features
-
-* Revenue Attribution: $50K monthly recurring revenue directly attributable to Content Planner subscriptions
-
-### Technical Metrics
-
-* Platform Performance: Sub-3-second load times for storyboard canvas with up to 20 scenes and 50 assets
-
-* Uptime Reliability: 99.5% availability during business hours with automatic failover capabilities
-
-* Data Sync Accuracy: Zero data loss incidents during collaborative editing sessions with multiple users
-
-### Tracking Plan
-
-* Campaign creation events and template selection preferences
-
-* Scene addition, modification, and sequencing actions
-
-* Asset upload volume and file type distribution patterns
-
-* Comment creation and resolution rates across team collaboration
-
-* Export format preferences and sharing link generation
-
-* User session duration and feature engagement depth
-
-* Client feedback response rates and approval timeline metrics
+1. **Average storyboard completion time under 30 minutes** for standard projects
+2. **90% of projects reach approval** within 3 review cycles
+3. **Scene arrangement changes reduced by 60%** after initial setup
+4. **Collaboration increases approval speed by 40%** versus email workflows
+5. **Asset reuse rate above 70%** across projects
+6. **Template adoption rate exceeds 50%** for new projects
 
 ---
 
-## Technical Considerations
+## Testing Checklist
 
-### Technical Needs
+### Core Functionality:
 
-* Real-time collaborative editing engine supporting concurrent users with operational transform algorithms
+- [ ] User can create new storyboard project
+- [ ] Scenes can be added and arranged
+- [ ] Assets upload and display correctly
+- [ ] Timeline reflects scene durations
 
-* Asset management system with efficient storage, retrieval, and thumbnail generation for multiple file formats
+### Collaboration Features:
 
-* Export engine capable of generating high-quality PDFs, image sequences, and interactive web presentations
+- [ ] Multiple users can edit simultaneously
+- [ ] Comments appear in real-time
+- [ ] Approval workflow progresses correctly
+- [ ] Notifications trigger appropriately
+- [ ] Version history tracks changes
 
-* User authentication and authorization system with role-based permissions and secure sharing capabilities
+### Visual Tools:
 
-* Responsive web application with drag-and-drop interfaces and touch support for mobile devices
+- [ ] Drag-and-drop works smoothly
+- [ ] Annotations save positions correctly
+- [ ] Thumbnails generate automatically
+- [ ] Preview mode displays accurately
+- [ ] Export formats maintain fidelity
 
-### Integration Points
+### Integration Points:
 
-* Cloud storage services for scalable asset hosting and backup redundancy
+- [ ] Imports brief from Prompt Parser
+- [ ] Exports to Generation Engine format
+- [ ] Asset library syncs properly
+- [ ] Templates apply correctly
+- [ ] Analytics track usage
 
-* Email notification systems for comment alerts, sharing notifications, and workflow updates
+### Performance:
 
-* Single sign-on (SSO) providers for enterprise client authentication and user management
-
-* Brand asset management platforms for automatic logo and guideline synchronization
-
-* Project management tools for timeline integration and milestone tracking
-
-### Data Storage & Privacy
-
-* Scene and storyboard data stored in normalized relational database with efficient querying capabilities
-
-* Asset files maintained in secure cloud storage with content delivery network acceleration
-
-* User data encrypted at rest and in transit with industry-standard security protocols
-
-* GDPR and CCPA compliance for user data handling and deletion rights
-
-* Client data isolation ensuring complete separation between agency accounts and projects
-
-### Scalability & Performance
-
-* Horizontal scaling architecture supporting 10,000+ concurrent users during peak usage periods
-
-* Caching strategies for frequently accessed assets and storyboard components to minimize load times
-
-* Progressive loading for large storyboard projects with hundreds of scenes and thousands of assets
-
-* Content delivery network distribution for global asset access with regional optimization
-
-### Potential Challenges
-
-* Complex conflict resolution during simultaneous editing of same scene elements by multiple users
-
-* Large file upload handling without blocking user interface or causing timeout issues
-
-* Cross-browser compatibility for advanced canvas manipulation features and drag-and-drop functionality
-
-* Mobile device performance optimization for resource-intensive storyboard rendering and manipulation
+- [ ] Large storyboards remain responsive
+- [ ] Real-time sync has minimal latency
+- [ ] Asset loading is optimized
+- [ ] Search returns results quickly
+- [ ] Exports complete within 10 seconds
 
 ---
 
-## Milestones & Sequencing
+## Risk Mitigation
 
-### Project Estimate
+**Biggest Risk:** Complex storyboards becoming unwieldy and slow  
+**Mitigation:** Implement pagination and lazy loading for scenes; optimize rendering pipeline for large projects
 
-Medium: 3-4 weeks for core functionality with basic collaboration and export capabilities
+**Second Risk:** Conflicting edits in collaborative sessions  
+**Mitigation:** Implement scene-level locking during edit; provide clear visual indicators of active editors
 
-### Team Size & Composition
+**Third Risk:** Asset library becoming disorganized  
+**Mitigation:** Enforce tagging standards; implement automatic organization and duplicate detection
 
-Small Team: 3 total people
-
-* 1 Full-stack Developer (frontend + backend development)
-
-* 1 Product Designer (UI/UX design and user research)
-
-* 1 Product Manager/QA (requirements, testing, and project coordination)
-
-### Suggested Phases
-
-**Phase 1: Core Scene Management (1.5 weeks)**
-
-* Key Deliverables: Scene creation/editing interface (Developer), basic timeline UI (Designer), scene data models and API endpoints (Developer)
-
-* Dependencies: Database schema design and user authentication system completion
-
-**Phase 2: Visual Storyboarding Tools (1.5 weeks)**
-
-* Key Deliverables: Asset upload system (Developer), canvas editing interface (Designer), drag-and-drop functionality (Developer)
-
-* Dependencies: Cloud storage integration and image processing capabilities
-
-**Phase 3: Collaboration and Export (1 week)**
-
-* Key Deliverables: Commenting system (Developer), export functionality (Developer), sharing and permissions (Product Manager)
-
-* Dependencies: User notification system and PDF generation library integration
+**Fourth Risk:** Stakeholder feedback creating endless revision cycles  
+**Mitigation:** Implement approval gates and deadline enforcement; provide clear revision limits
