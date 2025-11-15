@@ -34,10 +34,17 @@ export const TopBar = ({
   onExport,
 }: TopBarProps) => {
   return (
+<<<<<<< HEAD
     <div className="flex items-center justify-between border-b border-border bg-card/80 px-4 py-2">
       <div className="flex items-center gap-2">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
         <h1 className="text-sm font-semibold truncate max-w-md">{title}</h1>
+=======
+    <div className="flex items-center justify-between border-b border-border bg-card/80 px-6 py-3">
+      <div>
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
+        <h1 className="text-lg font-semibold">{title}</h1>
+>>>>>>> remotes/origin/feature/timelineThumbnails
       </div>
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <span>
