@@ -8,144 +8,47 @@ import { ArrowRight, ArrowLeft, Check } from "lucide-react";
 interface InputPhaseProps {
   onComplete: (data: {
     prompt: string;
-    audience: string;
-    tone: string;
-    duration: string;
-    style: string;
+    responses: Record<string, string>;
+    projectId?: string;
   }) => void;
+  projectId?: string;
+  onQuestionsGenerated?: (
+    prompt: string,
+    questions: Question[]
+  ) => Promise<string | null>;
 }
 
 interface Question {
-  id: "audience" | "tone" | "duration" | "style";
+  id: string;
   question: string;
-  options: { label: string; value: string; description?: string }[];
+  options: { label: string; value: string; description: string }[];
 }
 
-const QUESTIONS: Question[] = [
-  {
-    id: "audience",
-    question: "Who is your target audience?",
-    options: [
-      {
-        label: "B2B / Business Decision Makers",
-        value: "b2b",
-        description: "Professional content for business audiences",
-      },
-      {
-        label: "General Consumers",
-        value: "consumers",
-        description: "Broad appeal for everyday users",
-      },
-      {
-        label: "Young Adults (18-35)",
-        value: "young-adults",
-        description: "Trendy, social media-focused content",
-      },
-      {
-        label: "Enterprise / Technical",
-        value: "enterprise",
-        description: "In-depth technical documentation",
-      },
-    ],
-  },
-  {
-    id: "tone",
-    question: "What tone should the video have?",
-    options: [
-      {
-        label: "Professional & Corporate",
-        value: "professional",
-        description: "Serious, trustworthy, business-focused",
-      },
-      {
-        label: "Casual & Friendly",
-        value: "casual",
-        description: "Approachable, conversational, warm",
-      },
-      {
-        label: "Energetic & Dynamic",
-        value: "energetic",
-        description: "High-energy, exciting, fast-paced",
-      },
-      {
-        label: "Minimalist & Clean",
-        value: "minimalist",
-        description: "Simple, elegant, focused",
-      },
-    ],
-  },
-  {
-    id: "duration",
-    question: "How long should the video be?",
-    options: [
-      {
-        label: "15-30 seconds",
-        value: "15-30s",
-        description: "Quick intro or teaser",
-      },
-      {
-        label: "30-60 seconds",
-        value: "30-60s",
-        description: "Standard promotional video",
-      },
-      {
-        label: "1-2 minutes",
-        value: "1-2min",
-        description: "Detailed explanation",
-      },
-      {
-        label: "2-3 minutes",
-        value: "2-3min",
-        description: "In-depth walkthrough",
-      },
-    ],
-  },
-  {
-    id: "style",
-    question: "What visual style do you prefer?",
-    options: [
-      {
-        label: "Cinematic & Dramatic",
-        value: "cinematic",
-        description: "Movie-like, high production value",
-      },
-      {
-        label: "Bright & Colorful",
-        value: "bright",
-        description: "Vibrant, eye-catching, cheerful",
-      },
-      {
-        label: "Dark & Moody",
-        value: "dark",
-        description: "Sophisticated, mysterious, bold",
-      },
-      {
-        label: "Minimal & Modern",
-        value: "minimal",
-        description: "Clean, simple, contemporary",
-      },
-    ],
-  },
-];
+type Step = "prompt" | "loading" | "questions" | "review";
 
-type Step = "prompt" | "questions" | "review";
-
-export const InputPhase = ({ onComplete }: InputPhaseProps) => {
+export const InputPhase = ({
+  onComplete,
+  projectId,
+  onQuestionsGenerated,
+}: InputPhaseProps) => {
   const [step, setStep] = useState<Step>("prompt");
   const [prompt, setPrompt] = useState("");
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
   const [customInput, setCustomInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
 
-  const currentQuestion = QUESTIONS[currentQuestionIndex];
-  const isLastQuestion = currentQuestionIndex === QUESTIONS.length - 1;
-  const allQuestionsAnswered = QUESTIONS.every((q) => answers[q.id]);
+  const currentQuestion = questions[currentQuestionIndex];
+  const isLastQuestion = currentQuestionIndex === questions.length - 1;
+  const allQuestionsAnswered = questions.every((q) => answers[q.id]);
 
   // Auto-focus custom input when selected
   useEffect(() => {
     if (
+      currentQuestion &&
       selectedOptionIndex === currentQuestion.options.length &&
       customInputRef.current
     ) {
@@ -194,9 +97,36 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [step, allQuestionsAnswered]);
 
-  const handlePromptSubmit = () => {
-    if (prompt.trim()) {
+  const handlePromptSubmit = async () => {
+    if (!prompt.trim()) return;
+
+    setStep("loading");
+    setError(null);
+
+    try {
+      const response = await fetch("/api/generate-questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompt.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate questions");
+      }
+
+      const data = await response.json();
+      setQuestions(data.questions);
+
+      // Call the callback to save project and questions to Convex
+      if (onQuestionsGenerated) {
+        await onQuestionsGenerated(prompt.trim(), data.questions);
+      }
+
       setStep("questions");
+    } catch (err) {
+      console.error("Error generating questions:", err);
+      setError("Failed to generate questions. Please try again.");
+      setStep("prompt");
     }
   };
 
@@ -226,7 +156,7 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
   const handleBack = () => {
     if (step === "review") {
       setStep("questions");
-      setCurrentQuestionIndex(QUESTIONS.length - 1);
+      setCurrentQuestionIndex(questions.length - 1);
     } else if (step === "questions") {
       if (currentQuestionIndex > 0) {
         setCurrentQuestionIndex((prev) => prev - 1);
@@ -241,16 +171,14 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
     if (allQuestionsAnswered && prompt.trim()) {
       onComplete({
         prompt,
-        audience: answers.audience,
-        tone: answers.tone,
-        duration: answers.duration,
-        style: answers.style,
+        responses: answers,
+        projectId,
       });
     }
   };
 
   const getAnswerLabel = (questionId: string) => {
-    const question = QUESTIONS.find((q) => q.id === questionId);
+    const question = questions.find((q) => q.id === questionId);
     const answer = answers[questionId];
     const option = question?.options.find((o) => o.value === answer);
     return option?.label || answer;
@@ -303,11 +231,37 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
                 <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
             </div>
+            {error && (
+              <p className="text-sm text-destructive mt-3 text-center">
+                {error}
+              </p>
+            )}
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
             Press ⌘+Enter to continue
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // LOADING STEP
+  if (step === "loading") {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+        <div className="w-full max-w-3xl px-4 text-center">
+          <div className="bg-card border border-border rounded-xl p-12 shadow-xl shadow-black/40">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+              <h2 className="text-2xl font-semibold">
+                Generating Clarifying Questions...
+              </h2>
+              <p className="text-muted-foreground">
+                Our AI is analyzing your prompt to create personalized questions
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -321,7 +275,7 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
           {/* Progress indicator */}
           <div className="mb-8">
             <div className="flex items-center justify-center gap-2 mb-4">
-              {QUESTIONS.map((_, index) => (
+              {questions.map((_, index) => (
                 <div
                   key={index}
                   className={`h-1 flex-1 rounded-full transition-colors ${
@@ -335,7 +289,7 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
               ))}
             </div>
             <p className="text-center text-sm text-muted-foreground">
-              Question {currentQuestionIndex + 1} of {QUESTIONS.length}
+              Question {currentQuestionIndex + 1} of {questions.length}
             </p>
           </div>
 
@@ -470,7 +424,7 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
           </div>
 
           {/* Answers */}
-          {QUESTIONS.map((question) => (
+          {questions.map((question) => (
             <div key={question.id}>
               <div className="flex items-center gap-2 mb-2">
                 <Check className="w-4 h-4 text-primary" />

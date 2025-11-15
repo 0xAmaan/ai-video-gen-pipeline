@@ -1,20 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { InputPhase } from "@/components/InputPhase";
+import { InputPhaseWrapper } from "@/components/InputPhaseWrapper";
 import { StoryboardPhase } from "@/components/StoryboardPhase";
 import { GeneratingPhase } from "@/components/GeneratingPhase";
 import { EditorPhase } from "@/components/EditorPhase";
 import { Check } from "lucide-react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 
 type Phase = "input" | "storyboard" | "generating" | "editor";
 
 interface VideoProject {
   prompt: string;
-  audience: string;
-  tone: string;
-  duration: string;
-  style: string;
+  responses: Record<string, string>;
   scenes: Scene[];
   videoUrl?: string;
 }
@@ -30,65 +30,87 @@ interface Scene {
 const CreateVideoPage = () => {
   const [currentPhase, setCurrentPhase] = useState<Phase>("input");
   const [project, setProject] = useState<VideoProject | null>(null);
+  const [projectId, setProjectId] = useState<Id<"videoProjects"> | null>(null);
 
-  const handleInputComplete = (data: {
+  const saveAnswers = useMutation(api.video.saveAnswers);
+
+  const handleInputComplete = async (data: {
     prompt: string;
-    audience: string;
-    tone: string;
-    duration: string;
-    style: string;
+    responses: Record<string, string>;
+    projectId: Id<"videoProjects">;
   }) => {
-    // Generate mock scenes based on input
-    const mockScenes: Scene[] = [
-      {
-        id: "scene-1",
-        image:
-          "https://images.unsplash.com/photo-1557683316-973673baf926?w=800&h=450&fit=crop",
-        description:
-          "Opening shot: Establish the setting and grab attention with a compelling visual hook",
-        duration: 3,
-        order: 0,
-      },
-      {
-        id: "scene-2",
-        image:
-          "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=800&h=450&fit=crop",
-        description:
-          "Introduce the main concept or product with clear, engaging visuals",
-        duration: 5,
-        order: 1,
-      },
-      {
-        id: "scene-3",
-        image:
-          "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=800&h=450&fit=crop",
-        description: "Showcase key features or benefits in action",
-        duration: 4,
-        order: 2,
-      },
-      {
-        id: "scene-4",
-        image:
-          "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=800&h=450&fit=crop",
-        description: "Demonstrate real-world application or use case",
-        duration: 4,
-        order: 3,
-      },
-      {
-        id: "scene-5",
-        image:
-          "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=800&h=450&fit=crop",
-        description: "Closing shot: Call to action and memorable final message",
-        duration: 3,
-        order: 4,
-      },
-    ];
+    try {
+      // Save project ID and answers to Convex
+      setProjectId(data.projectId);
+      await saveAnswers({
+        projectId: data.projectId,
+        prompt: data.prompt,
+        responses: data.responses,
+      });
 
-    setProject({
-      ...data,
-      scenes: mockScenes,
-    });
-    setCurrentPhase("storyboard");
+      // Generate mock scenes based on input
+      // TODO: Replace with actual storyboard generation API call
+      const mockScenes: Scene[] = [
+        {
+          id: "scene-1",
+          image:
+            "https://images.unsplash.com/photo-1557683316-973673baf926?w=800&h=450&fit=crop",
+          description:
+            "Opening shot: Establish the setting and grab attention with a compelling visual hook",
+          duration: 3,
+          order: 0,
+        },
+        {
+          id: "scene-2",
+          image:
+            "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=800&h=450&fit=crop",
+          description:
+            "Introduce the main concept or product with clear, engaging visuals",
+          duration: 5,
+          order: 1,
+        },
+        {
+          id: "scene-3",
+          image:
+            "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=800&h=450&fit=crop",
+          description: "Showcase key features or benefits in action",
+          duration: 4,
+          order: 2,
+        },
+        {
+          id: "scene-4",
+          image:
+            "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=800&h=450&fit=crop",
+          description: "Demonstrate real-world application or use case",
+          duration: 4,
+          order: 3,
+        },
+        {
+          id: "scene-5",
+          image:
+            "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=800&h=450&fit=crop",
+          description: "Closing shot: Call to action and memorable final message",
+          duration: 3,
+          order: 4,
+        },
+      ];
+
+      setProject({
+        prompt: data.prompt,
+        responses: data.responses,
+        scenes: mockScenes,
+      });
+      setCurrentPhase("storyboard");
+    } catch (error) {
+      console.error("Error saving answers:", error);
+      // Still proceed to storyboard even if save fails
+      setProject({
+        prompt: data.prompt,
+        responses: data.responses,
+        scenes: [],
+      });
+      setCurrentPhase("storyboard");
+    }
   };
 
   const handleGenerateVideo = (scenes: Scene[]) => {
@@ -120,7 +142,7 @@ const CreateVideoPage = () => {
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
         {currentPhase === "input" && (
-          <InputPhase onComplete={handleInputComplete} />
+          <InputPhaseWrapper onComplete={handleInputComplete} />
         )}
 
         {currentPhase === "storyboard" && project && (
