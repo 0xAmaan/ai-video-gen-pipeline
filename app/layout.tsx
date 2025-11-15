@@ -19,7 +19,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
     <ClerkProvider>
       <html lang="en">
         <body
-          className={`${inter.className} bg-background-base text-foreground h-screen p-3`}
+          className={`${inter.className} bg-background-base text-foreground h-screen`}
         >
           <ConvexClientProvider>
             {/* Main Content */}

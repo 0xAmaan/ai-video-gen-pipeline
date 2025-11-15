@@ -3,39 +3,41 @@
 
 /* Base Variables */
 :root {
-  /* Your core colors mapped to shadcn names */
-  --background: oklch(0.1924 0.0102 276.47); /* default bg color */
-  --foreground: oklch(0.9249 0 0); /* default text color */
+  /* Modern, elevated dark mode with better contrast */
+  --background: oklch(0.17 0.008 250); /* Lighter slate background */
+  --foreground: oklch(0.98 0.003 250); /* Crisp white text */
 
-  --card: oklch(0.1515 0.0085 285.34); /* card bg color */
-  --card-foreground: oklch(88.224% 0.0001 271.152); /* card text color */
+  --card: oklch(0.22 0.01 250); /* Elevated card with good contrast */
+  --card-foreground: oklch(0.98 0.003 250); /* Bright white on cards */
 
-  --primary: oklch(57.135% 0.10163 216.255); /* default primary bg color */
-  --primary-foreground: oklch(0.9249 0 0); /* default primary text color */
+  --primary: oklch(0.68 0.21 35); /* Vibrant warm orange */
+  --primary-foreground: oklch(0.99 0 0); /* Pure white on orange */
 
-  --button: oklch(0.2064 0.0079 285.69); /* default button bg color */
-  --button-hover: oklch(0.24 0.0079 285.69); /* default button bg color */
+  --button: oklch(0.24 0.01 250); /* Visible button background */
+  --button-hover: oklch(0.28 0.012 250); /* Lighter on hover */
 
-  --destructive: oklch(57.127% 0.15752 12.869); /* default dest bg color */
-  --destructive-foreground: oklch(0.9249 0 0); /* default dest text color */
+  --destructive: oklch(0.55 0.22 27); /* Vibrant red */
+  --destructive-foreground: oklch(0.99 0 0); /* White on red */
 
-  /* Keep shadcn defaults for the rest */
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.28 0.01 250); /* Clear secondary */
+  --secondary-foreground: oklch(0.98 0.003 250); /* Bright text */
 
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent: oklch(0.25 0.012 250); /* Distinct accent background */
+  --accent-foreground: oklch(0.98 0.003 250); /* Bright text */
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --radius: 0.625rem;
+  --muted: oklch(0.35 0.012 250); /* Visible muted elements */
+  --muted-foreground: oklch(0.6 0.008 250); /* Readable muted text */
+
+  --border: oklch(0.32 0.012 250); /* Clear, visible borders */
+  --input: oklch(0.2 0.01 250); /* Distinct input background */
+  --ring: oklch(0.68 0.21 35); /* Orange focus ring */
+  --radius: 0.75rem; /* Rounded corners */
 }
 
 /* Utility classes */
 @theme inline {
-  /* Add your special background-base for the outer layer */
-  --color-background-base: oklch(0 0 0);
+  /* Slightly darker base for depth */
+  --color-background-base: oklch(0.14 0.008 250);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -53,8 +55,15 @@
   --color-destructive-foreground: var(--destructive-foreground);
 
   --color-secondary: var(--secondary);
-  --color-ring: var(--ring);
+  --color-secondary-foreground: var(--secondary-foreground);
 
-  --color-accent: oklch(0.371 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
