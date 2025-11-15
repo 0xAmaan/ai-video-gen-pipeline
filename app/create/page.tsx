@@ -19,6 +19,7 @@ interface VideoProject {
   responses: Record<string, string>;
   scenes: Scene[];
   videoUrl?: string;
+  clips?: any[];
 }
 
 interface Scene {
@@ -299,12 +300,11 @@ const CreateVideoPage = () => {
   };
 
   const handleVideoGenerationComplete = (clips: any[]) => {
-    // TODO: Trigger final video concatenation
     console.log("All clips generated:", clips);
 
-    // For now, just move to editor phase
+    // Pass real clips to editor
     setProject((prev) =>
-      prev ? { ...prev, videoUrl: "mock-final-video-url" } : null,
+      prev ? { ...prev, videoUrl: "placeholder", clips: clips } : null,
     );
     setCurrentPhase("editor");
   };
@@ -354,8 +354,8 @@ const CreateVideoPage = () => {
           />
         )}
 
-        {currentPhase === "editor" && project?.videoUrl && (
-          <EditorPhase videoUrl={project.videoUrl} onExport={handleExport} />
+        {currentPhase === "editor" && project?.clips && (
+          <EditorPhase clips={project.clips} onExport={handleExport} />
         )}
       </div>
     </div>

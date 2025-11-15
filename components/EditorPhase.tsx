@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,57 +18,76 @@ import {
 } from "lucide-react";
 
 interface EditorPhaseProps {
-  videoUrl: string;
+  clips: any[];
   onExport: () => void;
 }
 
-export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
+export const EditorPhase = ({ clips, onExport }: EditorPhaseProps) => {
+  const [currentClipIndex, setCurrentClipIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(80);
   const [exportModalOpen, setExportModalOpen] = useState(false);
-
-  // Mock video clips for timeline
-  const clips = [
-    {
-      id: "1",
-      duration: 8,
-      thumbnail:
-        "https://images.unsplash.com/photo-1557683316-973673baf926?w=200&h=112&fit=crop",
-    },
-    {
-      id: "2",
-      duration: 12,
-      thumbnail:
-        "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=200&h=112&fit=crop",
-    },
-    {
-      id: "3",
-      duration: 10,
-      thumbnail:
-        "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=200&h=112&fit=crop",
-    },
-    {
-      id: "4",
-      duration: 15,
-      thumbnail:
-        "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=200&h=112&fit=crop",
-    },
-    {
-      id: "5",
-      duration: 8,
-      thumbnail:
-        "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=200&h=112&fit=crop",
-    },
-  ];
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const totalDuration = clips.reduce((sum, clip) => sum + clip.duration, 0);
+  const currentClip = clips[currentClipIndex];
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
+
+  // Handle video ended - play next clip
+  const handleVideoEnded = () => {
+    if (currentClipIndex < clips.length - 1) {
+      setCurrentClipIndex(currentClipIndex + 1);
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
+  // Handle play/pause
+  const togglePlayPause = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  // Handle next clip
+  const nextClip = () => {
+    if (currentClipIndex < clips.length - 1) {
+      setCurrentClipIndex(currentClipIndex + 1);
+    }
+  };
+
+  // Handle previous clip
+  const prevClip = () => {
+    if (currentClipIndex > 0) {
+      setCurrentClipIndex(currentClipIndex - 1);
+    }
+  };
+
+  // Update volume when slider changes
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume / 100;
+    }
+  }, [volume]);
+
+  // Auto-play when clip changes
+  useEffect(() => {
+    if (videoRef.current && isPlaying) {
+      videoRef.current.play();
+    }
+  }, [currentClipIndex]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)]">
@@ -183,19 +202,34 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
           {/* Video Preview */}
           <div className="flex-1 bg-background flex items-center justify-center p-6">
             <div className="relative w-full max-w-4xl aspect-video bg-black rounded-lg overflow-hidden">
-              <img
-                src="https://images.unsplash.com/photo-1557683316-973673baf926?w=1200&h=675&fit=crop"
-                alt="Video preview"
-                className="w-full h-full object-cover"
-              />
-              {!isPlaying && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                  <button
-                    onClick={() => setIsPlaying(true)}
-                    className="w-16 h-16 rounded-full bg-primary/90 hover:bg-primary flex items-center justify-center transition-colors cursor-pointer"
-                  >
-                    <Play className="w-8 h-8 text-primary-foreground ml-1" />
-                  </button>
+              {currentClip?.videoUrl ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    src={currentClip.videoUrl}
+                    className="w-full h-full object-contain"
+                    onEnded={handleVideoEnded}
+                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                  />
+                  {!isPlaying && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <button
+                        onClick={togglePlayPause}
+                        className="w-16 h-16 rounded-full bg-primary/90 hover:bg-primary flex items-center justify-center transition-colors cursor-pointer"
+                      >
+                        <Play className="w-8 h-8 text-primary-foreground ml-1" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded">
+                    <span className="text-white text-sm font-medium">
+                      Clip {currentClipIndex + 1} of {clips.length}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center text-muted-foreground">
+                  No video available
                 </div>
               )}
             </div>
@@ -206,14 +240,19 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
             <div className="max-w-4xl mx-auto space-y-3">
               {/* Control Buttons */}
               <div className="flex items-center justify-center gap-2">
-                <Button variant="ghost" size="icon">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={prevClip}
+                  disabled={currentClipIndex === 0}
+                >
                   <SkipBack className="w-5 h-5" />
                 </Button>
                 <Button
                   variant="default"
                   size="icon"
                   className="w-12 h-12"
-                  onClick={() => setIsPlaying(!isPlaying)}
+                  onClick={togglePlayPause}
                 >
                   {isPlaying ? (
                     <Pause className="w-6 h-6" />
@@ -221,7 +260,12 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
                     <Play className="w-6 h-6 ml-0.5" />
                   )}
                 </Button>
-                <Button variant="ghost" size="icon">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={nextClip}
+                  disabled={currentClipIndex === clips.length - 1}
+                >
                   <SkipForward className="w-5 h-5" />
                 </Button>
                 <div className="flex items-center gap-2 ml-4">
@@ -240,14 +284,19 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
               <div className="space-y-2">
                 <Slider
                   value={[currentTime]}
-                  onValueChange={([v]) => setCurrentTime(v)}
+                  onValueChange={([v]) => {
+                    setCurrentTime(v);
+                    if (videoRef.current) {
+                      videoRef.current.currentTime = v;
+                    }
+                  }}
                   min={0}
-                  max={totalDuration}
+                  max={currentClip?.duration || 0}
                   step={0.1}
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(totalDuration)}</span>
+                  <span>{formatTime(currentClip?.duration || 0)}</span>
                 </div>
               </div>
             </div>
@@ -266,15 +315,28 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
                 <div className="flex gap-1 overflow-x-auto pb-2">
                   {clips.map((clip, index) => (
                     <div
-                      key={clip.id}
+                      key={clip._id}
                       style={{ width: `${clip.duration * 10}px` }}
-                      className="relative shrink-0 h-16 rounded overflow-hidden border-2 border-border hover:border-primary transition-colors cursor-pointer group"
+                      className={`relative shrink-0 h-16 rounded overflow-hidden border-2 transition-colors cursor-pointer group ${
+                        index === currentClipIndex
+                          ? "border-primary"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                      onClick={() => setCurrentClipIndex(index)}
                     >
-                      <img
-                        src={clip.thumbnail}
-                        alt={`Clip ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
+                      {clip.videoUrl ? (
+                        <video
+                          src={clip.videoUrl}
+                          className="w-full h-full object-cover"
+                          muted
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-accent flex items-center justify-center">
+                          <span className="text-xs text-muted-foreground">
+                            Clip {index + 1}
+                          </span>
+                        </div>
+                      )}
                       <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent">
                         <Badge className="absolute bottom-1 left-1 text-xs">
                           {clip.duration}s

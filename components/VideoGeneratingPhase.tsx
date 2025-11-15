@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/card";
@@ -29,6 +30,7 @@ export const VideoGeneratingPhase = ({
 }: VideoGeneratingPhaseProps) => {
   // Query video clips from Convex to track real-time status
   const videoClips = useQuery(api.video.getVideoClips, { projectId });
+  const hasCalledComplete = useRef(false);
 
   // Calculate progress
   const totalClips = scenes.length;
@@ -40,10 +42,13 @@ export const VideoGeneratingPhase = ({
   // Check if all clips are done
   const allComplete = videoClips && completedClips + failedClips === totalClips;
 
-  // Trigger completion callback
-  if (allComplete && !failedClips && videoClips) {
-    onComplete(videoClips);
-  }
+  // Trigger completion callback in useEffect to avoid state update during render
+  useEffect(() => {
+    if (allComplete && !failedClips && videoClips && !hasCalledComplete.current) {
+      hasCalledComplete.current = true;
+      onComplete(videoClips);
+    }
+  }, [allComplete, failedClips, videoClips, onComplete]);
 
   // Map video clips to scenes for display
   const getClipForScene = (sceneId: string) => {
