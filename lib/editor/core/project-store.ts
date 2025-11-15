@@ -30,6 +30,44 @@ const createTrack = (id: string, kind: Track["kind"]): Track => ({
   clips: [],
 });
 
+const sortTrackClips = (track: Track) => {
+  track.clips.sort((a, b) => a.start - b.start);
+};
+
+const recalculateSequenceDuration = (sequence: Sequence) => {
+  const duration = sequence.tracks.reduce((max, track) => {
+    const trackEnd = track.clips.reduce((trackMax, clip) => Math.max(trackMax, clip.start + clip.duration), 0);
+    return Math.max(max, trackEnd);
+  }, 0);
+  sequence.duration = duration;
+  return duration;
+};
+
+const findTrackInsertionStart = (track: Track, duration: number) => {
+  if (!track.clips.length) {
+    return 0;
+  }
+  const sorted = [...track.clips].sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  for (const clip of sorted) {
+    if (cursor + duration <= clip.start) {
+      return cursor;
+    }
+    cursor = Math.max(cursor, clip.start + clip.duration);
+  }
+  return cursor;
+};
+
+const findTrackAndClip = (sequence: Sequence, clipId: string) => {
+  for (const track of sequence.tracks) {
+    const clip = track.clips.find((candidate) => candidate.id === clipId);
+    if (clip) {
+      return { track, clip } as const;
+    }
+  }
+  return null;
+};
+
 const createSequence = (): Sequence => ({
   id: `sequence-${crypto.randomUUID?.() ?? Date.now().toString(36)}`,
   name: "Main Sequence",
@@ -107,6 +145,8 @@ export interface ProjectStoreState {
   history: HistoryState;
   actions: {
     hydrate: () => Promise<void>;
+    reset: () => void;
+    loadProject: (project: Project, options?: { history?: PersistedHistory; persist?: boolean }) => Promise<void>;
     refreshTimeline: () => Promise<void>;
     setSelection: (selection: TimelineSelection) => void;
     setZoom: (zoom: number) => void;
@@ -137,6 +177,31 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const history = snapshot?.history ?? { past: [], future: [] };
       await timelineService.setSequence(getSequence(project));
       set({ project, ready: true, history });
+    },
+    reset: () =>
+      set({
+        ready: false,
+        project: null,
+        selection: { clipIds: [], trackIds: [] },
+        isPlaying: false,
+        currentTime: 0,
+        history: { past: [], future: [] },
+      }),
+    loadProject: async (project, options) => {
+      const snapshot = deepClone(project);
+      const history = options?.history ?? { past: [], future: [] };
+      await timelineService.setSequence(getSequence(snapshot));
+      set({
+        project: snapshot,
+        ready: true,
+        history,
+        selection: { clipIds: [], trackIds: [] },
+        currentTime: 0,
+        isPlaying: false,
+      });
+      if (options?.persist !== false) {
+        persistLater(snapshot, history);
+      }
     },
     refreshTimeline: async () => {
       const project = get().project;
@@ -174,15 +239,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         asset.type === "audio" ? t.kind === "audio" : t.kind === "video",
       );
       if (!track) return;
-      const lastClip = track.clips[track.clips.length - 1];
-      const start = lastClip ? lastClip.start + lastClip.duration : sequence.duration;
+      const clipDuration = asset.duration || 1;
+      const start = findTrackInsertionStart(track, clipDuration);
       const clip: Clip = {
         id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
         mediaId: asset.id,
         trackId: track.id,
         kind: asset.type === "audio" ? "audio" : asset.type === "image" ? "image" : "video",
         start,
-        duration: asset.duration || 1,
+        duration: clipDuration,
         trimStart: 0,
         trimEnd: 0,
         opacity: 1,
@@ -191,12 +256,13 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         transitions: [],
       };
       track.clips.push(clip);
-      sequence.duration = Math.max(sequence.duration, clip.start + clip.duration);
+      sortTrackClips(track);
+      const duration = recalculateSequenceDuration(sequence);
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, state.project!);
       persistLater(snapshot, history);
-      set({ project: snapshot, history });
+      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.upsertClip(clip);
     },
     moveClip: (clipId, trackId, start) => {
@@ -204,16 +270,29 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       if (!project) return;
       const snapshot = deepClone(project);
       const sequence = getSequence(snapshot);
-      const clip = findClip(sequence, clipId);
-      if (!clip) return;
+      const located = findTrackAndClip(sequence, clipId);
+      if (!located) return;
+      const { track: currentTrack, clip } = located;
+      const targetTrack = sequence.tracks.find((t) => t.id === trackId);
+      if (!targetTrack) return;
+      const nextStart = Math.max(0, start);
+      if (currentTrack.id !== targetTrack.id) {
+        const index = currentTrack.clips.findIndex((c) => c.id === clipId);
+        if (index !== -1) {
+          currentTrack.clips.splice(index, 1);
+        }
+        targetTrack.clips.push(clip);
+      }
       clip.trackId = trackId;
-      clip.start = start;
+      clip.start = nextStart;
+      sortTrackClips(targetTrack);
+      const duration = recalculateSequenceDuration(sequence);
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
       persistLater(snapshot, history);
-      set({ project: snapshot, history });
-      void timelineService.moveClip(clipId, trackId, start);
+      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
+      void timelineService.moveClip(clipId, trackId, nextStart);
     },
     trimClip: (clipId, trimStart, trimEnd) => {
       const project = get().project;
@@ -225,11 +304,12 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       clip.trimStart += trimStart;
       clip.trimEnd += trimEnd;
       clip.duration = Math.max(0.1, clip.duration - trimStart - trimEnd);
+      const duration = recalculateSequenceDuration(sequence);
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
       persistLater(snapshot, history);
-      set({ project: snapshot, history });
+      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.trimClip(clipId, trimStart, trimEnd);
     },
     splitClip: (clipId, offset) => {
@@ -252,11 +332,13 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       clip.duration = offset;
       clip.trimEnd = Math.max(0, clip.trimEnd - right.duration);
       track.clips.splice(index + 1, 0, right);
+      sortTrackClips(track);
+      const duration = recalculateSequenceDuration(sequence);
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
       persistLater(snapshot, history);
-      set({ project: snapshot, history });
+      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.splitClip(clipId, offset);
     },
     rippleDelete: (clipId) => {
@@ -276,13 +358,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
             clip.start = Math.max(0, clip.start - removed.duration);
           }
         });
+        sortTrackClips(track);
         break;
       }
+      const duration = recalculateSequenceDuration(sequence);
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
       persistLater(snapshot, history);
-      set({ project: snapshot, history });
+      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.rippleDelete(clipId);
     },
     undo: () =>
