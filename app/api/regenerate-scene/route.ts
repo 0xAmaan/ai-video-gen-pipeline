@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import Replicate from "replicate";
+import {
+  selectImageModel,
+  getSelectedModelConfig,
+} from "@/lib/select-image-model";
+import {
+  FALLBACK_IMAGE_MODEL,
+  DEFAULT_IMAGE_MODEL,
+  getImageModel,
+} from "@/lib/image-models";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -7,7 +16,7 @@ const replicate = new Replicate({
 
 export async function POST(req: Request) {
   try {
-    const { visualPrompt } = await req.json();
+    const { visualPrompt, responses, modelKey } = await req.json();
 
     if (!visualPrompt || typeof visualPrompt !== "string") {
       return NextResponse.json(
@@ -16,8 +25,33 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate new image using Replicate nano-banana
-    const output = await replicate.run("google/nano-banana", {
+    // Select model: explicit override > from responses > default
+    let selectedModelKey: string;
+    let modelConfig;
+
+    if (modelKey && getImageModel(modelKey)) {
+      // Explicit model override provided
+      selectedModelKey = modelKey;
+      modelConfig = getImageModel(modelKey);
+      console.log(`Using explicitly requested model: ${modelConfig.name}`);
+    } else if (responses) {
+      // Infer from responses
+      selectedModelKey = selectImageModel(responses);
+      modelConfig = getSelectedModelConfig(responses);
+      console.log(`Selected model from responses: ${modelConfig.name}`);
+    } else {
+      // Default: no responses provided
+      selectedModelKey = DEFAULT_IMAGE_MODEL;
+      modelConfig = getImageModel(DEFAULT_IMAGE_MODEL);
+      console.log(`Using default model: ${modelConfig.name}`);
+    }
+
+    console.log(
+      `Regenerating scene with ${modelConfig.name} (cost: ~$${modelConfig.estimatedCost})`,
+    );
+
+    // Generate new image using selected model
+    const output = await replicate.run(modelConfig.id, {
       input: {
         prompt: visualPrompt,
       },

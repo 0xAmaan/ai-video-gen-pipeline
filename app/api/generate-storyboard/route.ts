@@ -3,6 +3,16 @@ import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import Replicate from "replicate";
+import {
+  STORYBOARD_SYSTEM_PROMPT,
+  buildStoryboardPrompt,
+} from "@/lib/prompts";
+import {
+  selectImageModel,
+  getSelectedModelConfig,
+  explainModelSelection,
+} from "@/lib/select-image-model";
+import { FALLBACK_IMAGE_MODEL, getImageModel } from "@/lib/image-models";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -35,49 +45,37 @@ export async function POST(req: Request) {
     }
 
     // Step 2: Generate scene descriptions using OpenAI
-    const responsesText = responses
-      ? Object.entries(responses)
-          .map(([key, value]) => `${key}: ${value}`)
-          .join("\n")
-      : "";
-
     const { object: sceneData } = await generateObject({
       model: openai("gpt-4o"),
       schema: sceneSchema,
-      system: `You are an expert storyboard artist and cinematographer. Your job is to break down a video concept into 3-5 compelling visual scenes.
-
-Rules:
-- Generate 3-5 scenes that tell a cohesive visual story
-- Each scene should have:
-  1. A clear description of what's happening
-  2. A detailed visual prompt optimized for image generation (include composition, lighting, mood, camera angle, art style)
-  3. A suggested duration in seconds (typically 3-8 seconds per scene)
-- Visual prompts should be highly descriptive and cinematic
-- Include specific details: colors, lighting, composition, mood, camera angles
-- Ensure visual continuity and narrative flow between scenes
-- Consider the user's specified tone, style, and emotion in the responses
-
-Example scene structure:
-{
-  "sceneNumber": 1,
-  "description": "Opening shot establishing the setting",
-  "visualPrompt": "Wide-angle cinematic shot of a modern office lobby at golden hour, warm sunlight streaming through floor-to-ceiling windows, minimalist design with plants, professional atmosphere, shot on ARRI camera, shallow depth of field, photorealistic, 8k quality",
-  "duration": 5
-}`,
-      prompt: `Video concept: "${prompt}"
-
-User preferences:
-${responsesText}
-
-Generate 3-5 storyboard scenes that bring this video to life. Make the visual prompts extremely detailed and optimized for AI image generation.`,
+      system: STORYBOARD_SYSTEM_PROMPT,
+      prompt: buildStoryboardPrompt(prompt, responses),
     });
 
-    // Step 3: Generate images using Replicate nano-banana
+    // Step 3: Select optimal image generation model
+    console.log("\n" + "=".repeat(80));
+    console.log("🔍 MODEL SELECTION DEBUG");
+    console.log("=".repeat(80));
+    console.log("Questionnaire responses received:");
+    console.log(JSON.stringify(responses, null, 2));
+
+    const selectedModelKey = selectImageModel(responses);
+    const modelConfig = getSelectedModelConfig(responses);
+    const modelSelection = explainModelSelection(responses);
+
+    console.log("\n✅ Model Selection Result:");
+    console.log(`   Model: ${modelConfig.name} (${selectedModelKey})`);
+    console.log(`   Reason: ${modelSelection.reason}`);
+    console.log(`   Cost: ~$${modelConfig.estimatedCost}/image`);
+    console.log(`   Quality: ${modelConfig.quality}, Speed: ${modelConfig.speed}`);
+    console.log("=".repeat(80) + "\n");
+
+    // Step 4: Generate images using selected model
     const scenesWithImages = await Promise.all(
       sceneData.scenes.map(async (scene) => {
         try {
-          // Call Replicate to generate image
-          const output = await replicate.run("google/nano-banana", {
+          // Call Replicate with dynamically selected model
+          const output = await replicate.run(modelConfig.id, {
             input: {
               prompt: scene.visualPrompt,
             },
@@ -144,19 +142,10 @@ Generate 3-5 storyboard scenes that bring this video to life. Make the visual pr
 
           console.log(`Scene ${scene.sceneNumber} image URL:`, imageUrl);
 
-          // Download the image
-          const imageResponse = await fetch(imageUrl);
-          if (!imageResponse.ok) {
-            throw new Error(
-              `Failed to fetch image: ${imageResponse.statusText}`,
-            );
-          }
-
-          const imageBlob = await imageResponse.blob();
-
-          // Upload to Convex storage
-          // Note: We'll need to handle storage upload in a separate mutation
-          // For now, we'll just use the Replicate URL directly
+          // TODO: Future enhancement - upload to Convex storage
+          // const imageResponse = await fetch(imageUrl);
+          // const imageBlob = await imageResponse.blob();
+          // Upload blob to Convex storage for permanent hosting
 
           return {
             sceneNumber: scene.sceneNumber,
@@ -167,10 +156,65 @@ Generate 3-5 storyboard scenes that bring this video to life. Make the visual pr
           };
         } catch (error) {
           console.error(
-            `Error generating image for scene ${scene.sceneNumber}:`,
+            `Error generating image for scene ${scene.sceneNumber} with ${modelConfig.name}:`,
             error,
           );
-          // Return scene without image on error
+
+          // Fallback: Try with backup model
+          if (selectedModelKey !== FALLBACK_IMAGE_MODEL) {
+            console.log(
+              `Retrying scene ${scene.sceneNumber} with fallback model...`,
+            );
+            try {
+              const fallbackModel = getImageModel(FALLBACK_IMAGE_MODEL);
+              const fallbackOutput = await replicate.run(fallbackModel.id, {
+                input: {
+                  prompt: scene.visualPrompt,
+                },
+              });
+
+              // Extract URL from fallback output
+              let fallbackImageUrl: string;
+              if (
+                fallbackOutput &&
+                typeof fallbackOutput === "object" &&
+                "url" in fallbackOutput &&
+                typeof (fallbackOutput as any).url === "function"
+              ) {
+                fallbackImageUrl = (fallbackOutput as any).url();
+              } else if (
+                Array.isArray(fallbackOutput) &&
+                fallbackOutput.length > 0
+              ) {
+                fallbackImageUrl =
+                  typeof fallbackOutput[0] === "string"
+                    ? fallbackOutput[0]
+                    : fallbackOutput[0].url();
+              } else if (typeof fallbackOutput === "string") {
+                fallbackImageUrl = fallbackOutput;
+              } else {
+                throw new Error("Fallback also failed");
+              }
+
+              console.log(
+                `Scene ${scene.sceneNumber} generated with fallback model`,
+              );
+              return {
+                sceneNumber: scene.sceneNumber,
+                description: scene.description,
+                imageUrl: fallbackImageUrl,
+                duration: scene.duration,
+                replicateImageId: undefined,
+              };
+            } catch (fallbackError) {
+              console.error(
+                `Fallback also failed for scene ${scene.sceneNumber}:`,
+                fallbackError,
+              );
+            }
+          }
+
+          // Return scene without image if both primary and fallback fail
           return {
             sceneNumber: scene.sceneNumber,
             description: scene.description,
@@ -185,6 +229,12 @@ Generate 3-5 storyboard scenes that bring this video to life. Make the visual pr
     return NextResponse.json({
       success: true,
       scenes: scenesWithImages,
+      modelInfo: {
+        modelKey: selectedModelKey,
+        modelName: modelConfig.name,
+        estimatedCost: modelConfig.estimatedCost,
+        reason: modelSelection.reason,
+      },
     });
   } catch (error) {
     console.error("Error generating storyboard:", error);

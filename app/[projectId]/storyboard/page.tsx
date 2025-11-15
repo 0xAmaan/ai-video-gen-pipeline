@@ -25,6 +25,15 @@ const StoryboardPage = () => {
     stage: "generating_descriptions" | "generating_images" | "complete";
     currentScene: number;
   }>({ stage: "generating_descriptions", currentScene: 0 });
+  const [modelInfo, setModelInfo] = useState<{
+    modelName: string;
+    estimatedCost: number;
+    reason: string;
+  }>({
+    modelName: "FLUX.1 Schnell",
+    estimatedCost: 0.003,
+    reason: "Default selection for fast, cost-effective generation",
+  });
 
   const saveScenes = useMutation(api.video.saveScenes);
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
@@ -72,6 +81,15 @@ const StoryboardPage = () => {
 
       const result = await response.json();
 
+      // Update model info if provided
+      if (result.modelInfo) {
+        setModelInfo({
+          modelName: result.modelInfo.modelName,
+          estimatedCost: result.modelInfo.estimatedCost,
+          reason: result.modelInfo.reason,
+        });
+      }
+
       // Save scenes to Convex
       await saveScenes({
         projectId: projectId as Id<"videoProjects">,
@@ -118,6 +136,9 @@ const StoryboardPage = () => {
           totalScenes={5}
           currentStage={storyboardStatus.stage}
           currentSceneNumber={storyboardStatus.currentScene}
+          modelName={modelInfo.modelName}
+          estimatedCostPerImage={modelInfo.estimatedCost}
+          modelReason={modelInfo.reason}
         />
       ) : (
         <StoryboardPhase
