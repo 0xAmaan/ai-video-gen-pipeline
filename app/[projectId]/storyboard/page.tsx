@@ -34,6 +34,7 @@ const StoryboardPage = () => {
     estimatedCost: 0.003,
     reason: "Default selection for fast, cost-effective generation",
   });
+  const [generatingScenes, setGeneratingScenes] = useState<any[]>([]);
 
   const saveScenes = useMutation(api.video.saveScenes);
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
@@ -52,6 +53,7 @@ const StoryboardPage = () => {
     if (!project || !questions?.answers) return;
 
     try {
+      // Step 1: Start with generating descriptions
       setStoryboardStatus({
         stage: "generating_descriptions",
         currentScene: 0,
@@ -63,7 +65,18 @@ const StoryboardPage = () => {
         status: "generating_storyboard",
       });
 
+      // Simulate model selection happening (2 seconds)
+      setTimeout(() => {
+        // This will show the model info card immediately
+        // (will be updated with real data when API returns)
+        setStoryboardStatus({
+          stage: "generating_descriptions",
+          currentScene: 0,
+        });
+      }, 500);
+
       // Call the storyboard generation API
+      const apiStartTime = Date.now();
       const response = await fetch("/api/generate-storyboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,7 +94,7 @@ const StoryboardPage = () => {
 
       const result = await response.json();
 
-      // Update model info if provided
+      // Update model info immediately when we get the response
       if (result.modelInfo) {
         setModelInfo({
           modelName: result.modelInfo.modelName,
@@ -90,13 +103,42 @@ const StoryboardPage = () => {
         });
       }
 
-      // Save scenes to Convex
+      // Switch to generating images stage
+      setStoryboardStatus({
+        stage: "generating_images",
+        currentScene: 1,
+      });
+
+      // Simulate progressive image generation with visual feedback
+      const totalScenes = result.scenes.length;
+      setGeneratingScenes([]); // Clear previous scenes
+
+      for (let i = 0; i < result.scenes.length; i++) {
+        // Update progress for each scene
+        setStoryboardStatus({
+          stage: "generating_images",
+          currentScene: i + 1,
+        });
+
+        // Add scene to our local array for immediate UI update
+        setGeneratingScenes((prev) => [...prev, result.scenes[i]]);
+
+        // Wait a bit between scenes for visual feedback (except last one)
+        if (i < result.scenes.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+
+      // Save all scenes to Convex at once
       await saveScenes({
         projectId: projectId as Id<"videoProjects">,
         scenes: result.scenes,
       });
 
-      setStoryboardStatus({ stage: "complete", currentScene: result.scenes.length });
+      setStoryboardStatus({
+        stage: "complete",
+        currentScene: result.scenes.length,
+      });
       setIsGenerating(false);
     } catch (error) {
       console.error("Error generating storyboard:", error);
@@ -119,14 +161,22 @@ const StoryboardPage = () => {
     }
   };
 
-  // Convert Convex scenes to component format
-  const scenesForComponent: Scene[] = convexScenes.map((scene) => ({
-    id: scene._id,
-    image: scene.imageUrl || "",
-    description: scene.description,
-    duration: scene.duration,
-    sceneNumber: scene.sceneNumber,
-  }));
+  // Convert scenes to component format
+  const scenesForComponent: Scene[] = isGenerating
+    ? generatingScenes.map((scene, index) => ({
+        id: `temp-${index}`,
+        image: scene.imageUrl || "",
+        description: scene.description,
+        duration: scene.duration,
+        sceneNumber: scene.sceneNumber,
+      }))
+    : convexScenes.map((scene) => ({
+        id: scene._id,
+        image: scene.imageUrl || "",
+        description: scene.description,
+        duration: scene.duration,
+        sceneNumber: scene.sceneNumber,
+      }));
 
   return (
     <PhaseGuard requiredPhase="storyboard">
