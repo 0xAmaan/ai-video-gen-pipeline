@@ -3,10 +3,16 @@
 .claude/
 .cursor/
 Mockup/
+AI_Video_Editor_UI_Mockup/
+v0_CapCut_UI/
 
 
 # dependencies
 /node_modules
+**/node_modules
+/.bun/
+.bun/
+.bun
 /.pnp
 .pnp.*
 .yarn/*
