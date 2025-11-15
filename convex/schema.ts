@@ -13,6 +13,7 @@ export default defineSchema({
       v.literal("draft"),
       v.literal("questions_generated"),
       v.literal("questions_answered"),
+      v.literal("generating_storyboard"),
       v.literal("storyboard_created"),
       v.literal("video_generated"),
     ),
@@ -43,5 +44,55 @@ export default defineSchema({
       }),
     ),
     generatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  scenes: defineTable({
+    projectId: v.id("videoProjects"),
+    sceneNumber: v.number(),
+    description: v.string(),
+    imageStorageId: v.optional(v.string()),
+    imageUrl: v.optional(v.string()), // Convex storage URL
+    duration: v.number(), // Duration in seconds
+    replicateImageId: v.optional(v.string()), // For tracking Replicate prediction
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  videoClips: defineTable({
+    sceneId: v.id("scenes"),
+    projectId: v.id("videoProjects"),
+    videoUrl: v.optional(v.string()),
+    replicateVideoId: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    duration: v.number(),
+    resolution: v.string(),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_scene", ["sceneId"])
+    .index("by_project", ["projectId"]),
+
+  finalVideos: defineTable({
+    projectId: v.id("videoProjects"),
+    videoUrl: v.optional(v.string()),
+    duration: v.number(),
+    resolution: v.string(),
+    clipCount: v.number(),
+    totalCost: v.optional(v.number()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
 });

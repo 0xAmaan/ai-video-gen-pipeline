@@ -4,13 +4,15 @@ import { useState } from "react";
 import { InputPhaseWrapper } from "@/components/InputPhaseWrapper";
 import { StoryboardPhase } from "@/components/StoryboardPhase";
 import { GeneratingPhase } from "@/components/GeneratingPhase";
+import { StoryboardGeneratingPhase } from "@/components/StoryboardGeneratingPhase";
+import { VideoGeneratingPhase } from "@/components/VideoGeneratingPhase";
 import { EditorPhase } from "@/components/EditorPhase";
 import { Check } from "lucide-react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-type Phase = "input" | "storyboard" | "generating" | "editor";
+type Phase = "input" | "generating_storyboard" | "storyboard" | "generating_video" | "editor";
 
 interface VideoProject {
   prompt: string;
@@ -31,8 +33,17 @@ const CreateVideoPage = () => {
   const [currentPhase, setCurrentPhase] = useState<Phase>("input");
   const [project, setProject] = useState<VideoProject | null>(null);
   const [projectId, setProjectId] = useState<Id<"videoProjects"> | null>(null);
+  const [generatedScenes, setGeneratedScenes] = useState<Scene[]>([]);
+  const [storyboardStatus, setStoryboardStatus] = useState<{
+    stage: "generating_descriptions" | "generating_images" | "complete";
+    currentScene: number;
+  }>({ stage: "generating_descriptions", currentScene: 0 });
 
   const saveAnswers = useMutation(api.video.saveAnswers);
+  const saveScenes = useMutation(api.video.saveScenes);
+  const updateProjectStatus = useMutation(api.video.updateProjectStatus);
+  const createVideoClip = useMutation(api.video.createVideoClip);
+  const updateVideoClip = useMutation(api.video.updateVideoClip);
 
   const handleInputComplete = async (data: {
     prompt: string;
@@ -48,62 +59,77 @@ const CreateVideoPage = () => {
         responses: data.responses,
       });
 
-      // Generate mock scenes based on input
-      // TODO: Replace with actual storyboard generation API call
-      const mockScenes: Scene[] = [
-        {
-          id: "scene-1",
-          image:
-            "https://images.unsplash.com/photo-1557683316-973673baf926?w=800&h=450&fit=crop",
-          description:
-            "Opening shot: Establish the setting and grab attention with a compelling visual hook",
-          duration: 3,
-          order: 0,
-        },
-        {
-          id: "scene-2",
-          image:
-            "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=800&h=450&fit=crop",
-          description:
-            "Introduce the main concept or product with clear, engaging visuals",
-          duration: 5,
-          order: 1,
-        },
-        {
-          id: "scene-3",
-          image:
-            "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=800&h=450&fit=crop",
-          description: "Showcase key features or benefits in action",
-          duration: 4,
-          order: 2,
-        },
-        {
-          id: "scene-4",
-          image:
-            "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=800&h=450&fit=crop",
-          description: "Demonstrate real-world application or use case",
-          duration: 4,
-          order: 3,
-        },
-        {
-          id: "scene-5",
-          image:
-            "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=800&h=450&fit=crop",
-          description: "Closing shot: Call to action and memorable final message",
-          duration: 3,
-          order: 4,
-        },
-      ];
+      // Update status to generating_storyboard (wrapped in try-catch to handle auth issues)
+      try {
+        await updateProjectStatus({
+          projectId: data.projectId,
+          status: "generating_storyboard",
+        });
+      } catch (statusError) {
+        console.warn("Failed to update project status:", statusError);
+        // Continue anyway - status update is not critical
+      }
 
+      // Set project data and move to generating storyboard phase
       setProject({
         prompt: data.prompt,
         responses: data.responses,
-        scenes: mockScenes,
+        scenes: [],
       });
-      setCurrentPhase("storyboard");
+      setCurrentPhase("generating_storyboard");
+      setStoryboardStatus({
+        stage: "generating_descriptions",
+        currentScene: 0,
+      });
+
+      // Call the storyboard generation API
+      const response = await fetch("/api/generate-storyboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: data.prompt,
+          responses: data.responses,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("API error:", errorData);
+        throw new Error(errorData.details || "Failed to generate storyboard");
+      }
+
+      const result = await response.json();
+
+      // Convert API response to Scene format
+      const scenes: Scene[] = result.scenes.map((scene: any, index: number) => ({
+        id: `scene-${scene.sceneNumber}`,
+        image: scene.imageUrl || "",
+        description: scene.description,
+        duration: scene.duration,
+        order: index,
+      }));
+
+      // Save scenes to Convex
+      await saveScenes({
+        projectId: data.projectId,
+        scenes: result.scenes,
+      });
+
+      setGeneratedScenes(scenes);
+      setProject({
+        prompt: data.prompt,
+        responses: data.responses,
+        scenes: scenes,
+      });
+      setStoryboardStatus({ stage: "complete", currentScene: scenes.length });
+
+      // Move to storyboard phase after a brief delay
+      setTimeout(() => {
+        setCurrentPhase("storyboard");
+      }, 1000);
     } catch (error) {
-      console.error("Error saving answers:", error);
-      // Still proceed to storyboard even if save fails
+      console.error("Error generating storyboard:", error);
+      // Fallback to empty storyboard
       setProject({
         prompt: data.prompt,
         responses: data.responses,
@@ -113,15 +139,172 @@ const CreateVideoPage = () => {
     }
   };
 
-  const handleGenerateVideo = (scenes: Scene[]) => {
-    setProject((prev) => (prev ? { ...prev, scenes } : null));
-    setCurrentPhase("generating");
+  const handleGenerateVideo = async (scenes: Scene[]) => {
+    if (!projectId) {
+      console.error("No project ID available");
+      return;
+    }
+
+    try {
+      setProject((prev) => (prev ? { ...prev, scenes } : null));
+      setCurrentPhase("generating_video");
+
+      // Update project status
+      await updateProjectStatus({
+        projectId,
+        status: "video_generated",
+      });
+
+      // Call the parallel video generation API to create predictions
+      const scenesData = scenes.map((scene, index) => ({
+        id: scene.id,
+        sceneNumber: scene.order + 1, // Convert 0-indexed order to 1-indexed sceneNumber
+        imageUrl: scene.image,
+        description: scene.description,
+        duration: scene.duration,
+      }));
+
+      const response = await fetch("/api/generate-all-clips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenes: scenesData }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Video generation API error:", errorData);
+        throw new Error(errorData.details || "Failed to create predictions");
+      }
+
+      const result = await response.json();
+      console.log("Predictions created:", result);
+
+      // Create video clip records in Convex with prediction IDs
+      const clipRecords = await Promise.all(
+        result.predictions.map(async (prediction: any) => {
+          // Only include replicateVideoId if it's not null
+          const clipArgs: any = {
+            sceneId: prediction.sceneId as Id<"scenes">,
+            projectId,
+            duration: prediction.duration,
+            resolution: "720p",
+          };
+
+          if (prediction.predictionId) {
+            clipArgs.replicateVideoId = prediction.predictionId;
+          }
+
+          const clipId = await createVideoClip(clipArgs);
+          return {
+            clipId,
+            sceneId: prediction.sceneId,
+            predictionId: prediction.predictionId,
+            sceneNumber: prediction.sceneNumber
+          };
+        })
+      );
+
+      // Start polling for each prediction
+      clipRecords.forEach((record) => {
+        if (record.predictionId) {
+          pollPrediction(record.clipId, record.predictionId);
+        } else {
+          // Mark as failed if no prediction ID
+          updateVideoClip({
+            clipId: record.clipId,
+            status: "failed",
+            errorMessage: "Failed to create prediction",
+          });
+        }
+      });
+    } catch (error) {
+      console.error("Error generating video clips:", error);
+    }
   };
 
-  const handleGenerationComplete = () => {
-    // TODO: Set video URL from generation
+  // Poll a single prediction until complete
+  const pollPrediction = async (clipId: Id<"videoClips">, predictionId: string) => {
+    const pollInterval = 5000; // Poll every 5 seconds
+    const maxAttempts = 180; // 15 minutes max (180 * 5s)
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        attempts++;
+
+        const response = await fetch("/api/poll-prediction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ predictionId }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to poll prediction");
+        }
+
+        const result = await response.json();
+
+        if (result.status === "complete") {
+          // Update Convex with completed video
+          await updateVideoClip({
+            clipId,
+            status: "complete",
+            videoUrl: result.videoUrl,
+          });
+          console.log(`Clip ${clipId} completed: ${result.videoUrl}`);
+        } else if (result.status === "failed") {
+          // Update Convex with failure
+          await updateVideoClip({
+            clipId,
+            status: "failed",
+            errorMessage: result.errorMessage,
+          });
+          console.error(`Clip ${clipId} failed: ${result.errorMessage}`);
+        } else if (result.status === "processing") {
+          // Update to processing status if not already
+          await updateVideoClip({
+            clipId,
+            status: "processing",
+          });
+
+          // Continue polling if under max attempts
+          if (attempts < maxAttempts) {
+            setTimeout(poll, pollInterval);
+          } else {
+            await updateVideoClip({
+              clipId,
+              status: "failed",
+              errorMessage: "Prediction timed out after 15 minutes",
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`Error polling prediction ${predictionId}:`, error);
+
+        // Retry if under max attempts
+        if (attempts < maxAttempts) {
+          setTimeout(poll, pollInterval);
+        } else {
+          await updateVideoClip({
+            clipId,
+            status: "failed",
+            errorMessage: "Failed to poll prediction status",
+          });
+        }
+      }
+    };
+
+    // Start polling
+    poll();
+  };
+
+  const handleVideoGenerationComplete = (clips: any[]) => {
+    // TODO: Trigger final video concatenation
+    console.log("All clips generated:", clips);
+
+    // For now, just move to editor phase
     setProject((prev) =>
-      prev ? { ...prev, videoUrl: "mock-video-url" } : null,
+      prev ? { ...prev, videoUrl: "mock-final-video-url" } : null,
     );
     setCurrentPhase("editor");
   };
@@ -145,16 +328,30 @@ const CreateVideoPage = () => {
           <InputPhaseWrapper onComplete={handleInputComplete} />
         )}
 
+        {currentPhase === "generating_storyboard" && (
+          <StoryboardGeneratingPhase
+            scenes={generatedScenes}
+            totalScenes={5}
+            currentStage={storyboardStatus.stage}
+            currentSceneNumber={storyboardStatus.currentScene}
+          />
+        )}
+
         {currentPhase === "storyboard" && project && (
           <StoryboardPhase
             prompt={project.prompt}
             scenes={project.scenes}
             onGenerateVideo={handleGenerateVideo}
+            projectId={projectId}
           />
         )}
 
-        {currentPhase === "generating" && (
-          <GeneratingPhase onComplete={handleGenerationComplete} />
+        {currentPhase === "generating_video" && project && projectId && (
+          <VideoGeneratingPhase
+            scenes={project.scenes}
+            projectId={projectId}
+            onComplete={handleVideoGenerationComplete}
+          />
         )}
 
         {currentPhase === "editor" && project?.videoUrl && (
@@ -176,8 +373,9 @@ const PhaseIndicator = ({
 }: PhaseIndicatorProps) => {
   const phases: { id: Phase; label: string }[] = [
     { id: "input", label: "Input" },
+    { id: "generating_storyboard", label: "Generating" },
     { id: "storyboard", label: "Storyboard" },
-    { id: "generating", label: "Generate" },
+    { id: "generating_video", label: "Video" },
     { id: "editor", label: "Edit" },
   ];
 

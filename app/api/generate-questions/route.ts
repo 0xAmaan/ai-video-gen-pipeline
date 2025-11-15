@@ -39,7 +39,7 @@ export async function POST(req: Request) {
 
     // Generate clarifying questions using OpenAI
     const { object } = await generateObject({
-      model: openai("gpt-4o"),
+      model: openai("gpt-4o-mini"),
       schema: questionSchema,
       system: `You are an expert video production consultant. Your job is to ask clarifying questions that will help refine a user's video idea into a clear, actionable vision.
 

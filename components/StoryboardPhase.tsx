@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, GripVertical, Trash2, Sparkles, Plus } from "lucide-react";
+import { ArrowRight, GripVertical, Trash2, Sparkles, Plus, Loader2 } from "lucide-react";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 interface Scene {
   id: string;
@@ -20,35 +23,101 @@ interface StoryboardPhaseProps {
   prompt: string;
   scenes: Scene[];
   onGenerateVideo: (scenes: Scene[]) => void;
+  projectId: Id<"videoProjects"> | null;
 }
 
 export const StoryboardPhase = ({
   prompt,
   scenes: initialScenes,
   onGenerateVideo,
+  projectId,
 }: StoryboardPhaseProps) => {
   const [scenes, setScenes] = useState<Scene[]>(initialScenes);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [regeneratingScenes, setRegeneratingScenes] = useState<Set<string>>(new Set());
+
+  // Convex mutations
+  const updateScene = useMutation(api.video.updateScene);
+  const updateSceneOrder = useMutation(api.video.updateSceneOrder);
+  const deleteSceneMutation = useMutation(api.video.deleteScene);
+
+  // Load scenes from Convex
+  const convexScenes = useQuery(
+    api.video.getScenes,
+    projectId ? { projectId } : "skip"
+  );
+
+  // Sync Convex scenes to local state
+  useEffect(() => {
+    if (convexScenes && convexScenes.length > 0) {
+      const formattedScenes: Scene[] = convexScenes.map((scene) => ({
+        id: scene._id,
+        image: scene.imageUrl || "",
+        description: scene.description,
+        duration: scene.duration,
+        order: scene.sceneNumber - 1, // Convert to 0-indexed
+      }));
+      setScenes(formattedScenes);
+    }
+  }, [convexScenes]);
 
   const totalDuration = scenes.reduce((sum, scene) => sum + scene.duration, 0);
 
-  const handleDurationChange = (id: string, duration: number) => {
+  const handleDurationChange = async (id: string, duration: number) => {
+    // Update local state immediately
     setScenes((prev) =>
       prev.map((scene) => (scene.id === id ? { ...scene, duration } : scene)),
     );
+
+    // Save to Convex
+    if (projectId) {
+      try {
+        await updateScene({
+          sceneId: id as Id<"scenes">,
+          duration,
+        });
+      } catch (error) {
+        console.error("Failed to update scene duration:", error);
+      }
+    }
   };
 
-  const handleDescriptionChange = (id: string, description: string) => {
+  const handleDescriptionChange = async (id: string, description: string) => {
+    // Update local state immediately
     setScenes((prev) =>
       prev.map((scene) =>
         scene.id === id ? { ...scene, description } : scene,
       ),
     );
+
+    // Save to Convex (debounced in practice, but we'll do it immediately for now)
+    if (projectId) {
+      try {
+        await updateScene({
+          sceneId: id as Id<"scenes">,
+          description,
+        });
+      } catch (error) {
+        console.error("Failed to update scene description:", error);
+      }
+    }
   };
 
-  const handleDeleteScene = (id: string) => {
+  const handleDeleteScene = async (id: string) => {
     if (scenes.length > 1) {
+      // Update local state immediately
       setScenes((prev) => prev.filter((scene) => scene.id !== id));
+
+      // Delete from Convex
+      if (projectId) {
+        try {
+          await deleteSceneMutation({
+            sceneId: id as Id<"scenes">,
+          });
+        } catch (error) {
+          console.error("Failed to delete scene:", error);
+        }
+      }
     }
   };
 
@@ -63,22 +132,61 @@ export const StoryboardPhase = ({
     setScenes((prev) => [...prev, newScene]);
   };
 
-  const handleRegenerateScene = (id: string) => {
-    // Simulate regenerating the scene image
-    const randomImages = [
-      "https://images.unsplash.com/photo-1557683316-973673baf926?w=800&h=450&fit=crop",
-      "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=800&h=450&fit=crop",
-      "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=800&h=450&fit=crop",
-      "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=800&h=450&fit=crop",
-    ];
-    const randomImage =
-      randomImages[Math.floor(Math.random() * randomImages.length)];
+  const handleRegenerateScene = async (id: string) => {
+    const scene = scenes.find((s) => s.id === id);
+    if (!scene) return;
 
-    setScenes((prev) =>
-      prev.map((scene) =>
-        scene.id === id ? { ...scene, image: randomImage } : scene,
-      ),
-    );
+    // Mark scene as regenerating
+    setRegeneratingScenes((prev) => new Set(prev).add(id));
+
+    try {
+      // Create enhanced visual prompt from description
+      const visualPrompt = `${scene.description}, cinematic lighting, high quality, professional photography, 8k, photorealistic`;
+
+      const response = await fetch("/api/regenerate-scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          visualPrompt: visualPrompt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Regenerate API error:", errorData);
+        throw new Error(errorData.details || errorData.error || "Failed to regenerate scene");
+      }
+
+      const result = await response.json();
+
+      // Update local state
+      setScenes((prev) =>
+        prev.map((s) =>
+          s.id === id ? { ...s, image: result.imageUrl } : s
+        )
+      );
+
+      // Save to Convex
+      if (projectId) {
+        try {
+          await updateScene({
+            sceneId: id as Id<"scenes">,
+            imageUrl: result.imageUrl,
+          });
+        } catch (error) {
+          console.error("Failed to save regenerated image to Convex:", error);
+        }
+      }
+    } catch (error) {
+      console.error("Error regenerating scene:", error);
+    } finally {
+      // Remove from regenerating set
+      setRegeneratingScenes((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const handleDragStart = (index: number) => {
@@ -98,8 +206,25 @@ export const StoryboardPhase = ({
     setDraggedIndex(index);
   };
 
-  const handleDragEnd = () => {
+  const handleDragEnd = async () => {
     setDraggedIndex(null);
+
+    // Save the new order to Convex
+    if (projectId && scenes.length > 0) {
+      try {
+        const sceneUpdates = scenes.map((scene, index) => ({
+          sceneId: scene.id as Id<"scenes">,
+          sceneNumber: index + 1, // Convert to 1-indexed
+        }));
+
+        await updateSceneOrder({
+          projectId,
+          sceneUpdates,
+        });
+      } catch (error) {
+        console.error("Failed to update scene order:", error);
+      }
+    }
   };
 
   return (
@@ -151,17 +276,28 @@ export const StoryboardPhase = ({
               <div className="shrink-0">
                 <Badge className="mb-2">Scene {index + 1}</Badge>
                 <div className="relative w-48 h-27 rounded-lg overflow-hidden bg-accent">
-                  <img
-                    src={scene.image}
-                    alt={`Scene ${index + 1}`}
-                    className="w-full h-full object-cover"
-                  />
+                  {scene.image ? (
+                    <img
+                      src={scene.image}
+                      alt={`Scene ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <span className="text-sm">No image</span>
+                    </div>
+                  )}
                   <button
                     onClick={() => handleRegenerateScene(scene.id)}
-                    className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 rounded-md transition-colors cursor-pointer"
-                    title="Regenerate scene"
+                    disabled={regeneratingScenes.has(scene.id)}
+                    className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 rounded-md transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                    title={regeneratingScenes.has(scene.id) ? "Regenerating..." : "Regenerate scene"}
                   >
-                    <Sparkles className="w-4 h-4 text-white" />
+                    {regeneratingScenes.has(scene.id) ? (
+                      <Loader2 className="w-4 h-4 text-white animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-white" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -193,11 +329,14 @@ export const StoryboardPhase = ({
                       onValueChange={([value]) =>
                         handleDurationChange(scene.id, value)
                       }
-                      min={1}
+                      min={5}
                       max={10}
-                      step={0.5}
+                      step={5}
                       className="w-full"
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      WAN 2.5 supports 5s or 10s clips
+                    </p>
                   </div>
                   <Button
                     variant="destructive"
@@ -239,11 +378,17 @@ export const StoryboardPhase = ({
                 className="relative shrink-0 h-16 rounded overflow-hidden border-2 border-border hover:border-primary transition-colors cursor-pointer"
                 title={`Scene ${index + 1} - ${scene.duration}s`}
               >
-                <img
-                  src={scene.image}
-                  alt={`Scene ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
+                {scene.image ? (
+                  <img
+                    src={scene.image}
+                    alt={`Scene ${index + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-accent flex items-center justify-center">
+                    <span className="text-xs text-muted-foreground">No image</span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent flex items-end p-1">
                   <span className="text-white text-xs font-medium">
                     {scene.duration}s
@@ -261,10 +406,16 @@ export const StoryboardPhase = ({
           onClick={() => onGenerateVideo(scenes)}
           size="lg"
           className="bg-primary hover:bg-primary/90 px-8"
+          disabled={scenes.some((s) => !s.image)}
         >
           Generate Video
           <ArrowRight className="ml-2 w-4 h-4" />
         </Button>
+        {scenes.some((s) => !s.image) && (
+          <p className="text-sm text-muted-foreground mt-2 ml-4">
+            All scenes must have images before generating video
+          </p>
+        )}
       </div>
     </div>
   );
