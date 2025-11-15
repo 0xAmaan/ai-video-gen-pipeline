@@ -73,6 +73,15 @@ const PhaseIndicator = () => {
 };
 
 const ProjectLayout = ({ children }: { children: React.ReactNode }) => {
+  const pathname = usePathname();
+  const isEditor = pathname?.includes("/editor2");
+
+  // Editor2 needs full-screen layout without container constraints
+  if (isEditor) {
+    return <div className="h-screen bg-background-base">{children}</div>;
+  }
+
+  // Other phases use centered container layout
   return (
     <div className="min-h-screen bg-background-base">
       <PhaseIndicator />

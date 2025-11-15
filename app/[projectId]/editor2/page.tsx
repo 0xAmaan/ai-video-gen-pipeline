@@ -40,11 +40,11 @@ const IntegratedStandaloneEditorPage = () => {
   return (
     <PhaseGuard requiredPhase="editor">
       {isLoading || !project ? (
-        <div className="flex h-[60vh] items-center justify-center text-muted-foreground">
+        <div className="flex h-screen items-center justify-center text-muted-foreground">
           Preparing project data...
         </div>
       ) : adaptedProject?.readyClipCount === 0 ? (
-        <div className="flex h-[60vh] flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+        <div className="flex h-screen flex-col items-center justify-center gap-2 text-center text-muted-foreground">
           <p className="font-medium text-foreground">Waiting for AI clips to finish rendering</p>
           <p className="max-w-md text-sm">
             We&apos;ll automatically pull clips into the standalone editor as soon as they complete.

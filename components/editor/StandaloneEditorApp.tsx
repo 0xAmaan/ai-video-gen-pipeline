@@ -9,7 +9,7 @@ import { saveBlob } from "@/lib/editor/export/save-file";
 import { TopBar } from "@/components/editor/TopBar";
 import { MediaPanel } from "@/components/editor/MediaPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
-import { Timeline } from "@/components/editor/Timeline";
+import { KonvaTimeline } from "@/components/editor/KonvaTimeline";
 import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
 
@@ -19,7 +19,9 @@ interface StandaloneEditorAppProps {
 
 export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
+  const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
   const ready = useProjectStore((state) => state.ready);
@@ -82,6 +84,20 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       actions.hydrate();
     }
   }, [actions, autoHydrate]);
+
+  // Track timeline container width for responsive Konva canvas
+  useEffect(() => {
+    if (!timelineContainerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTimelineWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(timelineContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!ready || !project || !canvasRef.current) return;
@@ -165,7 +181,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <TopBar
         title={project.title}
         isPlaying={isPlaying}
@@ -176,37 +192,45 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
         onRedo={() => actions.redo()}
         onExport={() => setExportOpen(true)}
       />
-      <div className="flex flex-1 overflow-hidden">
-        <MediaPanel
-          assets={assets}
-          onImport={handleImport}
-          onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
-        />
-        <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <div className="flex-none">
-            <PreviewPanel
-              canvasRef={canvasRef}
-              currentTime={currentTime}
-              duration={sequence.duration}
-              isPlaying={isPlaying}
-              onTogglePlayback={() => actions.togglePlayback()}
-              onSeek={(time) => actions.setCurrentTime(time)}
-            />
-          </div>
-          <div className="flex-1 min-h-[280px]">
-            <Timeline
-              sequence={sequence}
-              selection={selection}
-              zoom={zoom}
-              snap={project.settings.snap}
-              currentTime={currentTime}
-              onSelectionChange={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
-              onMoveClip={(clipId, trackId, start) => actions.moveClip(clipId, trackId, start)}
-              onTrimClip={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
-              onSeek={(time) => actions.setCurrentTime(time)}
-              onZoomChange={(value) => actions.setZoom(value)}
-            />
-          </div>
+      {/* 2-row layout: Top row (media + preview) and bottom row (timeline) */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Top row: Media (1/3) + Preview (2/3) */}
+        <div className="grid grid-cols-[1fr_2fr] flex-1 overflow-hidden">
+          <MediaPanel
+            assets={assets}
+            onImport={handleImport}
+            onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
+          />
+          <PreviewPanel
+            canvasRef={canvasRef}
+            currentTime={currentTime}
+            duration={sequence.duration}
+            isPlaying={isPlaying}
+            onTogglePlayback={() => actions.togglePlayback()}
+            onSeek={(time) => actions.setCurrentTime(time)}
+          />
+        </div>
+        {/* Bottom row: Timeline (full width) */}
+        <div className="flex-none h-[340px] flex flex-col" ref={timelineContainerRef}>
+          <KonvaTimeline
+            sequence={sequence}
+            selectedClipId={selection.clipIds[0] || null}
+            currentTime={currentTime}
+            isPlaying={isPlaying}
+            containerWidth={timelineWidth}
+            containerHeight={340}
+            onClipSelect={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
+            onClipMove={(clipId, newStart) => {
+              const videoTrack = sequence.tracks.find((t) => t.kind === "video");
+              if (videoTrack) {
+                actions.moveClip(clipId, videoTrack.id, newStart);
+              }
+            }}
+            onClipReorder={(clips) => actions.reorderClips(clips)}
+            onClipTrim={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
+            onSeek={(time) => actions.setCurrentTime(time)}
+            onScrub={(time) => rendererRef.current?.seek(time)}
+          />
         </div>
       </div>
       <ExportModal
