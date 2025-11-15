@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { InputPhase } from "@/components/phases/InputPhase";
-import { StoryboardPhase } from "@/components/phases/StoryboardPhase";
-import { GeneratingPhase } from "@/components/phases/GeneratingPhase";
-import { EditorPhase } from "@/components/phases/EditorPhase";
+import { InputPhase } from "@/components/InputPhase";
+import { StoryboardPhase } from "@/components/StoryboardPhase";
+import { GeneratingPhase } from "@/components/GeneratingPhase";
+import { EditorPhase } from "@/components/EditorPhase";
 import { Check } from "lucide-react";
 
 type Phase = "input" | "storyboard" | "generating" | "editor";

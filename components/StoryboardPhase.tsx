@@ -34,15 +34,15 @@ export const StoryboardPhase = ({
 
   const handleDurationChange = (id: string, duration: number) => {
     setScenes((prev) =>
-      prev.map((scene) => (scene.id === id ? { ...scene, duration } : scene))
+      prev.map((scene) => (scene.id === id ? { ...scene, duration } : scene)),
     );
   };
 
   const handleDescriptionChange = (id: string, description: string) => {
     setScenes((prev) =>
       prev.map((scene) =>
-        scene.id === id ? { ...scene, description } : scene
-      )
+        scene.id === id ? { ...scene, description } : scene,
+      ),
     );
   };
 
@@ -71,12 +71,13 @@ export const StoryboardPhase = ({
       "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=800&h=450&fit=crop",
       "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=800&h=450&fit=crop",
     ];
-    const randomImage = randomImages[Math.floor(Math.random() * randomImages.length)];
+    const randomImage =
+      randomImages[Math.floor(Math.random() * randomImages.length)];
 
     setScenes((prev) =>
       prev.map((scene) =>
-        scene.id === id ? { ...scene, image: randomImage } : scene
-      )
+        scene.id === id ? { ...scene, image: randomImage } : scene,
+      ),
     );
   };
 
@@ -147,7 +148,7 @@ export const StoryboardPhase = ({
               </div>
 
               {/* Scene Number & Image */}
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 <Badge className="mb-2">Scene {index + 1}</Badge>
                 <div className="relative w-48 h-27 rounded-lg overflow-hidden bg-accent">
                   <img
@@ -235,7 +236,7 @@ export const StoryboardPhase = ({
               <div
                 key={scene.id}
                 style={{ width: `${Math.max(widthPercent, 10)}%` }}
-                className="relative flex-shrink-0 h-16 rounded overflow-hidden border-2 border-border hover:border-primary transition-colors cursor-pointer"
+                className="relative shrink-0 h-16 rounded overflow-hidden border-2 border-border hover:border-primary transition-colors cursor-pointer"
                 title={`Scene ${index + 1} - ${scene.duration}s`}
               >
                 <img
@@ -243,7 +244,7 @@ export const StoryboardPhase = ({
                   alt={`Scene ${index + 1}`}
                   className="w-full h-full object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-1">
+                <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent flex items-end p-1">
                   <span className="text-white text-xs font-medium">
                     {scene.duration}s
                   </span>

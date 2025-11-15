@@ -145,7 +145,10 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
 
   // Auto-focus custom input when selected
   useEffect(() => {
-    if (selectedOptionIndex === currentQuestion.options.length && customInputRef.current) {
+    if (
+      selectedOptionIndex === currentQuestion.options.length &&
+      customInputRef.current
+    ) {
       customInputRef.current.focus();
     }
   }, [selectedOptionIndex, currentQuestion]);
@@ -158,7 +161,7 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedOptionIndex((prev) =>
-          prev < currentQuestion.options.length ? prev + 1 : prev
+          prev < currentQuestion.options.length ? prev + 1 : prev,
         );
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
@@ -359,7 +362,7 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
                 >
                   <div className="flex items-start gap-3">
                     <div
-                      className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
                         selectedOptionIndex === index
                           ? "border-primary bg-primary"
                           : "border-border"
@@ -391,14 +394,13 @@ export const InputPhase = ({ onComplete }: InputPhaseProps) => {
               >
                 <div className="flex items-start gap-3">
                   <div
-                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                       selectedOptionIndex === currentQuestion.options.length
                         ? "border-primary bg-primary"
                         : "border-border"
                     }`}
                   >
-                    {selectedOptionIndex ===
-                      currentQuestion.options.length && (
+                    {selectedOptionIndex === currentQuestion.options.length && (
                       <div className="w-2 h-2 rounded-full bg-primary-foreground" />
                     )}
                   </div>

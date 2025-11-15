@@ -30,11 +30,36 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
 
   // Mock video clips for timeline
   const clips = [
-    { id: "1", duration: 8, thumbnail: "https://images.unsplash.com/photo-1557683316-973673baf926?w=200&h=112&fit=crop" },
-    { id: "2", duration: 12, thumbnail: "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=200&h=112&fit=crop" },
-    { id: "3", duration: 10, thumbnail: "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=200&h=112&fit=crop" },
-    { id: "4", duration: 15, thumbnail: "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=200&h=112&fit=crop" },
-    { id: "5", duration: 8, thumbnail: "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=200&h=112&fit=crop" },
+    {
+      id: "1",
+      duration: 8,
+      thumbnail:
+        "https://images.unsplash.com/photo-1557683316-973673baf926?w=200&h=112&fit=crop",
+    },
+    {
+      id: "2",
+      duration: 12,
+      thumbnail:
+        "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=200&h=112&fit=crop",
+    },
+    {
+      id: "3",
+      duration: 10,
+      thumbnail:
+        "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=200&h=112&fit=crop",
+    },
+    {
+      id: "4",
+      duration: 15,
+      thumbnail:
+        "https://images.unsplash.com/photo-1557682268-e3955ed5d83f?w=200&h=112&fit=crop",
+    },
+    {
+      id: "5",
+      duration: 8,
+      thumbnail:
+        "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=200&h=112&fit=crop",
+    },
   ];
 
   const totalDuration = clips.reduce((sum, clip) => sum + clip.duration, 0);
@@ -109,15 +134,17 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
             </TabsContent>
 
             <TabsContent value="transitions" className="space-y-3 mt-4">
-              {["Fade", "Dissolve", "Wipe", "Slide", "Zoom"].map((transition) => (
-                <Button
-                  key={transition}
-                  variant="outline"
-                  className="w-full justify-start"
-                >
-                  {transition}
-                </Button>
-              ))}
+              {["Fade", "Dissolve", "Wipe", "Slide", "Zoom"].map(
+                (transition) => (
+                  <Button
+                    key={transition}
+                    variant="outline"
+                    className="w-full justify-start"
+                  >
+                    {transition}
+                  </Button>
+                ),
+              )}
             </TabsContent>
 
             <TabsContent value="effects" className="space-y-4 mt-4">
@@ -138,9 +165,7 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
                 </div>
               </div>
               <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Speed
-                </label>
+                <label className="text-sm font-medium mb-2 block">Speed</label>
                 <div className="grid grid-cols-4 gap-2">
                   {["0.5x", "1x", "1.5x", "2x"].map((speed) => (
                     <Button key={speed} variant="outline" size="sm">
@@ -243,14 +268,14 @@ export const EditorPhase = ({ videoUrl, onExport }: EditorPhaseProps) => {
                     <div
                       key={clip.id}
                       style={{ width: `${clip.duration * 10}px` }}
-                      className="relative flex-shrink-0 h-16 rounded overflow-hidden border-2 border-border hover:border-primary transition-colors cursor-pointer group"
+                      className="relative shrink-0 h-16 rounded overflow-hidden border-2 border-border hover:border-primary transition-colors cursor-pointer group"
                     >
                       <img
                         src={clip.thumbnail}
                         alt={`Clip ${index + 1}`}
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent">
+                      <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent">
                         <Badge className="absolute bottom-1 left-1 text-xs">
                           {clip.duration}s
                         </Badge>

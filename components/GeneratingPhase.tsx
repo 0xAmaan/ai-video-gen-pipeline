@@ -81,7 +81,7 @@ export const GeneratingPhase = ({ onComplete }: GeneratingPhaseProps) => {
   useEffect(() => {
     const newStageIndex = Math.min(
       Math.floor((progress / 100) * STAGES.length),
-      STAGES.length - 1
+      STAGES.length - 1,
     );
     setCurrentStageIndex(newStageIndex);
   }, [progress]);
@@ -142,7 +142,7 @@ export const GeneratingPhase = ({ onComplete }: GeneratingPhaseProps) => {
                   }`}
                 >
                   {/* Status Icon */}
-                  <div className="flex-shrink-0 mt-0.5">
+                  <div className="shrink-0 mt-0.5">
                     {status === "complete" ? (
                       <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
                         <Check className="w-4 h-4 text-primary-foreground" />
@@ -173,10 +173,7 @@ export const GeneratingPhase = ({ onComplete }: GeneratingPhaseProps) => {
                         {stage.label}
                       </h4>
                       {status === "processing" && (
-                        <Badge
-                          variant="default"
-                          className="bg-primary text-xs"
-                        >
+                        <Badge variant="default" className="bg-primary text-xs">
                           In Progress
                         </Badge>
                       )}

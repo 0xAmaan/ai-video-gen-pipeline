@@ -145,9 +145,7 @@ export const ExportModal = ({
 
               {/* Format */}
               <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Format
-                </label>
+                <label className="text-sm font-medium mb-2 block">Format</label>
                 <Select value={format} onValueChange={setFormat}>
                   <SelectTrigger>
                     <SelectValue />
@@ -185,7 +183,9 @@ export const ExportModal = ({
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Duration:</span>
-                  <span className="font-medium">{formatDuration(duration)}</span>
+                  <span className="font-medium">
+                    {formatDuration(duration)}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
@@ -248,7 +248,7 @@ export const ExportModal = ({
               </Button>
               <Button
                 onClick={handleDownload}
-                className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+                className="bg-linear-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
               >
                 <Download className="w-4 h-4 mr-2" />
                 Download File
