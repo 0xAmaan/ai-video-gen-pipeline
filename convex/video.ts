@@ -406,6 +406,24 @@ export const deleteScene = mutation({
 
     await ctx.db.delete(args.sceneId);
 
+    // Renumber remaining scenes to be sequential
+    const remainingScenes = await ctx.db
+      .query("scenes")
+      .withIndex("by_project", (q) => q.eq("projectId", scene.projectId))
+      .collect();
+
+    const sortedScenes = remainingScenes.sort(
+      (a, b) => a.sceneNumber - b.sceneNumber,
+    );
+
+    // Update scene numbers to be sequential (1, 2, 3, ...)
+    for (let i = 0; i < sortedScenes.length; i++) {
+      await ctx.db.patch(sortedScenes[i]._id, {
+        sceneNumber: i + 1,
+        updatedAt: Date.now(),
+      });
+    }
+
     return args.sceneId;
   },
 });
@@ -597,5 +615,166 @@ export const updateFinalVideo = mutation({
     await ctx.db.patch(args.videoId, updates);
 
     return args.videoId;
+  },
+});
+
+// Update last active phase
+export const updateLastActivePhase = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    phase: v.union(
+      v.literal("prompt"),
+      v.literal("storyboard"),
+      v.literal("video"),
+      v.literal("editor"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify the project belongs to the user
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    await ctx.db.patch(args.projectId, {
+      lastActivePhase: args.phase,
+      updatedAt: Date.now(),
+    });
+
+    return args.projectId;
+  },
+});
+
+// Get project with all related data
+export const getProjectWithAllData = query({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      return null;
+    }
+
+    // Get clarifying questions
+    const questions = await ctx.db
+      .query("clarifyingQuestions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    // Get scenes
+    const scenes = await ctx.db
+      .query("scenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    // Get video clips
+    const clips = await ctx.db
+      .query("videoClips")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    return {
+      project,
+      questions,
+      scenes: scenes.sort((a, b) => a.sceneNumber - b.sceneNumber),
+      clips,
+    };
+  },
+});
+
+// Determine current phase based on project status and data
+// Determine the furthest unlocked phase for a project
+// This is used for fallback redirects when accessing locked phases
+export const determineCurrentPhase = query({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      return null;
+    }
+
+    // Check if answers exist
+    const questions = await ctx.db
+      .query("clarifyingQuestions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    const hasAnswers = questions?.answers !== undefined;
+
+    // Check if scenes exist
+    const scenesExist = await ctx.db
+      .query("scenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    // Check if video clips exist
+    const allClips = await ctx.db
+      .query("videoClips")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const hasClips = allClips.length > 0;
+    const allComplete = allClips.every((clip) => clip.status === "complete");
+
+    // Return furthest unlocked phase
+    if (allComplete && hasClips) {
+      return "editor";
+    }
+
+    if (scenesExist) {
+      return "video";
+    }
+
+    if (hasAnswers) {
+      return "storyboard";
+    }
+
+    return "prompt";
+  },
+});
+
+// Check if video clips are currently generating
+export const areClipsGenerating = query({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return false;
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      return false;
+    }
+
+    const clips = await ctx.db
+      .query("videoClips")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    // Check if any clips are currently processing or pending
+    return clips.some(
+      (clip) => clip.status === "processing" || clip.status === "pending",
+    );
   },
 });

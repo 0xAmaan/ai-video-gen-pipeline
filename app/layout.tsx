@@ -3,6 +3,7 @@ import "@/app/globals.css";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "./ConvexClientProvider";
+import { LayoutWrapper } from "./LayoutWrapper";
 
 const inter = Inter({
   weight: ["300", "400", "500", "600", "700"],
@@ -19,11 +20,10 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
     <ClerkProvider>
       <html lang="en">
         <body
-          className={`${inter.className} bg-background-base text-foreground h-screen`}
+          className={`${inter.className} bg-background-base text-foreground h-screen overflow-hidden`}
         >
           <ConvexClientProvider>
-            {/* Main Content */}
-            <main>{children}</main>
+            <LayoutWrapper>{children}</LayoutWrapper>
           </ConvexClientProvider>
         </body>
       </html>

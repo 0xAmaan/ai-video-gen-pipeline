@@ -8,14 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Check, Film, AlertCircle } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
-
-interface Scene {
-  id: string;
-  sceneNumber: number;
-  description: string;
-  imageUrl?: string;
-  duration: number;
-}
+import type { Scene } from "@/types/scene";
 
 interface VideoGeneratingPhaseProps {
   scenes: Scene[];
@@ -44,11 +37,21 @@ export const VideoGeneratingPhase = ({
 
   // Trigger completion callback in useEffect to avoid state update during render
   useEffect(() => {
+    console.log("Completion check:", {
+      allComplete,
+      failedClips,
+      hasClips: !!videoClips,
+      clipCount: videoClips?.length,
+      completedCount: completedClips,
+      hasCalledComplete: hasCalledComplete.current
+    });
+
     if (allComplete && !failedClips && videoClips && !hasCalledComplete.current) {
+      console.log("✅ All clips complete! Navigating to editor...");
       hasCalledComplete.current = true;
       onComplete(videoClips);
     }
-  }, [allComplete, failedClips, videoClips, onComplete]);
+  }, [allComplete, failedClips, videoClips, onComplete, completedClips]);
 
   // Map video clips to scenes for display
   const getClipForScene = (sceneId: string) => {

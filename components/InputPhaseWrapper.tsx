@@ -12,10 +12,11 @@ interface InputPhaseWrapperProps {
     responses: Record<string, string>;
     projectId: Id<"videoProjects">;
   }) => void;
+  existingProjectId?: Id<"videoProjects">;
 }
 
-export const InputPhaseWrapper = ({ onComplete }: InputPhaseWrapperProps) => {
-  const [projectId, setProjectId] = useState<Id<"videoProjects"> | null>(null);
+export const InputPhaseWrapper = ({ onComplete, existingProjectId }: InputPhaseWrapperProps) => {
+  const [projectId, setProjectId] = useState<Id<"videoProjects"> | null>(existingProjectId || null);
   const createProject = useMutation(api.video.createProject);
   const saveQuestions = useMutation(api.video.saveQuestions);
 
@@ -23,8 +24,10 @@ export const InputPhaseWrapper = ({ onComplete }: InputPhaseWrapperProps) => {
   const handleQuestionsGenerated = useCallback(
     async (prompt: string, questions: any[]) => {
       try {
-        // Create project if it doesn't exist
-        if (!projectId) {
+        // Use existing project ID or create a new one
+        const useProjectId = existingProjectId || projectId;
+
+        if (!useProjectId) {
           const newProjectId = await createProject({ prompt });
           setProjectId(newProjectId);
 
@@ -36,13 +39,20 @@ export const InputPhaseWrapper = ({ onComplete }: InputPhaseWrapperProps) => {
 
           return newProjectId;
         }
-        return projectId;
+
+        // If project already exists, just save the questions
+        await saveQuestions({
+          projectId: useProjectId,
+          questions,
+        });
+
+        return useProjectId;
       } catch (error) {
         console.error("Error creating project or saving questions:", error);
         return null;
       }
     },
-    [projectId, createProject, saveQuestions]
+    [projectId, existingProjectId, createProject, saveQuestions]
   );
 
   const handleComplete = (data: {
@@ -50,11 +60,12 @@ export const InputPhaseWrapper = ({ onComplete }: InputPhaseWrapperProps) => {
     responses: Record<string, string>;
     projectId?: string;
   }) => {
-    if (projectId) {
+    const useProjectId = existingProjectId || projectId;
+    if (useProjectId) {
       onComplete({
         prompt: data.prompt,
         responses: data.responses,
-        projectId,
+        projectId: useProjectId,
       });
     }
   };
@@ -62,7 +73,7 @@ export const InputPhaseWrapper = ({ onComplete }: InputPhaseWrapperProps) => {
   return (
     <InputPhase
       onComplete={handleComplete}
-      projectId={projectId as string | undefined}
+      projectId={(existingProjectId || projectId) as string | undefined}
       onQuestionsGenerated={handleQuestionsGenerated}
     />
   );

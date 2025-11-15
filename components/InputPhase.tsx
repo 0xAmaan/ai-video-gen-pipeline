@@ -16,6 +16,8 @@ interface InputPhaseProps {
     prompt: string,
     questions: Question[]
   ) => Promise<string | null>;
+  initialPrompt?: string;
+  initialQuestions?: Question[];
 }
 
 interface Question {
@@ -30,16 +32,32 @@ export const InputPhase = ({
   onComplete,
   projectId,
   onQuestionsGenerated,
+  initialPrompt,
+  initialQuestions,
 }: InputPhaseProps) => {
-  const [step, setStep] = useState<Step>("prompt");
-  const [prompt, setPrompt] = useState("");
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [step, setStep] = useState<Step>(initialQuestions ? "questions" : "prompt");
+  const [prompt, setPrompt] = useState(initialPrompt || "");
+  const [questions, setQuestions] = useState<Question[]>(initialQuestions || []);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
   const [customInput, setCustomInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
+
+  // Update state when initial values change
+  useEffect(() => {
+    if (initialPrompt && !prompt) {
+      setPrompt(initialPrompt);
+    }
+  }, [initialPrompt]);
+
+  useEffect(() => {
+    if (initialQuestions && questions.length === 0) {
+      setQuestions(initialQuestions);
+      setStep("questions");
+    }
+  }, [initialQuestions]);
 
   const currentQuestion = questions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex === questions.length - 1;

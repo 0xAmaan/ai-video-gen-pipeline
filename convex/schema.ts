@@ -2,10 +2,6 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  messages: defineTable({
-    text: v.string(),
-  }),
-
   videoProjects: defineTable({
     userId: v.string(),
     prompt: v.string(),
@@ -16,6 +12,14 @@ export default defineSchema({
       v.literal("generating_storyboard"),
       v.literal("storyboard_created"),
       v.literal("video_generated"),
+    ),
+    lastActivePhase: v.optional(
+      v.union(
+        v.literal("prompt"),
+        v.literal("storyboard"),
+        v.literal("video"),
+        v.literal("editor"),
+      ),
     ),
     createdAt: v.number(),
     updatedAt: v.number(),

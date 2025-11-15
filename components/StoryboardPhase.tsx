@@ -10,14 +10,7 @@ import { ArrowRight, GripVertical, Trash2, Sparkles, Plus, Loader2 } from "lucid
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-
-interface Scene {
-  id: string;
-  image: string;
-  description: string;
-  duration: number;
-  order: number;
-}
+import type { Scene } from "@/types/scene";
 
 interface StoryboardPhaseProps {
   prompt: string;
@@ -55,7 +48,7 @@ export const StoryboardPhase = ({
         image: scene.imageUrl || "",
         description: scene.description,
         duration: scene.duration,
-        order: scene.sceneNumber - 1, // Convert to 0-indexed
+        sceneNumber: scene.sceneNumber,
       }));
       setScenes(formattedScenes);
     }
@@ -121,16 +114,8 @@ export const StoryboardPhase = ({
     }
   };
 
-  const handleAddScene = () => {
-    const newScene: Scene = {
-      id: `scene-${Date.now()}`,
-      image: `https://images.unsplash.com/photo-1557683316-973673baf926?w=800&h=450&fit=crop`,
-      description: "New scene - describe what should happen here...",
-      duration: 5,
-      order: scenes.length,
-    };
-    setScenes((prev) => [...prev, newScene]);
-  };
+  // Removed handleAddScene - scenes must be generated via API, not manually added
+  // Manual scenes weren't persisted to Convex and caused data loss on refresh
 
   const handleRegenerateScene = async (id: string) => {
     const scene = scenes.find((s) => s.id === id);
@@ -354,16 +339,7 @@ export const StoryboardPhase = ({
         ))}
       </div>
 
-      {/* Add Scene Button */}
-      <Button
-        variant="outline"
-        onClick={handleAddScene}
-        className="w-full mb-8"
-        size="lg"
-      >
-        <Plus className="w-4 h-4 mr-2" />
-        Add Scene
-      </Button>
+      {/* Add Scene button removed - scenes must be generated via API */}
 
       {/* Timeline Preview */}
       <Card className="p-6 mb-8">
