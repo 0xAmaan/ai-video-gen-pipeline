@@ -30,9 +30,9 @@ const StoryboardPage = () => {
     estimatedCost: number;
     reason: string;
   }>({
-    modelName: "FLUX.1 Schnell",
-    estimatedCost: 0.003,
-    reason: "Default selection for fast, cost-effective generation",
+    modelName: "Selecting optimal model...",
+    estimatedCost: 0,
+    reason: "Analyzing your preferences to choose the best image model",
   });
   const [generatingScenes, setGeneratingScenes] = useState<any[]>([]);
 
@@ -96,11 +96,13 @@ const StoryboardPage = () => {
 
       // Update model info immediately when we get the response
       if (result.modelInfo) {
+        console.log("✅ Model info received from API:", result.modelInfo);
         setModelInfo({
           modelName: result.modelInfo.modelName,
           estimatedCost: result.modelInfo.estimatedCost,
           reason: result.modelInfo.reason,
         });
+        console.log("✅ UI updated with actual model:", result.modelInfo.modelName);
       }
 
       // Switch to generating images stage

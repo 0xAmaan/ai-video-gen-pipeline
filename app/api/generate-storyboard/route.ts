@@ -1,4 +1,5 @@
 import { generateObject } from "ai";
+import { groq } from "@ai-sdk/groq";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { NextResponse } from "next/server";
@@ -44,9 +45,30 @@ export async function POST(req: Request) {
       );
     }
 
-    // Step 2: Generate scene descriptions using OpenAI
+    // Step 2: Generate scene descriptions using Groq (much faster than GPT-4o)
+    const hasGroqKey = !!process.env.GROQ_API_KEY;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+
+    if (!hasGroqKey && !hasOpenAIKey) {
+      console.error("❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local");
+      return NextResponse.json(
+        {
+          error: "No API keys configured",
+          details: "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file"
+        },
+        { status: 500 },
+      );
+    }
+
+    // Note: Using openai/gpt-oss-20b - supports strict JSON schema, 250K TPM, very fast
+    const modelToUse = hasGroqKey
+      ? groq("openai/gpt-oss-20b")
+      : openai("gpt-4o");
+
+    console.log(`🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o) - SLOWER 🐌"}`);
+
     const { object: sceneData } = await generateObject({
-      model: openai("gpt-4o"),
+      model: modelToUse,
       schema: sceneSchema,
       system: STORYBOARD_SYSTEM_PROMPT,
       prompt: buildStoryboardPrompt(prompt, responses),

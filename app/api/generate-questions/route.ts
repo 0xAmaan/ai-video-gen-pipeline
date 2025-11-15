@@ -1,4 +1,5 @@
 import { generateObject } from "ai";
+import { groq } from "@ai-sdk/groq";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { NextResponse } from "next/server";
@@ -41,9 +42,31 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate clarifying questions using OpenAI
+    // Check if Groq API key is available
+    const hasGroqKey = !!process.env.GROQ_API_KEY;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+
+    if (!hasGroqKey && !hasOpenAIKey) {
+      console.error("❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local");
+      return NextResponse.json(
+        {
+          error: "No API keys configured",
+          details: "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file"
+        },
+        { status: 500 },
+      );
+    }
+
+    // Generate clarifying questions using Groq (much faster) or OpenAI (fallback)
+    // Note: Using openai/gpt-oss-20b - supports strict JSON schema, 250K TPM, very fast
+    const modelToUse = hasGroqKey
+      ? groq("openai/gpt-oss-20b")
+      : openai("gpt-4o-mini");
+
+    console.log(`🔧 Using model: ${hasGroqKey ? "Groq (gpt-oss-20b)" : "OpenAI (gpt-4o-mini)"}`);
+
     const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
+      model: modelToUse,
       schema: questionSchema,
       system: QUESTION_GENERATION_SYSTEM_PROMPT,
       prompt: buildQuestionGenerationPrompt(prompt),
@@ -52,8 +75,13 @@ export async function POST(req: Request) {
     return NextResponse.json(object);
   } catch (error) {
     console.error("Error generating questions:", error);
+    console.error("Full error details:", error instanceof Error ? error.message : error);
+    console.error("Stack trace:", error instanceof Error ? error.stack : "No stack trace");
     return NextResponse.json(
-      { error: "Failed to generate questions" },
+      {
+        error: "Failed to generate questions",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 },
     );
   }
