@@ -70,8 +70,6 @@ export interface MediaAssetMeta {
   sampleRate?: number;
   url: string;
   waveformUrl?: string;
-  thumbnails?: string[]; // Data URLs for timeline thumbnails
-  thumbnailCount?: number;
 }
 
 export interface ProjectSettings {

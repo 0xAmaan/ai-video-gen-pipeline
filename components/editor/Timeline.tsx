@@ -7,7 +7,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { Sequence, TimelineSelection, Track, MediaAssetMeta, Clip } from "@/lib/editor/types";
+import type { Sequence, TimelineSelection, Track } from "@/lib/editor/types";
 
 const BASE_SCALE = 120; // px per second at zoom 1
 const MIN_TIMELINE_WIDTH = 2000; // px
@@ -20,7 +20,6 @@ interface TimelineProps {
   zoom: number;
   snap: boolean;
   currentTime: number;
-  assets: MediaAssetMeta[]; // Media assets for thumbnail lookup
   onSelectionChange: (clipId: string) => void;
   onMoveClip: (clipId: string, trackId: string, start: number) => void;
   onTrimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
@@ -34,7 +33,6 @@ export const Timeline = ({
   zoom,
   snap,
   currentTime,
-  assets,
   onSelectionChange,
   onMoveClip,
   onTrimClip,
@@ -201,7 +199,7 @@ export const Timeline = ({
                   {track.clips.map((clip) => (
                     <div
                       key={clip.id}
-                      className={`absolute h-14 cursor-move rounded-md border px-2 py-1 text-xs overflow-hidden ${
+                      className={`absolute h-14 cursor-move rounded-md border px-2 py-1 text-xs ${
                         selection.clipIds.includes(clip.id)
                           ? "border-primary bg-primary/30"
                           : "border-border bg-card"
@@ -216,73 +214,7 @@ export const Timeline = ({
                         onSelectionChange(clip.id);
                       }}
                     >
-                      {/* Render video thumbnails as background */}
-                      {clip.kind === "video" && (() => {
-                        const asset = assets.find((a) => a.id === clip.mediaId);
-                        if (!asset) {
-                          console.warn(`[Timeline] Asset not found for clip ${clip.id}, mediaId: ${clip.mediaId}`);
-                          return null;
-                        }
-                        if (!asset.thumbnails || asset.thumbnails.length === 0) {
-                          console.log(`[Timeline] No thumbnails yet for asset ${asset.id} (clip ${clip.id})`);
-                          return null;
-                        }
-                        if (asset.thumbnails.length > 0) {
-                          const clipWidth = clip.duration * scale;
-                          const THUMBNAIL_MIN_WIDTH = 40; // Minimum width per thumbnail
-                          const availableThumbnails = asset.thumbnails.length;
-                          const maxThumbnailsToShow = Math.floor(clipWidth / THUMBNAIL_MIN_WIDTH);
-                          const thumbnailsToShow = Math.min(maxThumbnailsToShow, availableThumbnails);
-                          
-                          if (thumbnailsToShow > 0) {
-                            const thumbnailWidth = clipWidth / thumbnailsToShow;
-                            
-                            // Select which thumbnails to display based on trim
-                            const trimRatio = clip.trimStart / asset.duration;
-                            const visibleDurationRatio = clip.duration / asset.duration;
-                            const startIndex = Math.floor(trimRatio * availableThumbnails);
-                            const endIndex = Math.min(
-                              availableThumbnails,
-                              Math.ceil((trimRatio + visibleDurationRatio) * availableThumbnails)
-                            );
-                            
-                            const thumbnailsToRender = asset.thumbnails.slice(startIndex, endIndex);
-                            const step = Math.max(1, Math.floor(thumbnailsToRender.length / thumbnailsToShow));
-                            
-                            return (
-                              <div className="absolute inset-0 flex pointer-events-none">
-                                {Array.from({ length: thumbnailsToShow }).map((_, i) => {
-                                  const thumbnailIndex = Math.min(
-                                    thumbnailsToRender.length - 1,
-                                    i * step
-                                  );
-                                  const thumbnail = thumbnailsToRender[thumbnailIndex];
-                                  
-                                  return (
-                                    <div
-                                      key={i}
-                                      style={{
-                                        width: `${thumbnailWidth}px`,
-                                        height: '100%',
-                                      }}
-                                      className="relative flex-shrink-0"
-                                    >
-                                      <img
-                                        src={thumbnail}
-                                        alt=""
-                                        className="absolute inset-0 w-full h-full object-cover opacity-60"
-                                        draggable={false}
-                                      />
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          }
-                        }
-                        return null;
-                      })()}
-                      <div className="flex justify-between text-[11px] relative z-10">
+                      <div className="flex justify-between text-[11px]">
                         <span>{clip.id}</span>
                         <span>{clip.duration.toFixed(2)}s</span>
                       </div>
