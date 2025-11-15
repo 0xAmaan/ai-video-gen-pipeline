@@ -10,6 +10,7 @@ import {
 import type { Sequence, TimelineSelection, Track } from "@/lib/editor/types";
 
 const BASE_SCALE = 120; // px per second at zoom 1
+const MIN_TIMELINE_WIDTH = 2000; // px
 
 type DragMode = "move" | "trim-start" | "trim-end";
 
@@ -41,6 +42,11 @@ export const Timeline = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ start: 0, end: 10 });
   const scale = useMemo(() => BASE_SCALE * zoom, [zoom]);
+  const timelineWidth = useMemo(
+    () => Math.max(sequence.duration * scale, MIN_TIMELINE_WIDTH),
+    [scale, sequence.duration],
+  );
+  const visibleSeconds = timelineWidth / scale;
 
   useEffect(() => {
     const element = containerRef.current;
@@ -64,6 +70,33 @@ export const Timeline = ({
       ),
     }))
   ), [sequence.tracks, viewport.end, viewport.start]);
+
+  const scrubToClientX = (clientX: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const offset = clientX - rect.left + container.scrollLeft;
+    const bounded = Math.max(0, Math.min(offset, timelineWidth));
+    const duration = sequence.duration || 0;
+    const nextTime = duration === 0 ? 0 : Math.min(bounded / scale, duration);
+    onSeek(nextTime);
+  };
+
+  const startScrub = (event: ReactPointerEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    scrubToClientX(event.clientX);
+    const move = (pointerEvent: PointerEvent) => {
+      pointerEvent.preventDefault();
+      scrubToClientX(pointerEvent.clientX);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  };
 
   const handlePointer = (
     track: Track,
@@ -123,74 +156,117 @@ export const Timeline = ({
         </div>
         <div>Snap {snap ? "On" : "Off"}</div>
       </div>
-      <div className="relative border-b border-border bg-muted/30">
-        <TimeRuler duration={sequence.duration} scale={scale} onSeek={onSeek} />
-        <div
-          className="pointer-events-none absolute inset-y-0 w-px bg-primary"
-          style={{ left: `${currentTime * scale}px` }}
-        />
-      </div>
-      <div ref={containerRef} className="relative flex-1 overflow-x-auto bg-background">
-        <div className="min-h-full" style={{ width: `${Math.max(sequence.duration * scale, 2000)}px` }}>
-          {clips.map((track) => (
-            <div key={track.id} className="border-b border-border py-3">
-              <p className="px-2 text-xs font-semibold uppercase text-muted-foreground">{track.id}</p>
-              <div className="relative h-16">
-                {track.clips.map((clip) => (
-                  <div
-                    key={clip.id}
-                    className={`absolute h-14 cursor-move rounded-md border px-2 py-1 text-xs ${
-                      selection.clipIds.includes(clip.id)
-                        ? "border-primary bg-primary/30"
-                        : "border-border bg-card"
-                    }`}
-                    style={{
-                      left: `${clip.start * scale}px`,
-                      width: `${Math.max(clip.duration * scale, 4)}px`,
-                    }}
-                    onPointerDown={(event) => handlePointer(track as Track, clip.id, "move", event)}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelectionChange(clip.id);
-                    }}
-                  >
-                    <div className="flex justify-between text-[11px]">
-                      <span>{clip.id}</span>
-                      <span>{clip.duration.toFixed(2)}s</span>
-                    </div>
-                    <div
-                      className="absolute inset-y-1 left-0 w-1 cursor-ew-resize rounded-full bg-primary/80"
-                      onPointerDown={(event) => handlePointer(track as Track, clip.id, "trim-start", event)}
-                    />
-                    <div
-                      className="absolute inset-y-1 right-0 w-1 cursor-ew-resize rounded-full bg-primary/80"
-                      onPointerDown={(event) => handlePointer(track as Track, clip.id, "trim-end", event)}
-                    />
-                  </div>
-                ))}
-              </div>
+      <div className="relative flex-1 overflow-hidden bg-background">
+        <div ref={containerRef} className="relative h-full overflow-x-auto overflow-y-hidden">
+          <div
+            className="relative min-h-full"
+            style={{ width: `${timelineWidth}px` }}
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) {
+                startScrub(event as ReactPointerEvent<HTMLElement>);
+              }
+            }}
+          >
+            <div className="bg-muted/30">
+              <TimeRuler
+                scale={scale}
+                visibleSeconds={visibleSeconds}
+                onPointerDown={startScrub}
+              />
             </div>
-          ))}
+            <div
+              className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary"
+              style={{ left: `${Math.min(currentTime, sequence.duration) * scale}px` }}
+            />
+            <button
+              type="button"
+              aria-label="Scrub timeline"
+              className="absolute z-20 top-1 h-4 w-3 -translate-x-1/2 rounded-sm border border-primary bg-primary text-transparent shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/70"
+              style={{ left: `${Math.min(currentTime, sequence.duration) * scale}px` }}
+              onPointerDown={startScrub}
+            />
+            {clips.map((track) => (
+              <div key={track.id} className="border-b border-border py-3">
+                <p className="px-2 text-xs font-semibold uppercase text-muted-foreground">{track.id}</p>
+                <div
+                  className="relative h-16"
+                  onPointerDown={(event) => {
+                    if (event.target === event.currentTarget) {
+                      startScrub(event as ReactPointerEvent<HTMLElement>);
+                    }
+                  }}
+                >
+                  {track.clips.map((clip) => (
+                    <div
+                      key={clip.id}
+                      className={`absolute h-14 cursor-move rounded-md border px-2 py-1 text-xs ${
+                        selection.clipIds.includes(clip.id)
+                          ? "border-primary bg-primary/30"
+                          : "border-border bg-card"
+                      }`}
+                      style={{
+                        left: `${clip.start * scale}px`,
+                        width: `${Math.max(clip.duration * scale, 4)}px`,
+                      }}
+                      onPointerDown={(event) => handlePointer(track as Track, clip.id, "move", event)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectionChange(clip.id);
+                      }}
+                    >
+                      <div className="flex justify-between text-[11px]">
+                        <span>{clip.id}</span>
+                        <span>{clip.duration.toFixed(2)}s</span>
+                      </div>
+                      <div
+                        className="absolute inset-y-1 left-0 w-1 cursor-ew-resize rounded-full bg-primary/80"
+                        onPointerDown={(event) =>
+                          handlePointer(track as Track, clip.id, "trim-start", event)
+                        }
+                      />
+                      <div
+                        className="absolute inset-y-1 right-0 w-1 cursor-ew-resize rounded-full bg-primary/80"
+                        onPointerDown={(event) =>
+                          handlePointer(track as Track, clip.id, "trim-end", event)
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-const TimeRuler = ({ duration, scale, onSeek }: { duration: number; scale: number; onSeek: (time: number) => void }) => {
-  const ticks = Math.max(1, Math.ceil(duration));
+const TimeRuler = ({
+  visibleSeconds,
+  scale,
+  onPointerDown,
+}: {
+  visibleSeconds: number;
+  scale: number;
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
+}) => {
+  const ticks = Math.max(1, Math.ceil(visibleSeconds));
   return (
-    <div className="flex h-8 select-none border-b border-border bg-muted/40 text-[10px] text-muted-foreground">
-      {Array.from({ length: ticks }, (_, index) => (
-        <button
+    <div
+      className="relative h-8 select-none border-b border-border bg-muted/40 text-[10px] text-muted-foreground"
+      style={{ width: `${visibleSeconds * scale}px` }}
+      onPointerDown={onPointerDown}
+      role="presentation"
+    >
+      {Array.from({ length: ticks + 1 }, (_, index) => (
+        <div
           key={index}
-          type="button"
-          className="relative flex-1 border-r border-border"
-          style={{ width: `${scale}px` }}
-          onClick={() => onSeek(index)}
+          className="absolute top-0 flex h-full flex-col justify-end border-l border-border"
+          style={{ left: `${index * scale}px` }}
         >
-          <span className="absolute left-1 top-1">{index}s</span>
-        </button>
+          <span className="mb-1 ml-1">{index}s</span>
+        </div>
       ))}
     </div>
   );
