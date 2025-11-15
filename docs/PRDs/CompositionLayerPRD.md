@@ -3,7 +3,7 @@
 **Project**: Composition Layer - Browser-based timeline editor with AI regeneration and professional editing capabilities  
 **Goal**: Empower creators to arrange clips, make fast edits with low-latency previews, and regenerate sequences using AI directly in the browser
 
-**Note**: This system integrates with CapCut's web-based engine for advanced editing while maintaining our AI regeneration capabilities
+**Note**: This system mimics CapCut's web-based engine for advanced editing while maintaining our AI regeneration capabilities
 
 ---
 
