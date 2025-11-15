@@ -28,11 +28,45 @@ export interface DemuxErrorMessage {
   error: string;
 }
 
+export interface ThumbnailRequestMessage {
+  type: "THUMBNAIL_REQUEST";
+  requestId: string;
+  assetId: string;
+  mediaUrl: string;
+  duration: number;
+  count: number; // Number of thumbnails to generate
+}
+
+export interface ThumbnailProgressMessage {
+  type: "THUMBNAIL_PROGRESS";
+  requestId: string;
+  progress: number;
+  current: number;
+  total: number;
+}
+
+export interface ThumbnailResponseMessage {
+  type: "THUMBNAIL_RESULT";
+  requestId: string;
+  assetId: string;
+  thumbnails: string[]; // Data URLs
+}
+
+export interface ThumbnailErrorMessage {
+  type: "THUMBNAIL_ERROR";
+  requestId: string;
+  error: string;
+}
+
 export type DemuxWorkerMessage =
   | DemuxRequestMessage
   | DemuxResponseMessage
   | DemuxErrorMessage
-  | DemuxProgressMessage;
+  | DemuxProgressMessage
+  | ThumbnailRequestMessage
+  | ThumbnailProgressMessage
+  | ThumbnailResponseMessage
+  | ThumbnailErrorMessage;
 
 export interface EffectsRequestMessage {
   type: "EFFECTS_REQUEST";

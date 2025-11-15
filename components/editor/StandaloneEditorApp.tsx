@@ -119,14 +119,85 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     rendererRef.current?.seek(currentTime);
   }, [currentTime]);
 
+  // Generate thumbnails for video assets that don't have them yet
+  useEffect(() => {
+    if (!ready || !project || !mediaManager) return;
+    
+    const assetsNeedingThumbnails = Object.values(project.mediaAssets).filter(
+      (asset) => asset.type === "video" && asset.url && !asset.thumbnails
+    );
+
+    if (assetsNeedingThumbnails.length === 0) return;
+
+    console.log(`[Editor] Generating thumbnails for ${assetsNeedingThumbnails.length} video asset(s)`);
+
+    // Generate thumbnails for all video assets in parallel
+    const thumbnailPromises = assetsNeedingThumbnails.map(async (asset) => {
+      try {
+        console.log(`[Editor] Starting thumbnail generation for asset ${asset.id}`);
+        const thumbnails = await mediaManager.generateThumbnails(
+          asset.id,
+          asset.url,
+          asset.duration,
+          15 // Generate 15 thumbnails per video
+        );
+        actions.updateMediaAsset(asset.id, {
+          thumbnails,
+          thumbnailCount: thumbnails.length,
+        });
+        console.log(`[Editor] Successfully updated asset ${asset.id} with ${thumbnails.length} thumbnails`);
+      } catch (error) {
+        console.error(`[Editor] Failed to generate thumbnails for ${asset.id}:`, error);
+      }
+    });
+
+    // Wait for all thumbnails to complete (optional, but good for debugging)
+    Promise.all(thumbnailPromises)
+      .then(() => console.log(`[Editor] All thumbnail generation complete`))
+      .catch((err) => console.error(`[Editor] Thumbnail generation error:`, err));
+  }, [ready, project, mediaManager, actions]);
+
   const handleImport = async (files: FileList | null) => {
     if (!files || !mediaManager) return;
+    console.log(`[Editor] Importing ${files.length} file(s)`);
     const imports: Promise<MediaAssetMeta>[] = [];
     Array.from(files).forEach((file) => {
       imports.push(mediaManager.importFile(file));
     });
     const results = await Promise.all(imports);
-    results.forEach((asset) => actions.addMediaAsset(asset));
+    results.forEach((asset) => {
+      console.log(`[Editor] Added media asset: ${asset.id} (${asset.type})`);
+      actions.addMediaAsset(asset);
+    });
+    
+    // Generate thumbnails for video assets
+    const videoAssets = results.filter((asset) => asset.type === "video" && asset.url);
+    if (videoAssets.length > 0) {
+      console.log(`[Editor] Generating thumbnails for ${videoAssets.length} imported video(s)`);
+      const thumbnailPromises = videoAssets.map(async (asset) => {
+        try {
+          console.log(`[Editor] Starting thumbnail generation for imported asset ${asset.id}`);
+          const thumbnails = await mediaManager.generateThumbnails(
+            asset.id,
+            asset.url,
+            asset.duration,
+            15 // Generate 15 thumbnails per video
+          );
+          // Update the asset with thumbnails
+          actions.updateMediaAsset(asset.id, {
+            thumbnails,
+            thumbnailCount: thumbnails.length,
+          });
+          console.log(`[Editor] Successfully updated imported asset ${asset.id} with ${thumbnails.length} thumbnails`);
+        } catch (error) {
+          console.error(`[Editor] Failed to generate thumbnails for imported asset ${asset.id}:`, error);
+        }
+      });
+
+      Promise.all(thumbnailPromises)
+        .then(() => console.log(`[Editor] All import thumbnail generation complete`))
+        .catch((err) => console.error(`[Editor] Import thumbnail generation error:`, err));
+    }
   };
 
   const handleExport = async (options: { resolution: string; quality: string; format: string }) => {
@@ -200,6 +271,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
               zoom={zoom}
               snap={project.settings.snap}
               currentTime={currentTime}
+              assets={assets}
               onSelectionChange={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
               onMoveClip={(clipId, trackId, start) => actions.moveClip(clipId, trackId, start)}
               onTrimClip={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
