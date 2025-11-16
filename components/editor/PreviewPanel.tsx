@@ -5,7 +5,7 @@ import { Play, Pause } from "lucide-react";
 import { Button } from "../ui/button";
 
 interface PreviewPanelProps {
-  canvasRef: React.RefObject<HTMLCanvasElement>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
