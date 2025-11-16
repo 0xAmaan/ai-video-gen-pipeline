@@ -3,6 +3,7 @@
 import {
   Input,
   BlobSource,
+  UrlSource,
   ALL_FORMATS,
   AudioBufferSink,
   CanvasSink,
@@ -130,20 +131,45 @@ async function handleThumbnailRequest(
 ): Promise<void> {
   const { requestId, assetId, mediaUrl, duration, count } = message;
 
+  console.log(
+    `[ThumbnailWorker] Starting thumbnail generation for asset ${assetId}`,
+  );
+  console.log(`[ThumbnailWorker] Media URL: ${mediaUrl}`);
+  console.log(`[ThumbnailWorker] Duration: ${duration}s, Count: ${count}`);
+
   try {
-    // Fetch the video file
-    const response = await fetch(mediaUrl);
-    const blob = await response.blob();
+    // Use UrlSource to read directly from the URL (no need to fetch as blob)
+    console.log(`[ThumbnailWorker] Creating Input from UrlSource...`);
     const input = new Input({
-      source: new BlobSource(blob),
+      source: new UrlSource(mediaUrl, {
+        requestInit: {
+          mode: "cors",
+          credentials: "omit",
+        },
+      }),
       formats: ALL_FORMATS,
     });
-    const videoTrack = await input.getPrimaryVideoTrack();
 
-    if (!videoTrack || !(await videoTrack.canDecode())) {
+    console.log(`[ThumbnailWorker] Getting primary video track...`);
+    const videoTrack = await input.getPrimaryVideoTrack();
+    console.log(
+      `[ThumbnailWorker] Video track found:`,
+      videoTrack ? "yes" : "no",
+    );
+
+    if (!videoTrack) {
+      throw new Error("No video track found in file");
+    }
+
+    console.log(`[ThumbnailWorker] Checking if video track can decode...`);
+    const canDecode = await videoTrack.canDecode();
+    console.log(`[ThumbnailWorker] Can decode: ${canDecode}`);
+
+    if (!canDecode) {
       throw new Error("Video track cannot be decoded");
     }
 
+    console.log(`[ThumbnailWorker] Creating CanvasSink...`);
     // Create CanvasSink with thumbnail dimensions (160x90 for timeline)
     const sink = new CanvasSink(videoTrack, {
       width: 160,
@@ -153,21 +179,33 @@ async function handleThumbnailRequest(
     });
 
     // Generate equally-spaced timestamps
+    console.log(`[ThumbnailWorker] Computing timestamps...`);
     const startTimestamp = await videoTrack.getFirstTimestamp();
     const endTimestamp = await videoTrack.computeDuration();
+    console.log(
+      `[ThumbnailWorker] Start: ${startTimestamp}, End: ${endTimestamp}`,
+    );
+
     const timestamps: number[] = [];
 
     for (let i = 0; i < count; i++) {
       const t = i / (count - 1); // 0 to 1
       timestamps.push(startTimestamp + t * (endTimestamp - startTimestamp));
     }
+    console.log(`[ThumbnailWorker] Generated ${timestamps.length} timestamps`);
 
     // Extract thumbnails
+    console.log(`[ThumbnailWorker] Starting thumbnail extraction...`);
     const thumbnails: string[] = [];
     let current = 0;
 
     for await (const result of sink.canvasesAtTimestamps(timestamps)) {
-      if (!result) continue;
+      if (!result) {
+        console.log(
+          `[ThumbnailWorker] Skipping null result at index ${current}`,
+        );
+        continue;
+      }
       // Convert canvas to data URL
       const canvas = result.canvas as OffscreenCanvas;
       const blob = await canvas.convertToBlob({
@@ -178,6 +216,7 @@ async function handleThumbnailRequest(
       thumbnails.push(dataUrl);
 
       current++;
+      console.log(`[ThumbnailWorker] Generated thumbnail ${current}/${count}`);
 
       // Send progress update
       ctx.postMessage({
@@ -189,6 +228,10 @@ async function handleThumbnailRequest(
       });
     }
 
+    console.log(
+      `[ThumbnailWorker] Thumbnail extraction complete. Total: ${thumbnails.length}`,
+    );
+
     // Send result
     const payload: ThumbnailResponseMessage = {
       type: "THUMBNAIL_RESULT",
@@ -199,7 +242,18 @@ async function handleThumbnailRequest(
 
     ctx.postMessage(payload);
     input.dispose();
+    console.log(
+      `[ThumbnailWorker] Successfully completed thumbnail generation for ${assetId}`,
+    );
   } catch (error) {
+    console.error(
+      `[ThumbnailWorker] Error during thumbnail generation:`,
+      error,
+    );
+    console.error(
+      `[ThumbnailWorker] Error stack:`,
+      error instanceof Error ? error.stack : "N/A",
+    );
     ctx.postMessage({
       type: "THUMBNAIL_ERROR",
       requestId,

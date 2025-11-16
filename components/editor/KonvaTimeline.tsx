@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo, memo } from "react";
 import { Stage, Layer, Rect, Line, Text, Group } from "react-konva";
+import { ChevronsDown } from "lucide-react";
 import type { Sequence, Clip, MediaAssetMeta } from "@/lib/editor/types";
 import { formatTime } from "@/lib/editor/utils/time-format";
 import { KonvaClipItem } from "./KonvaClipItem";
+import type Konva from "konva";
 
 interface KonvaTimelineProps {
   sequence: Sequence;
@@ -20,10 +22,12 @@ interface KonvaTimelineProps {
   onClipTrim: (clipId: string, newTrimStart: number, newTrimEnd: number) => void;
   onSeek: (time: number) => void;
   onScrub?: (time: number) => void;
+  onScrubStart?: () => void;
+  onScrubEnd?: () => void;
 }
 
-const CLIP_HEIGHT = 160;
-const CLIP_Y = 20;
+const CLIP_HEIGHT = 120;
+const CLIP_Y = 94;
 const TIMELINE_HEIGHT = 200;
 const DEFAULT_TIMELINE_DURATION = 300; // 5 minutes default view
 const MIN_ZOOM = 0.5;
@@ -31,7 +35,7 @@ const MAX_ZOOM = 4.0;
 const X_OFFSET = 10; // Padding from left edge
 const MIN_CLIP_WIDTH = 40; // Minimum width in pixels to prevent slivers
 
-export const KonvaTimeline = ({
+const KonvaTimelineComponent = ({
   sequence,
   selectedClipId,
   currentTime,
@@ -44,17 +48,31 @@ export const KonvaTimeline = ({
   onClipTrim,
   onSeek,
   onScrub,
+  onScrubStart,
+  onScrubEnd,
 }: KonvaTimelineProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const playheadLineRef = useRef<Konva.Line>(null);
+  const playheadChevronRef = useRef<HTMLDivElement>(null);
   const [isHovering, setIsHovering] = useState(false);
   const [scrubberTime, setScrubberTime] = useState(0);
   const [draggingClipId, setDraggingClipId] = useState<string | null>(null);
   const [draggedClipX, setDraggedClipX] = useState<number>(0);
   const [virtualClipOrder, setVirtualClipOrder] = useState<Clip[]>([]);
+  const scrubRafRef = useRef<number | null>(null);
+  const pendingScrubTimeRef = useRef<number | null>(null);
+  const isScrubbing = useRef(false);
 
   // Get first video track
   const videoTrack = sequence.tracks.find((t) => t.kind === "video");
   const clips = videoTrack?.clips ?? [];
+
+  // Create asset lookup Map for O(1) access instead of O(n) find
+  const assetMap = useMemo(() => {
+    const map = new Map<string, MediaAssetMeta>();
+    assets.forEach((asset) => map.set(asset.id, asset));
+    return map;
+  }, [assets]);
 
   // Calculate effective duration
   const effectiveDuration = Math.max(
@@ -96,6 +114,21 @@ export const KonvaTimeline = ({
     (pixels: number) => pixels / PIXELS_PER_SECOND,
     [PIXELS_PER_SECOND],
   );
+
+  // Update playhead position directly via ref to avoid 60fps re-renders
+  useEffect(() => {
+    if (playheadLineRef.current) {
+      const xPos = timeToPixels(currentTime) + X_OFFSET;
+      playheadLineRef.current.points([xPos, 0, xPos, containerHeight]);
+      playheadLineRef.current.getLayer()?.batchDraw();
+    }
+
+    // Update HTML chevron position
+    if (playheadChevronRef.current) {
+      const xPos = timeToPixels(currentTime) + X_OFFSET;
+      playheadChevronRef.current.style.left = `${xPos}px`;
+    }
+  }, [currentTime, timeToPixels, containerHeight]);
 
   // Zoom with Ctrl/Cmd + scroll wheel
   useEffect(() => {
@@ -164,71 +197,106 @@ export const KonvaTimeline = ({
       setScrubberTime(clampedTime);
       setIsHovering(true);
 
+      // Signal scrub start on first hover
+      if (!isScrubbing.current && onScrubStart) {
+        isScrubbing.current = true;
+        onScrubStart();
+      }
+
+      // Throttle scrub calls using requestAnimationFrame
       if (onScrub) {
-        onScrub(clampedTime);
+        pendingScrubTimeRef.current = clampedTime;
+
+        if (scrubRafRef.current === null) {
+          scrubRafRef.current = requestAnimationFrame(() => {
+            if (pendingScrubTimeRef.current !== null) {
+              onScrub(pendingScrubTimeRef.current);
+              pendingScrubTimeRef.current = null;
+            }
+            scrubRafRef.current = null;
+          });
+        }
       }
     }
   };
 
   const handleTimelineMouseLeave = () => {
     setIsHovering(false);
-  };
 
-  // Clip drag handlers
-  const handleClipDragStart = (clipId: string, startX: number) => {
-    setDraggingClipId(clipId);
-    setDraggedClipX(startX);
-    setVirtualClipOrder([...clips]);
-  };
-
-  const handleClipDragMove = (clipId: string, currentX: number) => {
-    setDraggedClipX(currentX);
-
-    const draggedClip = virtualClipOrder.find((c) => c.id === clipId);
-    if (!draggedClip) return;
-
-    const draggedClipCenter =
-      currentX + (draggedClip.duration * PIXELS_PER_SECOND) / 2;
-    const otherClips = virtualClipOrder.filter((c) => c.id !== clipId);
-    const newOrder = [...otherClips];
-
-    let insertIndex = 0;
-    let cumulativeTime = 0;
-
-    for (let i = 0; i < otherClips.length; i++) {
-      const clip = otherClips[i];
-      const clipStart = cumulativeTime * PIXELS_PER_SECOND;
-      const clipEnd = clipStart + clip.duration * PIXELS_PER_SECOND;
-      const clipCenter = (clipStart + clipEnd) / 2;
-
-      if (draggedClipCenter > clipCenter) {
-        insertIndex = i + 1;
-      }
-
-      cumulativeTime += clip.duration;
+    // Signal scrub end
+    if (isScrubbing.current && onScrubEnd) {
+      isScrubbing.current = false;
+      onScrubEnd();
     }
 
-    newOrder.splice(insertIndex, 0, draggedClip);
-    setVirtualClipOrder(newOrder);
+    // Cancel any pending scrub on mouse leave
+    if (scrubRafRef.current !== null) {
+      cancelAnimationFrame(scrubRafRef.current);
+      scrubRafRef.current = null;
+      pendingScrubTimeRef.current = null;
+    }
   };
 
-  const handleClipDragEnd = (clipId: string) => {
-    if (!draggingClipId) return;
+  // Clip drag handlers - memoized to prevent child re-renders
+  const handleClipDragStart = useCallback((clipId: string, startX: number) => {
+    setDraggingClipId(clipId);
+    setDraggedClipX(startX);
+    setVirtualClipOrder((prev) => [...clips]);
+  }, [clips]);
 
-    // Reflow clips to be sequential
-    let cumulativeTime = 0;
-    const reorderedClips = virtualClipOrder.map((clip) => {
-      const reflowedClip = { ...clip, start: cumulativeTime };
-      cumulativeTime += clip.duration;
-      return reflowedClip;
+  const handleClipDragMove = useCallback((clipId: string, currentX: number) => {
+    setDraggedClipX(currentX);
+
+    setVirtualClipOrder((prevOrder) => {
+      const draggedClip = prevOrder.find((c) => c.id === clipId);
+      if (!draggedClip) return prevOrder;
+
+      const draggedClipCenter =
+        currentX + (draggedClip.duration * PIXELS_PER_SECOND) / 2;
+      const otherClips = prevOrder.filter((c) => c.id !== clipId);
+      const newOrder = [...otherClips];
+
+      let insertIndex = 0;
+      let cumulativeTime = 0;
+
+      for (let i = 0; i < otherClips.length; i++) {
+        const clip = otherClips[i];
+        const clipStart = cumulativeTime * PIXELS_PER_SECOND;
+        const clipEnd = clipStart + clip.duration * PIXELS_PER_SECOND;
+        const clipCenter = (clipStart + clipEnd) / 2;
+
+        if (draggedClipCenter > clipCenter) {
+          insertIndex = i + 1;
+        }
+
+        cumulativeTime += clip.duration;
+      }
+
+      newOrder.splice(insertIndex, 0, draggedClip);
+      return newOrder;
     });
+  }, [PIXELS_PER_SECOND]);
 
-    onClipReorder(reorderedClips);
+  const handleClipDragEnd = useCallback((clipId: string) => {
+    setVirtualClipOrder((prevOrder) => {
+      if (!draggingClipId) return prevOrder;
+
+      // Reflow clips to be sequential
+      let cumulativeTime = 0;
+      const reorderedClips = prevOrder.map((clip) => {
+        const reflowedClip = { ...clip, start: cumulativeTime };
+        cumulativeTime += clip.duration;
+        return reflowedClip;
+      });
+
+      onClipReorder(reorderedClips);
+      return prevOrder;
+    });
 
     setDraggingClipId(null);
     setDraggedClipX(0);
     setVirtualClipOrder([]);
-  };
+  }, [draggingClipId, onClipReorder]);
 
   // Render clips
   const clipsToRender = draggingClipId ? virtualClipOrder : clips;
@@ -268,6 +336,19 @@ export const KonvaTimeline = ({
 
             return markers;
           })()}
+
+          {/* Playhead chevron indicator */}
+          <div
+            ref={playheadChevronRef}
+            className="absolute pointer-events-none"
+            style={{
+              left: `${timeToPixels(currentTime) + X_OFFSET}px`,
+              bottom: "0px",
+              transform: "translateX(-50%)",
+            }}
+          >
+            <ChevronsDown className="w-4 h-4 text-white" strokeWidth={2.5} />
+          </div>
         </div>
       </div>
 
@@ -278,6 +359,7 @@ export const KonvaTimeline = ({
         style={{ height: `${containerHeight}px` }}
       >
         <Stage
+          key="konva-timeline-stage"
           width={TIMELINE_WIDTH}
           height={containerHeight}
           onMouseMove={handleTimelineMouseMove}
@@ -307,7 +389,7 @@ export const KonvaTimeline = ({
             {/* Clips */}
             {clipsToRender.map((clip) => {
               const isDragging = clip.id === draggingClipId;
-              const asset = assets.find((a) => a.id === clip.mediaId);
+              const asset = assetMap.get(clip.mediaId);
               return (
                 <KonvaClipItem
                   key={clip.id}
@@ -344,8 +426,9 @@ export const KonvaTimeline = ({
               />
             )}
 
-            {/* Playhead (white - actual position) */}
+            {/* Playhead (white - actual position) - updated via ref */}
             <Line
+              ref={playheadLineRef}
               points={[
                 timeToPixels(currentTime) + X_OFFSET,
                 0,
@@ -367,3 +450,6 @@ export const KonvaTimeline = ({
     </div>
   );
 };
+
+// Memoize the component to prevent re-renders when props haven't changed
+export const KonvaTimeline = memo(KonvaTimelineComponent);

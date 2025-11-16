@@ -182,17 +182,17 @@ const ExportConfigurator = ({
           <SelectItem value="1440p">1440p (2K)</SelectItem>
           <SelectItem value="4k">4K (Ultra HD)</SelectItem>
         </SelectCard>
-        <SelectCard label="Quality" value={quality} onChange={onQualityChange}>
+        <SelectCard label="Quality" value={quality} onChange={onQualityChange} disabled>
           <SelectItem value="low">Low (Fast)</SelectItem>
           <SelectItem value="medium">Medium</SelectItem>
           <SelectItem value="high">High (Best)</SelectItem>
         </SelectCard>
-        <SelectCard label="Format" value={format} onChange={onFormatChange}>
+        <SelectCard label="Format" value={format} onChange={onFormatChange} disabled>
           <SelectItem value="mp4">MP4 (H.264)</SelectItem>
           <SelectItem value="webm">WebM (VP9)</SelectItem>
           <SelectItem value="mov">MOV (ProRes)</SelectItem>
         </SelectCard>
-        <SelectCard label="Aspect Ratio" value={aspectRatio} onChange={onAspectRatioChange}>
+        <SelectCard label="Aspect Ratio" value={aspectRatio} onChange={onAspectRatioChange} disabled>
           <SelectItem value="16:9">16:9 (Landscape)</SelectItem>
           <SelectItem value="9:16">9:16 (Vertical)</SelectItem>
           <SelectItem value="1:1">1:1 (Square)</SelectItem>
@@ -230,15 +230,17 @@ const SelectCard = ({
   value,
   onChange,
   children,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   children: ReactNode;
+  disabled?: boolean;
 }) => (
   <div>
     <label className="text-sm font-medium mb-2 block">{label}</label>
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger>
         <SelectValue />
       </SelectTrigger>

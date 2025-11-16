@@ -42,8 +42,8 @@ export const PreviewPanel = ({
         />
       </div>
       <div className="flex items-center gap-3">
-        <Button variant="secondary" size="icon" onClick={onTogglePlayback} aria-label="Toggle playback">
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        <Button variant="secondary" size="icon" onClick={onTogglePlayback} aria-label="Toggle playback" className="flex-shrink-0">
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
         </Button>
         <input
           type="range"

@@ -99,4 +99,19 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
+
+  // Editor projects (Konva timeline editor)
+  editorProjects: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    // Store the entire project state as JSON
+    projectData: v.any(), // Project type from lib/editor/types.ts
+    // Undo/redo history
+    history: v.object({
+      past: v.array(v.any()), // Array of Project snapshots
+      future: v.array(v.any()), // Array of Project snapshots
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
 });

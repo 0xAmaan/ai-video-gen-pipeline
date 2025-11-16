@@ -15,6 +15,12 @@ export class PreviewRenderer {
   private audioContext?: AudioContext;
   private workletNode?: AudioWorkletNode;
   private onTimeUpdate?: TimeUpdateHandler;
+  private lastFrameTime?: number;
+  private pendingSeek?: number;
+  private seekDebounceTimer?: number;
+  private isDrawingFrame = false;
+  private isScrubbing = false;
+  private wasPlayingBeforeScrub = false;
 
   constructor(
     private readonly getSequence: () => Sequence | null,
@@ -38,9 +44,14 @@ export class PreviewRenderer {
     this.videoEl.addEventListener("ended", () => this.handleClipEnded());
     try {
       this.audioContext = new AudioContext();
-      await this.audioContext.audioWorklet.addModule("/audio/preview-processor.js");
+      await this.audioContext.audioWorklet.addModule(
+        "/audio/preview-processor.js",
+      );
       const source = this.audioContext.createMediaElementSource(this.videoEl);
-      this.workletNode = new AudioWorkletNode(this.audioContext, "preview-processor");
+      this.workletNode = new AudioWorkletNode(
+        this.audioContext,
+        "preview-processor",
+      );
       source.connect(this.workletNode).connect(this.audioContext.destination);
     } catch (error) {
       console.warn("PreviewRenderer: failed to init audio worklet", error);
@@ -53,6 +64,7 @@ export class PreviewRenderer {
 
   async play() {
     this.playing = true;
+    this.lastFrameTime = undefined; // Reset timing on play
     await this.audioContext?.resume();
     await this.videoEl?.play().catch(() => undefined);
     this.loop();
@@ -65,12 +77,40 @@ export class PreviewRenderer {
       cancelAnimationFrame(this.raf);
       this.raf = undefined;
     }
+    this.lastFrameTime = undefined;
   }
 
   seek(time: number) {
     this.currentTime = time;
-    this.syncMediaToTimeline();
+
+    // Debounce video element seeks to prevent thrashing
+    if (this.seekDebounceTimer !== undefined) {
+      clearTimeout(this.seekDebounceTimer);
+    }
+
+    this.seekDebounceTimer = window.setTimeout(() => {
+      this.syncMediaToTimeline();
+      this.seekDebounceTimer = undefined;
+    }, 16); // ~60fps debounce
+
     this.drawFrame();
+  }
+
+  startScrubbing() {
+    if (this.isScrubbing) return;
+    this.isScrubbing = true;
+    this.wasPlayingBeforeScrub = this.playing;
+    if (this.playing) {
+      this.pause();
+    }
+  }
+
+  endScrubbing() {
+    if (!this.isScrubbing) return;
+    this.isScrubbing = false;
+    if (this.wasPlayingBeforeScrub) {
+      this.play();
+    }
   }
 
   detach() {
@@ -83,15 +123,28 @@ export class PreviewRenderer {
     this.audioContext?.close();
   }
 
-  private loop = () => {
+  private loop = (timestamp?: number) => {
     if (!this.playing) return;
-    this.render();
+    this.render(timestamp);
     this.raf = requestAnimationFrame(this.loop);
   };
 
-  private render() {
+  private render(timestamp?: number) {
     if (!this.canvas || !this.ctx) return;
-    this.currentTime += 1 / 60;
+
+    // Use timestamp-based timing instead of fixed increments
+    if (timestamp !== undefined) {
+      if (this.lastFrameTime !== undefined) {
+        const deltaMs = timestamp - this.lastFrameTime;
+        const deltaSec = deltaMs / 1000;
+        this.currentTime += deltaSec;
+      }
+      this.lastFrameTime = timestamp;
+    } else {
+      // Fallback if no timestamp provided
+      this.currentTime += 1 / 60;
+    }
+
     this.syncMediaToTimeline();
     this.drawFrame();
     this.onTimeUpdate?.(this.currentTime);
@@ -123,17 +176,56 @@ export class PreviewRenderer {
 
   private drawFrame() {
     if (!this.canvas || !this.ctx) return;
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+
+    // Render coalescing: skip if already drawing
+    if (this.isDrawingFrame) return;
+    this.isDrawingFrame = true;
+
+    const canvasWidth = this.canvas.width;
+    const canvasHeight = this.canvas.height;
     const video = this.videoEl;
-    if (video && video.readyState >= 2) {
-      this.ctx.drawImage(video, 0, 0, width, height);
-      return;
-    }
+
+    // Clear canvas with black background
     this.ctx.fillStyle = "#050505";
-    this.ctx.fillRect(0, 0, width, height);
-    this.ctx.fillStyle = "#888";
-    this.ctx.fillText("No media", 24, 32);
+    this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    if (
+      video &&
+      video.readyState >= 2 &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0
+    ) {
+      // Calculate aspect ratios
+      const videoAspect = video.videoWidth / video.videoHeight;
+      const canvasAspect = canvasWidth / canvasHeight;
+
+      let drawWidth: number;
+      let drawHeight: number;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      // Fit video to canvas while preserving aspect ratio (letterbox/pillarbox)
+      if (videoAspect > canvasAspect) {
+        // Video is wider - fit to width, add letterbox (black bars top/bottom)
+        drawWidth = canvasWidth;
+        drawHeight = canvasWidth / videoAspect;
+        offsetY = (canvasHeight - drawHeight) / 2;
+      } else {
+        // Video is taller - fit to height, add pillarbox (black bars left/right)
+        drawHeight = canvasHeight;
+        drawWidth = canvasHeight * videoAspect;
+        offsetX = (canvasWidth - drawWidth) / 2;
+      }
+
+      // Draw video centered with correct aspect ratio
+      this.ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+    } else {
+      // No media fallback
+      this.ctx.fillStyle = "#888";
+      this.ctx.fillText("No media", 24, 32);
+    }
+
+    this.isDrawingFrame = false;
   }
 
   private resolveClip(sequence: Sequence, time: number) {

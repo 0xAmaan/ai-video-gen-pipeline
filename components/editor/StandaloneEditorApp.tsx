@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { getMediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
 import { PreviewRenderer } from "@/lib/editor/playback/preview-renderer";
@@ -24,12 +26,26 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
   const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
+
+  // Convex hooks for project persistence
+  const saveProject = useMutation(api.editor.saveProject);
+  const loadProject = useQuery(api.editor.loadProject, {});
+
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
   const actions = useProjectStore((state) => state.actions);
+
+  // Wire up Convex to the store
+  useEffect(() => {
+    actions.setSaveProject(saveProject);
+    actions.setLoadProject(async (args) => {
+      // Convex hooks return data directly, wrap in async function
+      return loadProject || null;
+    });
+  }, [actions, saveProject, loadProject]);
   const mediaManager = useMemo(() => {
     if (typeof window === "undefined") {
       return null;
@@ -78,6 +94,27 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     window.addEventListener("keydown", handleKeyDelete);
     return () => window.removeEventListener("keydown", handleKeyDelete);
   }, []);
+
+  useEffect(() => {
+    const handleKeySpace = (event: KeyboardEvent) => {
+      if (event.key !== " ") {
+        return;
+      }
+      const active = document.activeElement;
+      if (
+        active &&
+        (active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement ||
+          active.getAttribute("contenteditable") === "true")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      actions.togglePlayback();
+    };
+    window.addEventListener("keydown", handleKeySpace);
+    return () => window.removeEventListener("keydown", handleKeySpace);
+  }, [actions]);
 
   useEffect(() => {
     if (autoHydrate) {
@@ -146,6 +183,12 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
         // Skip if not a video or already has thumbnails
         if (asset.type !== "video" || asset.thumbnails?.length) continue;
 
+        // Skip if no URL
+        if (!asset.url) {
+          console.log(`Skipping thumbnail generation for ${asset.name} (no URL)`);
+          continue;
+        }
+
         try {
           console.log(`Generating thumbnails for ${asset.name}...`);
           const thumbnails = await mediaManager.generateThumbnails(
@@ -178,7 +221,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
 
     // Generate thumbnails for video assets
     for (const asset of results) {
-      if (asset.type === "video") {
+      if (asset.type === "video" && asset.url) {
         try {
           console.log(`Generating thumbnails for ${asset.name}...`);
           const thumbnails = await mediaManager.generateThumbnails(
@@ -209,7 +252,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ?? project.sequences[0];
     setExportStatus({ progress: 0, status: "Preparing" });
     try {
-      const blob = await exportManager.exportSequence(sequence, options, (progress, status) => {
+      const blob = await exportManager.exportSequence(sequence, project.mediaAssets, options, (progress, status) => {
         setExportStatus({ progress, status });
       });
       await saveBlob(blob, `${project.title || "export"}.${options.format}`);
@@ -284,6 +327,16 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             onClipTrim={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
             onSeek={(time) => actions.setCurrentTime(time)}
             onScrub={(time) => rendererRef.current?.seek(time)}
+            onScrubStart={() => {
+              if (rendererRef.current && typeof rendererRef.current.startScrubbing === 'function') {
+                rendererRef.current.startScrubbing();
+              }
+            }}
+            onScrubEnd={() => {
+              if (rendererRef.current && typeof rendererRef.current.endScrubbing === 'function') {
+                rendererRef.current.endScrubbing();
+              }
+            }}
           />
         </div>
       </div>

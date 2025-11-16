@@ -1,8 +1,11 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo, memo } from "react";
 import { Rect, Text, Group, Image as KonvaImage } from "react-konva";
 import type { Clip, MediaAssetMeta } from "@/lib/editor/types";
+
+// Global cache for Image objects by dataUrl to prevent recreating identical images
+const imageCache = new Map<string, HTMLImageElement>();
 
 interface KonvaClipItemProps {
   clip: Clip;
@@ -19,13 +22,13 @@ interface KonvaClipItemProps {
   onTrim: (newTrimStart: number, newTrimEnd: number) => void;
 }
 
-const CLIP_HEIGHT = 160;
-const CLIP_Y = 20;
+const CLIP_HEIGHT = 120;
+const CLIP_Y = 94;
 const HANDLE_WIDTH = 10;
 const MIN_CLIP_DURATION = 0.5; // Minimum 0.5 seconds
 const MIN_CLIP_WIDTH = 40; // Minimum visual width in pixels
 
-export const KonvaClipItem = ({
+const KonvaClipItemComponent = ({
   clip,
   asset,
   isSelected,
@@ -43,7 +46,7 @@ export const KonvaClipItem = ({
   const trimDragStartRef = useRef({ trimStart: 0, trimEnd: 0 });
   const [thumbnailImages, setThumbnailImages] = useState<HTMLImageElement[]>([]);
 
-  // Load thumbnail images from data URLs
+  // Load thumbnail images from data URLs with caching
   useEffect(() => {
     if (!asset?.thumbnails?.length) {
       setThumbnailImages([]);
@@ -54,8 +57,21 @@ export const KonvaClipItem = ({
     let loadedCount = 0;
 
     asset.thumbnails.forEach((dataUrl, index) => {
+      // Check if image is already in cache
+      const cachedImage = imageCache.get(dataUrl);
+      if (cachedImage) {
+        images[index] = cachedImage;
+        loadedCount++;
+        if (loadedCount === asset.thumbnails!.length) {
+          setThumbnailImages([...images]);
+        }
+        return;
+      }
+
+      // Create new image and cache it
       const img = new window.Image();
       img.onload = () => {
+        imageCache.set(dataUrl, img);
         loadedCount++;
         if (loadedCount === asset.thumbnails!.length) {
           setThumbnailImages([...images]);
@@ -65,11 +81,7 @@ export const KonvaClipItem = ({
       images[index] = img;
     });
 
-    return () => {
-      images.forEach((img) => {
-        img.src = "";
-      });
-    };
+    // No cleanup needed since we're caching the images
   }, [asset?.thumbnails]);
 
   // Calculate clip dimensions with minimum width
@@ -79,8 +91,8 @@ export const KonvaClipItem = ({
       ? dragX
       : clip.start * pixelsPerSecond + xOffset;
 
-  // Generate clip color based on clip ID (deterministic)
-  const getClipColor = (id: string): string => {
+  // Memoize clip color generation based on clip ID (deterministic)
+  const clipColor = useMemo(() => {
     const colors = [
       "#3B82F6", // blue
       "#8B5CF6", // purple
@@ -89,11 +101,9 @@ export const KonvaClipItem = ({
       "#10B981", // green
       "#06B6D4", // cyan
     ];
-    const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const hash = clip.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return colors[hash % colors.length];
-  };
-
-  const clipColor = getClipColor(clip.id);
+  }, [clip.id]);
 
   // Drag handlers
   const handleDragStart = (e: any) => {
@@ -349,3 +359,21 @@ export const KonvaClipItem = ({
     </Group>
   );
 };
+
+// Memoize component with custom comparison to prevent re-renders
+export const KonvaClipItem = memo(KonvaClipItemComponent, (prevProps, nextProps) => {
+  // Only re-render if these specific props change
+  return (
+    prevProps.clip.id === nextProps.clip.id &&
+    prevProps.clip.start === nextProps.clip.start &&
+    prevProps.clip.duration === nextProps.clip.duration &&
+    prevProps.clip.trimStart === nextProps.clip.trimStart &&
+    prevProps.clip.trimEnd === nextProps.clip.trimEnd &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.dragX === nextProps.dragX &&
+    prevProps.pixelsPerSecond === nextProps.pixelsPerSecond &&
+    prevProps.xOffset === nextProps.xOffset &&
+    prevProps.asset?.thumbnails === nextProps.asset?.thumbnails
+  );
+});
