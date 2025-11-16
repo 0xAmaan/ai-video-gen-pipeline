@@ -89,14 +89,14 @@ const PromptPage = () => {
         responses: data.responses,
       });
 
-      // Update last active phase
+      // Update last active phase to character-select (before storyboard)
       await updateLastActivePhase({
         projectId: projectId as Id<"videoProjects">,
-        phase: "storyboard",
+        phase: "storyboard", // Keep storyboard as the phase for now
       });
 
-      // Navigate to storyboard phase
-      router.push(`/${projectId}/storyboard`);
+      // Navigate to character selection
+      router.push(`/${projectId}/character-select`);
     } catch (error) {
       console.error("Error saving answers:", error);
     }

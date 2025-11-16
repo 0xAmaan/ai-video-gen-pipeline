@@ -2,7 +2,8 @@
 export interface Scene {
   id: string; // Convex _id
   image: string; // imageUrl
-  description: string;
+  description: string; // Short narrative description for UI display
+  visualPrompt?: string; // Detailed 150-250 word prompt for video generation (optional for backwards compatibility)
   duration: number;
   sceneNumber: number; // From database, 1-indexed
 }

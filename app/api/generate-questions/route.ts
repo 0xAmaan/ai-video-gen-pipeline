@@ -1,7 +1,12 @@
 import { generateObject } from "ai";
+import { groq } from "@ai-sdk/groq";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { NextResponse } from "next/server";
+import {
+  QUESTION_GENERATION_SYSTEM_PROMPT,
+  buildQuestionGenerationPrompt,
+} from "@/lib/prompts";
 
 // Zod schema matching the Question interface from InputPhase
 const questionSchema = z.object({
@@ -37,51 +42,76 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate clarifying questions using OpenAI
-    const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: questionSchema,
-      system: `You are an expert video production consultant. Your job is to ask clarifying questions that will help refine a user's video idea into a clear, actionable vision.
+    // Check if Groq API key is available
+    const hasGroqKey = !!process.env.GROQ_API_KEY;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
 
-Rules:
-- Generate 3-5 highly contextual questions based on the specific video prompt
-- Each question should have 2-4 answer options
-- Questions should uncover missing details like: emotion, visual style, pacing, tone, audience, key message, transformation, etc.
-- Make questions specific to the video type (product demo, tutorial, story, etc.)
-- Each option needs: a short label (2-5 words), a kebab-case value, and a descriptive explanation
-- Question IDs should be kebab-case descriptive names (e.g., "primary-emotion", "visual-style")
-
-Example output structure:
-{
-  "questions": [
-    {
-      "id": "primary-emotion",
-      "question": "What emotion should viewers feel?",
-      "options": [
+    if (!hasGroqKey && !hasOpenAIKey) {
+      console.error("❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local");
+      return NextResponse.json(
         {
-          "label": "Inspired & Motivated",
-          "value": "inspired",
-          "description": "Uplifting content that energizes viewers"
+          error: "No API keys configured",
+          details: "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file"
         },
-        {
-          "label": "Calm & Reassured",
-          "value": "calm",
-          "description": "Soothing tone that builds trust"
-        }
-      ]
+        { status: 500 },
+      );
     }
-  ]
-}`,
-      prompt: `Video idea: "${prompt}"
 
-Generate 3-5 clarifying questions that will help refine this video concept. Focus on what's unclear or missing - don't ask about things already specified in the prompt.`,
-    });
+    // Generate clarifying questions using Groq (much faster) or OpenAI (fallback)
+    // Note: Using openai/gpt-oss-20b - supports strict JSON schema, 250K TPM, very fast
+    let object;
+
+    if (hasGroqKey) {
+      console.log(`🔧 Trying Groq (gpt-oss-20b) - FAST ⚡`);
+      try {
+        const result = await generateObject({
+          model: groq("openai/gpt-oss-20b"),
+          schema: questionSchema,
+          system: QUESTION_GENERATION_SYSTEM_PROMPT,
+          prompt: buildQuestionGenerationPrompt(prompt),
+          maxRetries: 2,
+        });
+        object = result.object;
+      } catch (groqError) {
+        console.warn(`⚠️ Groq failed, falling back to OpenAI:`, groqError instanceof Error ? groqError.message : groqError);
+
+        if (hasOpenAIKey) {
+          const result = await generateObject({
+            model: openai("gpt-4o-mini"),
+            schema: questionSchema,
+            system: QUESTION_GENERATION_SYSTEM_PROMPT,
+            prompt: buildQuestionGenerationPrompt(prompt),
+            maxRetries: 2,
+          });
+          object = result.object;
+        } else {
+          throw groqError; // Re-throw if no OpenAI fallback available
+        }
+      }
+    } else if (hasOpenAIKey) {
+      console.log(`🔧 Using OpenAI (gpt-4o-mini)`);
+      const result = await generateObject({
+        model: openai("gpt-4o-mini"),
+        schema: questionSchema,
+        system: QUESTION_GENERATION_SYSTEM_PROMPT,
+        prompt: buildQuestionGenerationPrompt(prompt),
+        maxRetries: 2,
+      });
+      object = result.object;
+    } else {
+      throw new Error("No API keys configured");
+    }
 
     return NextResponse.json(object);
   } catch (error) {
     console.error("Error generating questions:", error);
+    console.error("Full error details:", error instanceof Error ? error.message : error);
+    console.error("Stack trace:", error instanceof Error ? error.stack : "No stack trace");
     return NextResponse.json(
-      { error: "Failed to generate questions" },
+      {
+        error: "Failed to generate questions",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 },
     );
   }

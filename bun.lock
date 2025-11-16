@@ -5,6 +5,7 @@
     "": {
       "name": "video-pipeline",
       "dependencies": {
+        "@ai-sdk/groq": "^2.0.29",
         "@ai-sdk/openai": "^2.0.67",
         "@clerk/nextjs": "^6.35.1",
         "@radix-ui/react-dialog": "^1.1.15",
@@ -45,6 +46,8 @@
   },
   "packages": {
     "@ai-sdk/gateway": ["@ai-sdk/gateway@2.0.9", "", { "dependencies": { "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.17", "@vercel/oidc": "3.0.3" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-E6x4h5CPPPJ0za1r5HsLtHbeI+Tp3H+YFtcH8G3dSSPFE6w+PZINzB4NxLZmg1QqSeA5HTP3ZEzzsohp0o2GEw=="],
+
+    "@ai-sdk/groq": ["@ai-sdk/groq@2.0.29", "", { "dependencies": { "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.17" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-XBrkIte7/4WACxlnxum0TuO/3Md3gh8SPgmnbm8ndYx8mrurz4N7upEFe+azpMZAsd/demtQNGmk87xzeJd+gg=="],
 
     "@ai-sdk/openai": ["@ai-sdk/openai@2.0.67", "", { "dependencies": { "@ai-sdk/provider": "2.0.0", "@ai-sdk/provider-utils": "3.0.17" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-JhB3fUpY+IxAocyJt2PHuhfNwH+e+rDbZ8Q+d0hgSyNycuPRrV0xutLaf7mgDTvjr5FCrVEkXmM73tJprzZMiA=="],
 

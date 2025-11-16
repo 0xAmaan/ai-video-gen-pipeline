@@ -197,10 +197,10 @@ export const VideoGeneratingPhase = ({
                       )}
 
                       {/* Source Image Preview */}
-                      {!hasVideo && !hasFailed && scene.imageUrl && (
+                      {!hasVideo && !hasFailed && scene.image && (
                         <div className="mt-2 rounded-md overflow-hidden border border-border opacity-50">
                           <img
-                            src={scene.imageUrl}
+                            src={scene.image}
                             alt={`Scene ${index + 1}`}
                             className="w-full h-24 object-cover"
                           />

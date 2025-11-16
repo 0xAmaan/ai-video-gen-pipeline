@@ -9,6 +9,7 @@ export default defineSchema({
       v.literal("draft"),
       v.literal("questions_generated"),
       v.literal("questions_answered"),
+      v.literal("character_selected"),
       v.literal("generating_storyboard"),
       v.literal("storyboard_created"),
       v.literal("video_generated"),
@@ -16,11 +17,14 @@ export default defineSchema({
     lastActivePhase: v.optional(
       v.union(
         v.literal("prompt"),
+        v.literal("character-select"),
         v.literal("storyboard"),
         v.literal("video"),
         v.literal("editor"),
       ),
     ),
+    referenceImageUrl: v.optional(v.string()),
+    selectedModel: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
@@ -53,7 +57,8 @@ export default defineSchema({
   scenes: defineTable({
     projectId: v.id("videoProjects"),
     sceneNumber: v.number(),
-    description: v.string(),
+    description: v.string(), // Short narrative description for UI display
+    visualPrompt: v.optional(v.string()), // Detailed 150-250 word prompt for video generation
     imageStorageId: v.optional(v.string()),
     imageUrl: v.optional(v.string()), // Convex storage URL
     duration: v.number(), // Duration in seconds

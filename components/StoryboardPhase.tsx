@@ -47,6 +47,7 @@ export const StoryboardPhase = ({
         id: scene._id,
         image: scene.imageUrl || "",
         description: scene.description,
+        visualPrompt: scene.visualPrompt,
         duration: scene.duration,
         sceneNumber: scene.sceneNumber,
       }));
@@ -92,6 +93,27 @@ export const StoryboardPhase = ({
         });
       } catch (error) {
         console.error("Failed to update scene description:", error);
+      }
+    }
+  };
+
+  const handleVisualPromptChange = async (id: string, visualPrompt: string) => {
+    // Update local state immediately
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.id === id ? { ...scene, visualPrompt } : scene,
+      ),
+    );
+
+    // Save to Convex
+    if (projectId) {
+      try {
+        await updateScene({
+          sceneId: id as Id<"scenes">,
+          visualPrompt,
+        });
+      } catch (error) {
+        console.error("Failed to update scene visual prompt:", error);
       }
     }
   };
@@ -289,17 +311,18 @@ export const StoryboardPhase = ({
 
               {/* Scene Content */}
               <div className="flex-1 space-y-4">
-                {/* Description */}
+                {/* Description (contains the detailed visual prompt for video generation) */}
                 <div>
                   <label className="text-sm font-medium mb-2 block">
-                    Scene Description
+                    Scene Prompt <span className="text-muted-foreground font-normal">(for video generation)</span>
                   </label>
                   <Textarea
                     value={scene.description}
                     onChange={(e) =>
                       handleDescriptionChange(scene.id, e.target.value)
                     }
-                    className="min-h-[80px] resize-none"
+                    className="min-h-[120px] resize-y text-sm"
+                    placeholder="Detailed visual description for AI video generation..."
                   />
                 </div>
 

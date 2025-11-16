@@ -4,7 +4,7 @@ import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Check } from "lucide-react";
 
-type Phase = "prompt" | "storyboard" | "video" | "editor";
+type Phase = "prompt" | "character-select" | "storyboard" | "video" | "editor";
 
 const PhaseIndicator = () => {
   const params = useParams();
@@ -13,6 +13,11 @@ const PhaseIndicator = () => {
 
   const phases: { id: Phase; label: string; path: string }[] = [
     { id: "prompt", label: "Input", path: `/${projectId}/prompt` },
+    {
+      id: "character-select",
+      label: "Character",
+      path: `/${projectId}/character-select`,
+    },
     { id: "storyboard", label: "Storyboard", path: `/${projectId}/storyboard` },
     { id: "video", label: "Video", path: `/${projectId}/video` },
     { id: "editor", label: "Edit", path: `/${projectId}/editor` },

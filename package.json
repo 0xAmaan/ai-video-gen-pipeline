@@ -5,11 +5,12 @@
   "scripts": {
     "dev": "concurrently \"bun run dev:next\" \"bun run dev:convex\" --names \"NEXT,CONVEX\" --prefix-colors \"cyan,magenta\"",
     "dev:next": "next dev --turbopack",
-    "dev:convex": "bunx convex dev",
+    "dev:convex": "npx convex dev",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/groq": "^2.0.29",
     "@ai-sdk/openai": "^2.0.67",
     "@clerk/nextjs": "^6.35.1",
     "@radix-ui/react-dialog": "^1.1.15",

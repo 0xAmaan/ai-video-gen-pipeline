@@ -25,6 +25,16 @@ const StoryboardPage = () => {
     stage: "generating_descriptions" | "generating_images" | "complete";
     currentScene: number;
   }>({ stage: "generating_descriptions", currentScene: 0 });
+  const [modelInfo, setModelInfo] = useState<{
+    modelName: string;
+    estimatedCost: number;
+    reason: string;
+  }>({
+    modelName: "Selecting optimal model...",
+    estimatedCost: 0,
+    reason: "Analyzing your preferences to choose the best image model",
+  });
+  const [generatingScenes, setGeneratingScenes] = useState<any[]>([]);
 
   const saveScenes = useMutation(api.video.saveScenes);
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
@@ -43,6 +53,7 @@ const StoryboardPage = () => {
     if (!project || !questions?.answers) return;
 
     try {
+      // Step 1: Start with generating descriptions
       setStoryboardStatus({
         stage: "generating_descriptions",
         currentScene: 0,
@@ -54,11 +65,37 @@ const StoryboardPage = () => {
         status: "generating_storyboard",
       });
 
+      // Simulate model selection happening (2 seconds)
+      setTimeout(() => {
+        // This will show the model info card immediately
+        // (will be updated with real data when API returns)
+        setStoryboardStatus({
+          stage: "generating_descriptions",
+          currentScene: 0,
+        });
+      }, 500);
+
       // Call the storyboard generation API
+      const apiStartTime = Date.now();
+
+      // TEMPORARY: Get character reference from localStorage
+      const characterData = localStorage.getItem(`character-${projectId}`);
+      const characterReference = characterData
+        ? JSON.parse(characterData).referenceImageUrl
+        : undefined;
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (characterReference) {
+        headers["x-character-reference"] = characterReference;
+      }
+
       const response = await fetch("/api/generate-storyboard", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
+          projectId: projectId,
           prompt: questions.answers.prompt,
           responses: questions.answers.responses,
         }),
@@ -72,13 +109,53 @@ const StoryboardPage = () => {
 
       const result = await response.json();
 
-      // Save scenes to Convex
+      // Update model info immediately when we get the response
+      if (result.modelInfo) {
+        console.log("✅ Model info received from API:", result.modelInfo);
+        setModelInfo({
+          modelName: result.modelInfo.modelName,
+          estimatedCost: result.modelInfo.estimatedCost,
+          reason: result.modelInfo.reason,
+        });
+        console.log("✅ UI updated with actual model:", result.modelInfo.modelName);
+      }
+
+      // Switch to generating images stage
+      setStoryboardStatus({
+        stage: "generating_images",
+        currentScene: 1,
+      });
+
+      // Simulate progressive image generation with visual feedback
+      const totalScenes = result.scenes.length;
+      setGeneratingScenes([]); // Clear previous scenes
+
+      for (let i = 0; i < result.scenes.length; i++) {
+        // Update progress for each scene
+        setStoryboardStatus({
+          stage: "generating_images",
+          currentScene: i + 1,
+        });
+
+        // Add scene to our local array for immediate UI update
+        setGeneratingScenes((prev) => [...prev, result.scenes[i]]);
+
+        // Wait a bit between scenes for visual feedback (except last one)
+        if (i < result.scenes.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+
+      // Save all scenes to Convex (including visualPrompt for video generation)
       await saveScenes({
         projectId: projectId as Id<"videoProjects">,
         scenes: result.scenes,
       });
 
-      setStoryboardStatus({ stage: "complete", currentScene: result.scenes.length });
+      setStoryboardStatus({
+        stage: "complete",
+        currentScene: result.scenes.length,
+      });
       setIsGenerating(false);
     } catch (error) {
       console.error("Error generating storyboard:", error);
@@ -101,14 +178,24 @@ const StoryboardPage = () => {
     }
   };
 
-  // Convert Convex scenes to component format
-  const scenesForComponent: Scene[] = convexScenes.map((scene) => ({
-    id: scene._id,
-    image: scene.imageUrl || "",
-    description: scene.description,
-    duration: scene.duration,
-    sceneNumber: scene.sceneNumber,
-  }));
+  // Convert scenes to component format
+  const scenesForComponent: Scene[] = isGenerating
+    ? generatingScenes.map((scene, index) => ({
+        id: `temp-${index}`,
+        image: scene.imageUrl || "",
+        description: scene.description,
+        visualPrompt: scene.visualPrompt,
+        duration: scene.duration,
+        sceneNumber: scene.sceneNumber,
+      }))
+    : convexScenes.map((scene) => ({
+        id: scene._id,
+        image: scene.imageUrl || "",
+        description: scene.description,
+        visualPrompt: scene.visualPrompt,
+        duration: scene.duration,
+        sceneNumber: scene.sceneNumber,
+      }));
 
   return (
     <PhaseGuard requiredPhase="storyboard">
@@ -118,6 +205,9 @@ const StoryboardPage = () => {
           totalScenes={5}
           currentStage={storyboardStatus.stage}
           currentSceneNumber={storyboardStatus.currentScene}
+          modelName={modelInfo.modelName}
+          estimatedCostPerImage={modelInfo.estimatedCost}
+          modelReason={modelInfo.reason}
         />
       ) : (
         <StoryboardPhase
