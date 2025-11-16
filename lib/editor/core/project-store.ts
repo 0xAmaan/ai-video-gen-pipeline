@@ -21,13 +21,25 @@ interface PersistedHistory {
 type SaveProjectFn = (args: {
   projectId?: string;
   projectData: Project;
-  history: PersistedHistory;
 }) => Promise<any>;
+
+type SaveHistorySnapshotFn = (args: {
+  projectId: string;
+  snapshot: Project;
+  historyType: "past" | "future";
+}) => Promise<any>;
+
+type ClearFutureHistoryFn = (args: { projectId: string }) => Promise<any>;
 
 type LoadProjectFn = (args: { projectId?: string }) => Promise<{
   project: Project;
-  history: PersistedHistory;
 } | null>;
+
+type LoadProjectHistoryFn = (args: {
+  projectId: string;
+  historyType: "past" | "future";
+  limit?: number;
+}) => Promise<Project[]>;
 
 const deepClone = <T>(value: T): T => {
   if (typeof structuredClone === "function") {
@@ -114,10 +126,10 @@ const createProject = (): Project => {
   };
 };
 
-// Debounced save to Convex
+// Debounced save to Convex (now only saves project, not history)
 const createPersistLater = (saveProject: SaveProjectFn | null) => {
   let timer: number | undefined;
-  return (project: Project, history: PersistedHistory) => {
+  return (project: Project) => {
     if (typeof window === "undefined" || !saveProject) return;
     if (timer) {
       window.clearTimeout(timer);
@@ -126,9 +138,8 @@ const createPersistLater = (saveProject: SaveProjectFn | null) => {
       void saveProject({
         projectId: project.id,
         projectData: project,
-        history,
       });
-    }, 500); // 500ms debounce
+    }, 2000); // 2 second debounce (increased to reduce writes)
   };
 };
 
@@ -173,10 +184,16 @@ export interface ProjectStoreState {
   history: HistoryState;
   // Convex functions injected from component
   _saveProject: SaveProjectFn | null;
+  _saveHistorySnapshot: SaveHistorySnapshotFn | null;
+  _clearFutureHistory: ClearFutureHistoryFn | null;
   _loadProject: LoadProjectFn | null;
+  _loadProjectHistory: LoadProjectHistoryFn | null;
   actions: {
     setSaveProject: (fn: SaveProjectFn) => void;
+    setSaveHistorySnapshot: (fn: SaveHistorySnapshotFn) => void;
+    setClearFutureHistory: (fn: ClearFutureHistoryFn) => void;
     setLoadProject: (fn: LoadProjectFn) => void;
+    setLoadProjectHistory: (fn: LoadProjectHistoryFn) => void;
     hydrate: () => Promise<void>;
     reset: () => void;
     loadProject: (
@@ -203,12 +220,24 @@ export interface ProjectStoreState {
 }
 
 export const useProjectStore = create<ProjectStoreState>((set, get) => {
-  // Helper to persist project changes
-  const persist = (project: Project, history: PersistedHistory) => {
+  // Helper to persist project changes (now only saves project, not history)
+  const persist = (project: Project) => {
     const state = get();
     if (state._saveProject) {
       const persistLater = createPersistLater(state._saveProject);
-      persistLater(project, history);
+      persistLater(project);
+    }
+  };
+
+  // Helper to persist history snapshot
+  const persistHistorySnapshot = (
+    projectId: string,
+    snapshot: Project,
+    historyType: "past" | "future",
+  ) => {
+    const state = get();
+    if (state._saveHistorySnapshot) {
+      void state._saveHistorySnapshot({ projectId, snapshot, historyType });
     }
   };
 
@@ -220,13 +249,19 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
     currentTime: 0,
     history: { past: [], future: [] },
     _saveProject: null,
+    _saveHistorySnapshot: null,
+    _clearFutureHistory: null,
     _loadProject: null,
+    _loadProjectHistory: null,
     actions: {
       setSaveProject: (fn) => set({ _saveProject: fn }),
+      setSaveHistorySnapshot: (fn) => set({ _saveHistorySnapshot: fn }),
+      setClearFutureHistory: (fn) => set({ _clearFutureHistory: fn }),
       setLoadProject: (fn) => set({ _loadProject: fn }),
+      setLoadProjectHistory: (fn) => set({ _loadProjectHistory: fn }),
       hydrate: async () => {
         const state = get();
-        if (!state._loadProject) {
+        if (!state._loadProject || !state._loadProjectHistory) {
           // No Convex yet, create new project
           const project = createProject();
           const history = { past: [], future: [] };
@@ -236,10 +271,24 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
 
         try {
           const snapshot = await state._loadProject({});
-          if (snapshot) {
+          if (snapshot?.project) {
+            // Load history separately (only load last 10 for initial hydration)
+            const [past, future] = await Promise.all([
+              state._loadProjectHistory({
+                projectId: snapshot.project.id,
+                historyType: "past",
+                limit: 10,
+              }),
+              state._loadProjectHistory({
+                projectId: snapshot.project.id,
+                historyType: "future",
+                limit: 10,
+              }),
+            ]);
+
             set({
               project: snapshot.project,
-              history: snapshot.history,
+              history: { past, future },
               ready: true,
             });
           } else {
@@ -278,7 +327,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           isPlaying: false,
         });
         if (options?.persist !== false) {
-          persist(snapshot, history);
+          persist(snapshot);
         }
       },
       refreshTimeline: async () => {
@@ -306,7 +355,11 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           next.mediaAssets[asset.id] = asset;
           next.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
-          persist(next, history);
+          persist(next);
+          // Save history snapshot separately
+          if (state.project) {
+            persistHistorySnapshot(next.id, state.project, "past");
+          }
           return { ...state, project: next, history };
         }),
       appendClipFromAsset: (assetId) => {
@@ -347,7 +400,10 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
         snapshot.updatedAt = Date.now();
         const state = get();
         const history = historyAfterPush(state, state.project!);
-        persist(snapshot, history);
+        persist(snapshot);
+        if (state.project) {
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+        }
         set((current) => ({
           project: snapshot,
           history,
@@ -379,7 +435,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
         snapshot.updatedAt = Date.now();
         const state = get();
         const history = historyAfterPush(state, project);
-        persist(snapshot, history);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
         set((current) => ({
           project: snapshot,
           history,
@@ -400,7 +457,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
         snapshot.updatedAt = Date.now();
         const state = get();
         const history = historyAfterPush(state, project);
-        persist(snapshot, history);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
         set((current) => ({
           project: snapshot,
           history,
@@ -434,7 +492,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
         snapshot.updatedAt = Date.now();
         const state = get();
         const history = historyAfterPush(state, project);
-        persist(snapshot, history);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
         set((current) => ({
           project: snapshot,
           history,
@@ -465,7 +524,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
         snapshot.updatedAt = Date.now();
         const state = get();
         const history = historyAfterPush(state, project);
-        persist(snapshot, history);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
         set((current) => ({
           project: snapshot,
           history,
@@ -482,7 +542,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           clip.volume = Math.max(0, Math.min(1, volume));
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
-          persist(snapshot, history);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
           return { ...state, project: snapshot, history };
         });
       },
@@ -496,7 +557,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           track.muted = !track.muted;
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
-          persist(snapshot, history);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
           return { ...state, project: snapshot, history };
         });
       },
@@ -509,7 +571,14 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
             ? [deepClone(state.project), ...state.history.future]
             : [...state.history.future];
           const history = { past, future };
-          persist(previous, history);
+          persist(previous);
+          // Save current state to future history
+          if (state.project && state._clearFutureHistory) {
+            void state._clearFutureHistory({ projectId: previous.id });
+          }
+          if (state.project) {
+            persistHistorySnapshot(previous.id, state.project, "future");
+          }
           return { ...state, project: previous, history };
         }),
       redo: () =>
@@ -520,7 +589,11 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
             ? [...state.history.past, deepClone(state.project)]
             : [...state.history.past];
           const history = { past, future: rest };
-          persist(next, history);
+          persist(next);
+          // Save current state to past history
+          if (state.project) {
+            persistHistorySnapshot(next.id, state.project, "past");
+          }
           return { ...state, project: next, history };
         }),
       reorderClips: (clips: Clip[]) => {
@@ -539,7 +612,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
         snapshot.updatedAt = Date.now();
         const state = get();
         const history = historyAfterPush(state, project);
-        persist(snapshot, history);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
         set((current) => ({
           project: snapshot,
           history,

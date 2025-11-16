@@ -36,7 +36,10 @@ export const StandaloneEditorApp = ({
 
   // Convex hooks for project persistence
   const saveProject = useMutation(api.editor.saveProject);
+  const saveHistorySnapshot = useMutation(api.editor.saveHistorySnapshot);
+  const clearFutureHistory = useMutation(api.editor.clearFutureHistory);
   const loadProject = useQuery(api.editor.loadProject, {});
+  const loadProjectHistory = useMutation(api.editor.loadProjectHistory);
 
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
@@ -48,11 +51,21 @@ export const StandaloneEditorApp = ({
   // Wire up Convex to the store
   useEffect(() => {
     actions.setSaveProject(saveProject);
+    actions.setSaveHistorySnapshot(saveHistorySnapshot);
+    actions.setClearFutureHistory(clearFutureHistory);
     actions.setLoadProject(async (args) => {
       // Convex hooks return data directly, wrap in async function
       return loadProject || null;
     });
-  }, [actions, saveProject, loadProject]);
+    actions.setLoadProjectHistory(loadProjectHistory);
+  }, [
+    actions,
+    saveProject,
+    saveHistorySnapshot,
+    clearFutureHistory,
+    loadProject,
+    loadProjectHistory,
+  ]);
   const mediaManager = useMemo(() => {
     if (typeof window === "undefined") {
       return null;

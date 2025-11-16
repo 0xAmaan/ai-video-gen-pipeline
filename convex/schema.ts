@@ -142,12 +142,21 @@ export default defineSchema({
     title: v.string(),
     // Store the entire project state as JSON
     projectData: v.any(), // Project type from lib/editor/types.ts
-    // Undo/redo history
-    history: v.object({
-      past: v.array(v.any()), // Array of Project snapshots
-      future: v.array(v.any()), // Array of Project snapshots
-    }),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_updated", ["userId", "updatedAt"]),
+
+  // Separate table for undo/redo history to avoid document size limits
+  projectHistory: defineTable({
+    projectId: v.string(), // References editorProjects.projectData.id
+    userId: v.string(), // For access control
+    snapshot: v.any(), // Project snapshot for undo/redo
+    historyType: v.union(v.literal("past"), v.literal("future")), // Track undo vs redo
+    sequenceNumber: v.number(), // Order in history (0 = most recent past, 1 = older, etc)
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId", "historyType", "sequenceNumber"])
+    .index("by_user", ["userId", "createdAt"]),
 });
