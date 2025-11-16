@@ -38,17 +38,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
   const currentTime = useProjectStore((state) => state.currentTime);
   const actions = useProjectStore((state) => state.actions);
 
-  // Debug toggle with 'D' key
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'd' || e.key === 'D') {
-        setDebugEnabled((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
-
   // Wire up Convex to the store
   useEffect(() => {
     actions.setSaveProject(saveProject);
