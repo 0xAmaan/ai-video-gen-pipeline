@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
@@ -13,11 +13,19 @@ import {
   Sparkles,
   Plus,
   Loader2,
+  RefreshCw,
+  Volume2,
 } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Scene } from "@/types/scene";
+import {
+  VoiceSelectionDialog,
+  type VoiceSelectionDialogSelection,
+} from "@/components/VoiceSelectionDialog";
+import { MINIMAX_VOICES } from "@/lib/voice-selection";
+import type { MiniMaxVoiceId } from "@/lib/voice-selection";
 
 interface StoryboardPhaseProps {
   prompt: string;
@@ -37,15 +45,24 @@ export const StoryboardPhase = ({
   const [regeneratingScenes, setRegeneratingScenes] = useState<Set<string>>(
     new Set(),
   );
+  const [audioGeneratingScenes, setAudioGeneratingScenes] = useState<
+    Set<string>
+  >(new Set());
+  const [showVoiceDialog, setShowVoiceDialog] = useState(false);
 
   // Convex mutations
   const updateScene = useMutation(api.video.updateScene);
   const updateSceneOrder = useMutation(api.video.updateSceneOrder);
   const deleteSceneMutation = useMutation(api.video.deleteScene);
+  const updateVoiceSettings = useMutation(api.video.updateProjectVoiceSettings);
 
   // Load scenes from Convex
   const convexScenes = useQuery(
     api.video.getScenes,
+    projectId ? { projectId } : "skip",
+  );
+  const voiceSettings = useQuery(
+    api.video.getProjectVoiceSettings,
     projectId ? { projectId } : "skip",
   );
 
@@ -59,12 +76,26 @@ export const StoryboardPhase = ({
         visualPrompt: scene.visualPrompt,
         duration: scene.duration,
         sceneNumber: scene.sceneNumber,
+        narrationUrl: scene.narrationUrl || undefined,
+        narrationText: scene.narrationText || "",
+        voiceId: scene.voiceId || undefined,
+        voiceName: scene.voiceName || undefined,
       }));
       setScenes(formattedScenes);
     }
   }, [convexScenes]);
 
   const totalDuration = scenes.reduce((sum, scene) => sum + scene.duration, 0);
+  const sampleAudioUrl = useMemo(
+    () => scenes.find((scene) => scene.narrationUrl)?.narrationUrl,
+    [scenes],
+  );
+  const currentVoiceLabel =
+    voiceSettings?.selectedVoiceName ||
+    scenes[0]?.voiceName ||
+    MINIMAX_VOICES["Wise_Woman"].name;
+  const currentVoiceReasoning =
+    voiceSettings?.voiceReasoning || "AI selected this voice for your prompt.";
 
   const handleDurationChange = async (id: string, duration: number) => {
     // Update local state immediately
@@ -142,6 +173,131 @@ export const StoryboardPhase = ({
           console.error("Failed to delete scene:", error);
         }
       }
+    }
+  };
+
+  const handleNarrationTextChange = (id: string, narrationText: string) => {
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.id === id ? { ...scene, narrationText } : scene,
+      ),
+    );
+  };
+
+  const toggleAudioGenerating = (sceneId: string, isGenerating: boolean) => {
+    setAudioGeneratingScenes((prev) => {
+      const next = new Set(prev);
+      if (isGenerating) {
+        next.add(sceneId);
+      } else {
+        next.delete(sceneId);
+      }
+      return next;
+    });
+  };
+
+  const regenerateNarration = async (
+    scene: Scene,
+    options?: {
+      customText?: string;
+      voiceId?: string;
+      emotion?: string;
+      speed?: number;
+      pitch?: number;
+    },
+  ) => {
+    if (!projectId || scene.id.startsWith("temp-")) {
+      console.warn("Cannot regenerate narration until scenes are saved.");
+      return;
+    }
+
+    toggleAudioGenerating(scene.id, true);
+
+    try {
+      const response = await fetch("/api/regenerate-narration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sceneId: scene.id,
+          newVoiceId: options?.voiceId,
+          newEmotion: options?.emotion,
+          newSpeed: options?.speed,
+          newPitch: options?.pitch,
+          customText: options?.customText,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to regenerate audio");
+      }
+
+      const result = await response.json();
+
+      setScenes((prev) =>
+        prev.map((s) =>
+          s.id === scene.id
+            ? {
+                ...s,
+                narrationUrl: result.audioUrl,
+                narrationText:
+                  result.narrationText ?? options?.customText ?? s.narrationText,
+                voiceId: result.voiceId ?? s.voiceId,
+                voiceName: result.voiceName ?? s.voiceName,
+              }
+            : s,
+        ),
+      );
+    } catch (error) {
+      console.error("Failed to regenerate narration:", error);
+    } finally {
+      toggleAudioGenerating(scene.id, false);
+    }
+  };
+
+  const handleRegenerateNarration = (sceneId: string) => {
+    const scene = scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+    regenerateNarration(scene);
+  };
+
+  const handleRegenerateNarrationWithText = (sceneId: string) => {
+    const scene = scenes.find((s) => s.id === sceneId);
+    if (!scene || !scene.narrationText) return;
+    regenerateNarration(scene, { customText: scene.narrationText });
+  };
+
+  const handleVoiceDialogConfirm = async (
+    selection: VoiceSelectionDialogSelection,
+  ) => {
+    if (!projectId) return;
+    try {
+      await updateVoiceSettings({
+        projectId,
+        selectedVoiceId: selection.voiceId,
+        selectedVoiceName: MINIMAX_VOICES[selection.voiceId].name,
+        voiceReasoning:
+          selection.reasoning || "Manual voice selection from storyboard.",
+        emotion: selection.emotion,
+        speed: selection.speed,
+        pitch: selection.pitch,
+      });
+      if (selection.regenerateAll) {
+        for (const scene of scenes) {
+          if (!scene.id.startsWith("temp-")) {
+            await regenerateNarration(scene, {
+              voiceId: selection.voiceId,
+              emotion: selection.emotion,
+              speed: selection.speed,
+              pitch: selection.pitch,
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to update project voice settings:", error);
+    } finally {
+      setShowVoiceDialog(false);
     }
   };
 
@@ -264,10 +420,37 @@ export const StoryboardPhase = ({
         <Badge variant="secondary" className="text-base px-4 py-2">
           {scenes.length} {scenes.length === 1 ? "Scene" : "Scenes"}
         </Badge>
-        <Badge variant="secondary" className="text-base px-4 py-2">
-          {totalDuration}s Total Duration
-        </Badge>
-      </div>
+      <Badge variant="secondary" className="text-base px-4 py-2">
+        {totalDuration}s Total Duration
+      </Badge>
+    </div>
+
+    {/* Voice Settings */}
+      <Card className="p-4 mb-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="font-medium flex items-center gap-2">
+              <Volume2 className="w-4 h-4" /> Narration Voice
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {currentVoiceLabel} — {currentVoiceReasoning}
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setShowVoiceDialog(true)}>
+            Change Voice
+          </Button>
+        </div>
+        {sampleAudioUrl ? (
+          <audio controls className="w-full mt-3">
+            <source src={sampleAudioUrl} type="audio/wav" />
+            Your browser does not support the audio element.
+          </audio>
+        ) : (
+          <p className="text-sm text-muted-foreground mt-3">
+            Generate narration to preview the selected voice.
+          </p>
+        )}
+      </Card>
 
       {/* Scenes */}
       <div className="space-y-4 mb-6">
@@ -340,6 +523,87 @@ export const StoryboardPhase = ({
                     className="min-h-[120px] resize-y text-sm"
                     placeholder="Detailed visual description for AI video generation..."
                   />
+                </div>
+
+                {/* Narration Controls */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3 justify-between">
+                    <Badge
+                      variant="outline"
+                      className="cursor-pointer"
+                      onClick={() => setShowVoiceDialog(true)}
+                    >
+                      Voice: {scene.voiceName || currentVoiceLabel}
+                    </Badge>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleRegenerateNarration(scene.id)}
+                        disabled={
+                          audioGeneratingScenes.has(scene.id) ||
+                          scene.id.startsWith("temp-") ||
+                          !projectId
+                        }
+                      >
+                        {audioGeneratingScenes.has(scene.id) ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                        )}
+                        Regenerate Audio
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleRegenerateNarrationWithText(scene.id)
+                        }
+                        disabled={
+                          audioGeneratingScenes.has(scene.id) ||
+                          !scene.narrationText ||
+                          scene.id.startsWith("temp-") ||
+                          !projectId
+                        }
+                      >
+                        {audioGeneratingScenes.has(scene.id) ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 mr-2" />
+                        )}
+                        Regenerate with new text
+                      </Button>
+                    </div>
+                  </div>
+                  {scene.narrationUrl ? (
+                    <div>
+                      <audio controls className="w-full">
+                        <source src={scene.narrationUrl} type="audio/wav" />
+                      </audio>
+                      {scene.narrationText && (
+                        <p className="text-xs text-muted-foreground mt-2 italic">
+                          “{scene.narrationText}”
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Narration not generated yet.
+                    </p>
+                  )}
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Narration Text
+                    </label>
+                    <Textarea
+                      value={scene.narrationText || ""}
+                      onChange={(e) =>
+                        handleNarrationTextChange(scene.id, e.target.value)
+                      }
+                      className="min-h-[80px] resize-y text-sm"
+                      placeholder="What should the narrator say for this scene?"
+                    />
+                  </div>
                 </div>
 
                 {/* Duration & Delete */}
@@ -434,6 +698,21 @@ export const StoryboardPhase = ({
           </p>
         )}
       </div>
+
+      <VoiceSelectionDialog
+        open={showVoiceDialog}
+        onClose={() => setShowVoiceDialog(false)}
+        defaultVoiceId={
+          (voiceSettings?.selectedVoiceId as keyof typeof MINIMAX_VOICES) ||
+          (scenes[0]?.voiceId as keyof typeof MINIMAX_VOICES) ||
+          "Wise_Woman"
+        }
+        defaultEmotion={voiceSettings?.emotion || undefined}
+        defaultSpeed={voiceSettings?.speed || undefined}
+        defaultPitch={voiceSettings?.pitch || undefined}
+        onConfirm={handleVoiceDialogConfirm}
+        disabled={!projectId}
+      />
     </div>
   );
 };

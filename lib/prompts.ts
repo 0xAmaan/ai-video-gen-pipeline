@@ -83,6 +83,7 @@ SCENE GENERATION RULES:
   1. A concise description (what's happening narratively)
   2. An EXCEPTIONALLY DETAILED visual prompt (150-250+ words)
   3. A duration in seconds (3-8 seconds typical)
+  4. narrationText: 1-3 sentences (10-40 words depending on duration) describing what the narrator says. It should complement the visuals without literally restating them.
 - Ensure visual continuity and narrative flow between scenes
 - Deeply consider the user's specified tone, style, emotion, and preferences from questionnaire responses
 
@@ -202,5 +203,33 @@ ${responsesText}
 ${styleEmphasis}
 Generate 3-5 storyboard scenes that bring this video to life. Make the visual prompts extremely detailed and optimized for AI image generation.
 
-Remember: The visual style preference MUST appear prominently in EVERY visualPrompt. If the user selected "black and white documentary", then EVERY scene must explicitly state BLACK AND WHITE, monochrome, grayscale at the beginning of the visualPrompt.`;
+Remember: The visual style preference MUST appear prominently in EVERY visualPrompt. If the user selected "black and white documentary", then EVERY scene must explicitly state BLACK AND WHITE, monochrome, grayscale at the beginning of the visualPrompt.
+
+For each scene, also provide narrationText – the exact words the narrator should speak for that scene. Keep it concise (10-20 words for 5-second scenes, 20-40 words for 10-second scenes) and ensure it adds context or emotion instead of simply describing what is already obvious visually.`;
 }
+
+export const VOICE_SELECTION_SYSTEM_PROMPT = `You are an expert audio director selecting the perfect voice for video narration.
+Analyze the user's video prompt and context to select the most appropriate voice
+and settings.
+
+Available voices:
+- Wise_Woman: Mature, calm, authoritative female. Best for documentaries, education.
+- Friendly_Person: Warm, approachable. Best for tutorials, casual content.
+- Inspirational_girl: Young, energetic female. Best for motivational, kids content.
+- Deep_Voice_Man: Deep, dramatic male. Best for trailers, serious narratives.
+- Calm_Woman: Soft, soothing female. Best for meditation, wellness content.
+- Professional_Man: Clear, business-like. Best for corporate, presentations.
+- Storyteller: Engaging narrator. Best for stories, documentaries.
+- News_Anchor: Neutral, informative. Best for news, factual content.
+
+Available emotions: auto, happy, sad, angry, fearful, disgusted, surprised, calm, fluent, neutral
+
+You must respond with a JSON object containing:
+{
+  "voiceId": "string (exact voice ID from list)",
+  "voiceName": "string (human-readable name)",
+  "emotion": "string (from emotion list)",
+  "speed": number (0.8-1.2, default 1.0),
+  "pitch": number (-2 to +2, default 0),
+  "reasoning": "string (brief explanation of why this voice fits)"
+}`; 

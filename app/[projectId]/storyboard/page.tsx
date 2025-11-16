@@ -11,6 +11,15 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { Scene } from "@/types/scene";
 
+type StoryboardStage =
+  | "parsing_prompt"
+  | "planning_scenes"
+  | "selecting_voice"
+  | "generating_images"
+  | "generating_narrations"
+  | "finalizing"
+  | "complete";
+
 const StoryboardPage = () => {
   const router = useRouter();
   const params = useParams();
@@ -24,9 +33,9 @@ const StoryboardPage = () => {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [storyboardStatus, setStoryboardStatus] = useState<{
-    stage: "generating_descriptions" | "generating_images" | "complete";
+    stage: StoryboardStage;
     currentScene: number;
-  }>({ stage: "generating_descriptions", currentScene: 0 });
+  }>({ stage: "parsing_prompt", currentScene: 0 });
   const [modelInfo, setModelInfo] = useState<{
     modelName: string;
     estimatedCost: number;
@@ -60,9 +69,9 @@ const StoryboardPage = () => {
     if (!project || !questions?.answers) return;
 
     try {
-      // Step 1: Start with generating descriptions
+      // Step 1: Start pipeline
       setStoryboardStatus({
-        stage: "generating_descriptions",
+        stage: "parsing_prompt",
         currentScene: 0,
       });
 
@@ -77,7 +86,7 @@ const StoryboardPage = () => {
         // This will show the model info card immediately
         // (will be updated with real data when API returns)
         setStoryboardStatus({
-          stage: "generating_descriptions",
+          stage: "planning_scenes",
           currentScene: 0,
         });
       }, 500);
@@ -130,6 +139,12 @@ const StoryboardPage = () => {
         );
       }
 
+      // Selecting voice completed server-side
+      setStoryboardStatus({
+        stage: "selecting_voice",
+        currentScene: 0,
+      });
+
       // Switch to generating images stage
       setStoryboardStatus({
         stage: "generating_images",
@@ -156,10 +171,20 @@ const StoryboardPage = () => {
         }
       }
 
+      setStoryboardStatus({
+        stage: "generating_narrations",
+        currentScene: result.scenes.length,
+      });
+
       // Save all scenes to Convex (including visualPrompt for video generation)
       await saveScenes({
         projectId: projectId as Id<"videoProjects">,
         scenes: result.scenes,
+      });
+
+      setStoryboardStatus({
+        stage: "finalizing",
+        currentScene: result.scenes.length,
       });
 
       setStoryboardStatus({
@@ -197,6 +222,10 @@ const StoryboardPage = () => {
         visualPrompt: scene.visualPrompt,
         duration: scene.duration,
         sceneNumber: scene.sceneNumber,
+        narrationUrl: scene.narrationUrl,
+        narrationText: scene.narrationText,
+        voiceId: scene.voiceId,
+        voiceName: scene.voiceName,
       }))
     : convexScenes.map((scene) => ({
         id: scene._id,
@@ -205,6 +234,10 @@ const StoryboardPage = () => {
         visualPrompt: scene.visualPrompt,
         duration: scene.duration,
         sceneNumber: scene.sceneNumber,
+        narrationUrl: scene.narrationUrl || undefined,
+        narrationText: scene.narrationText || undefined,
+        voiceId: scene.voiceId || undefined,
+        voiceName: scene.voiceName || undefined,
       }));
 
   return (
