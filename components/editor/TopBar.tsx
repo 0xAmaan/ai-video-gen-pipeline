@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { Play, Pause, Undo2, Redo2, Download } from "lucide-react";
+import { Play, Pause, Undo2, Redo2, Download, BarChart3 } from "lucide-react";
 import { Button } from "../ui/button";
 
 interface TopBarProps {
@@ -13,6 +13,7 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onExport: () => void;
+  onOpenPerformanceDashboard?: () => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -33,6 +34,7 @@ const TopBarComponent = ({
   onUndo,
   onRedo,
   onExport,
+  onOpenPerformanceDashboard,
 }: TopBarProps) => {
   return (
     <div className="flex items-center justify-between border-b border-border bg-card/80 px-4 py-2">
@@ -74,6 +76,17 @@ const TopBarComponent = ({
             <Play className="h-4 w-4" />
           )}
         </Button>
+        {onOpenPerformanceDashboard && (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onOpenPerformanceDashboard}
+            aria-label="Performance Dashboard"
+            title="View export performance metrics"
+          >
+            <BarChart3 className="h-4 w-4" />
+          </Button>
+        )}
         <Button onClick={onExport} className="gap-2">
           <Download className="h-4 w-4" /> Export
         </Button>

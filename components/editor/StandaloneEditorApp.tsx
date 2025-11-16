@@ -13,6 +13,7 @@ import { MediaPanel } from "@/components/editor/MediaPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { KonvaTimeline } from "@/components/editor/KonvaTimeline";
 import { ExportModal } from "@/components/ExportModal";
+import { PerformanceDashboard } from "@/components/editor/PerformanceDashboard";
 import type { MediaAssetMeta } from "@/lib/editor/types";
 
 interface StandaloneEditorAppProps {
@@ -31,6 +32,7 @@ export const StandaloneEditorApp = ({
     progress: number;
     status: string;
   } | null>(null);
+  const [performanceDashboardOpen, setPerformanceDashboardOpen] = useState(false);
 
   // Convex hooks for project persistence
   const saveProject = useMutation(api.editor.saveProject);
@@ -313,6 +315,10 @@ export const StandaloneEditorApp = ({
     setExportOpen(true);
   }, []);
 
+  const handleOpenPerformanceDashboard = useCallback(() => {
+    setPerformanceDashboardOpen(true);
+  }, []);
+
   const assets = useMemo(
     () => (project ? Object.values(project.mediaAssets) : []),
     [project],
@@ -341,6 +347,7 @@ export const StandaloneEditorApp = ({
         onUndo={handleUndo}
         onRedo={handleRedo}
         onExport={handleOpenExport}
+        onOpenPerformanceDashboard={handleOpenPerformanceDashboard}
       />
       {/* 2-row layout: Top row (media + preview) and bottom row (timeline) */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -415,6 +422,10 @@ export const StandaloneEditorApp = ({
         duration={sequence.duration}
         onExport={handleExport}
         status={exportStatus}
+      />
+      <PerformanceDashboard
+        isVisible={performanceDashboardOpen}
+        onClose={() => setPerformanceDashboardOpen(false)}
       />
     </div>
   );
