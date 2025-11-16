@@ -2,6 +2,22 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 // Schema update: Added visualPrompt support for detailed scene descriptions
 
+const voiceSettingsPayload = {
+  selectedVoiceId: v.string(),
+  selectedVoiceName: v.string(),
+  voiceReasoning: v.optional(v.string()),
+  emotion: v.optional(v.string()),
+  speed: v.optional(v.number()),
+  pitch: v.optional(v.number()),
+} as const;
+
+const lipsyncStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("processing"),
+  v.literal("complete"),
+  v.literal("failed"),
+);
+
 // Create a new video project
 export const createProject = mutation({
   args: {
@@ -196,6 +212,10 @@ export const saveScenes = mutation({
         visualPrompt: v.optional(v.string()), // ADDED: Detailed prompt for video generation
         imageStorageId: v.optional(v.string()),
         imageUrl: v.optional(v.string()),
+        narrationUrl: v.optional(v.string()),
+        narrationText: v.optional(v.string()),
+        voiceId: v.optional(v.string()),
+        voiceName: v.optional(v.string()),
         duration: v.number(),
         replicateImageId: v.optional(v.string()),
       }),
@@ -225,6 +245,10 @@ export const saveScenes = mutation({
         visualPrompt: scene.visualPrompt,
         imageStorageId: scene.imageStorageId,
         imageUrl: scene.imageUrl,
+        narrationUrl: scene.narrationUrl,
+        narrationText: scene.narrationText,
+        voiceId: scene.voiceId,
+        voiceName: scene.voiceName,
         duration: scene.duration,
         replicateImageId: scene.replicateImageId,
         createdAt: now,
@@ -240,6 +264,230 @@ export const saveScenes = mutation({
     });
 
     return sceneIds;
+  },
+});
+
+export const saveProjectVoiceSettings = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    ...voiceSettingsPayload,
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const now = Date.now();
+    const existingSettings = await ctx.db
+      .query("projectVoiceSettings")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    if (existingSettings) {
+      await ctx.db.patch(existingSettings._id, {
+        selectedVoiceId: args.selectedVoiceId,
+        selectedVoiceName: args.selectedVoiceName,
+        voiceReasoning: args.voiceReasoning,
+        emotion: args.emotion,
+        speed: args.speed,
+        pitch: args.pitch,
+        updatedAt: now,
+      });
+      return existingSettings._id;
+    }
+
+    return await ctx.db.insert("projectVoiceSettings", {
+      projectId: args.projectId,
+      selectedVoiceId: args.selectedVoiceId,
+      selectedVoiceName: args.selectedVoiceName,
+      voiceReasoning: args.voiceReasoning,
+      emotion: args.emotion,
+      speed: args.speed,
+      pitch: args.pitch,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const updateSceneNarration = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    narrationUrl: v.optional(v.string()),
+    narrationText: v.optional(v.string()),
+    voiceId: v.optional(v.string()),
+    voiceName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+
+    const project = await ctx.db.get(scene.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.narrationUrl !== undefined) updates.narrationUrl = args.narrationUrl;
+    if (args.narrationText !== undefined) updates.narrationText = args.narrationText;
+    if (args.voiceId !== undefined) updates.voiceId = args.voiceId;
+    if (args.voiceName !== undefined) updates.voiceName = args.voiceName;
+
+    await ctx.db.patch(args.sceneId, updates);
+    return args.sceneId;
+  },
+});
+
+export const saveLipsyncPrediction = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    predictionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+
+    const project = await ctx.db.get(scene.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    await ctx.db.patch(args.sceneId, {
+      lipsyncPredictionId: args.predictionId,
+      lipsyncStatus: "processing",
+      updatedAt: Date.now(),
+    });
+
+    return args.sceneId;
+  },
+});
+
+export const updateSceneLipsync = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    lipsyncVideoUrl: v.optional(v.string()),
+    lipsyncStatus: v.optional(lipsyncStatusValidator),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+
+    const project = await ctx.db.get(scene.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.lipsyncVideoUrl !== undefined) {
+      updates.lipsyncVideoUrl = args.lipsyncVideoUrl;
+    }
+    if (args.lipsyncStatus !== undefined) {
+      updates.lipsyncStatus = args.lipsyncStatus;
+    }
+
+    await ctx.db.patch(args.sceneId, updates);
+    return args.sceneId;
+  },
+});
+
+export const getProjectVoiceSettings = query({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const settings = await ctx.db
+      .query("projectVoiceSettings")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    return settings ?? null;
+  },
+});
+
+export const updateProjectVoiceSettings = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    ...voiceSettingsPayload,
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const now = Date.now();
+    const settings = await ctx.db
+      .query("projectVoiceSettings")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .first();
+
+    if (settings) {
+      await ctx.db.patch(settings._id, {
+        selectedVoiceId: args.selectedVoiceId,
+        selectedVoiceName: args.selectedVoiceName,
+        voiceReasoning: args.voiceReasoning,
+        emotion: args.emotion,
+        speed: args.speed,
+        pitch: args.pitch,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("projectVoiceSettings", {
+        projectId: args.projectId,
+        selectedVoiceId: args.selectedVoiceId,
+        selectedVoiceName: args.selectedVoiceName,
+        voiceReasoning: args.voiceReasoning,
+        emotion: args.emotion,
+        speed: args.speed,
+        pitch: args.pitch,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return args.projectId;
   },
 });
 
@@ -270,6 +518,62 @@ export const getScenes = query({
   },
 });
 
+export const getSceneById = query({
+  args: {
+    sceneId: v.id("scenes"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+
+    const project = await ctx.db.get(scene.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    return scene;
+  },
+});
+
+export const getSceneWithAudio = query({
+  args: {
+    sceneId: v.id("scenes"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+
+    const project = await ctx.db.get(scene.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const clip = await ctx.db
+      .query("videoClips")
+      .withIndex("by_scene", (q) => q.eq("sceneId", args.sceneId))
+      .first();
+
+    return {
+      scene,
+      clip: clip ?? null,
+    };
+  },
+});
+
 // Update a specific scene
 export const updateScene = mutation({
   args: {
@@ -278,6 +582,10 @@ export const updateScene = mutation({
     visualPrompt: v.optional(v.string()),
     imageStorageId: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
+    narrationUrl: v.optional(v.string()),
+    narrationText: v.optional(v.string()),
+    voiceId: v.optional(v.string()),
+    voiceName: v.optional(v.string()),
     duration: v.optional(v.number()),
     replicateImageId: v.optional(v.string()),
   },
@@ -307,6 +615,12 @@ export const updateScene = mutation({
     if (args.imageStorageId !== undefined)
       updates.imageStorageId = args.imageStorageId;
     if (args.imageUrl !== undefined) updates.imageUrl = args.imageUrl;
+    if (args.narrationUrl !== undefined)
+      updates.narrationUrl = args.narrationUrl;
+    if (args.narrationText !== undefined)
+      updates.narrationText = args.narrationText;
+    if (args.voiceId !== undefined) updates.voiceId = args.voiceId;
+    if (args.voiceName !== undefined) updates.voiceName = args.voiceName;
     if (args.duration !== undefined) updates.duration = args.duration;
     if (args.replicateImageId !== undefined)
       updates.replicateImageId = args.replicateImageId;
@@ -517,6 +831,45 @@ export const updateVideoClip = mutation({
   },
 });
 
+export const updateVideoClipLipsync = mutation({
+  args: {
+    clipId: v.id("videoClips"),
+    lipsyncVideoUrl: v.optional(v.string()),
+    originalVideoUrl: v.optional(v.string()),
+    hasLipsync: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const clip = await ctx.db.get(args.clipId);
+    if (!clip) {
+      throw new Error("Clip not found");
+    }
+
+    const project = await ctx.db.get(clip.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.lipsyncVideoUrl !== undefined) {
+      updates.lipsyncVideoUrl = args.lipsyncVideoUrl;
+    }
+    if (args.originalVideoUrl !== undefined) {
+      updates.originalVideoUrl = args.originalVideoUrl;
+    }
+    if (args.hasLipsync !== undefined) {
+      updates.hasLipsync = args.hasLipsync;
+    }
+
+    await ctx.db.patch(args.clipId, updates);
+    return args.clipId;
+  },
+});
+
 // Get video clips for a project
 export const getVideoClips = query({
   args: {
@@ -550,6 +903,8 @@ export const createFinalVideo = mutation({
     duration: v.number(),
     resolution: v.string(),
     clipCount: v.number(),
+    includesNarration: v.optional(v.boolean()),
+    narrationVoiceId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -569,6 +924,8 @@ export const createFinalVideo = mutation({
       duration: args.duration,
       resolution: args.resolution,
       clipCount: args.clipCount,
+      includesNarration: args.includesNarration,
+      narrationVoiceId: args.narrationVoiceId,
       status: "pending",
       createdAt: now,
       updatedAt: now,
@@ -592,6 +949,8 @@ export const updateFinalVideo = mutation({
     ),
     videoUrl: v.optional(v.string()),
     totalCost: v.optional(v.number()),
+    includesNarration: v.optional(v.boolean()),
+    narrationVoiceId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -616,6 +975,10 @@ export const updateFinalVideo = mutation({
     if (args.status !== undefined) updates.status = args.status;
     if (args.videoUrl !== undefined) updates.videoUrl = args.videoUrl;
     if (args.totalCost !== undefined) updates.totalCost = args.totalCost;
+    if (args.includesNarration !== undefined)
+      updates.includesNarration = args.includesNarration;
+    if (args.narrationVoiceId !== undefined)
+      updates.narrationVoiceId = args.narrationVoiceId;
     if (args.errorMessage !== undefined)
       updates.errorMessage = args.errorMessage;
 

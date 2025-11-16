@@ -61,8 +61,34 @@ export default defineSchema({
     visualPrompt: v.optional(v.string()), // Detailed 150-250 word prompt for video generation
     imageStorageId: v.optional(v.string()),
     imageUrl: v.optional(v.string()), // Convex storage URL
+    narrationUrl: v.optional(v.string()), // Generated narration audio URL
+    narrationText: v.optional(v.string()), // Narration script used for audio
+    voiceId: v.optional(v.string()), // MiniMax voice identifier
+    voiceName: v.optional(v.string()), // Human-readable voice label
     duration: v.number(), // Duration in seconds
+    lipsyncVideoUrl: v.optional(v.string()), // Final lip-synced video
+    lipsyncStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ), // Tracks lip sync processing state
+    lipsyncPredictionId: v.optional(v.string()), // Replicate prediction ID
     replicateImageId: v.optional(v.string()), // For tracking Replicate prediction
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  projectVoiceSettings: defineTable({
+    projectId: v.id("videoProjects"),
+    selectedVoiceId: v.string(),
+    selectedVoiceName: v.string(),
+    voiceReasoning: v.optional(v.string()),
+    emotion: v.optional(v.string()),
+    speed: v.optional(v.number()),
+    pitch: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
@@ -80,6 +106,9 @@ export default defineSchema({
     ),
     duration: v.number(),
     resolution: v.string(),
+    lipsyncVideoUrl: v.optional(v.string()), // Processed lip synced clip
+    originalVideoUrl: v.optional(v.string()), // Original non-lipsynced clip
+    hasLipsync: v.optional(v.boolean()), // Flag to indicate clip has lipsync applied
     errorMessage: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -94,6 +123,8 @@ export default defineSchema({
     resolution: v.string(),
     clipCount: v.number(),
     totalCost: v.optional(v.number()),
+    includesNarration: v.optional(v.boolean()),
+    narrationVoiceId: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
       v.literal("processing"),
