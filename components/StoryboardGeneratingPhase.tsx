@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Zap,
   Wand2,
+  AudioLines,
 } from "lucide-react";
 
 interface Scene {
@@ -20,10 +21,19 @@ interface Scene {
   duration: number;
 }
 
+type StoryboardStage =
+  | "parsing_prompt"
+  | "planning_scenes"
+  | "selecting_voice"
+  | "generating_images"
+  | "generating_narrations"
+  | "finalizing"
+  | "complete";
+
 interface StoryboardGeneratingPhaseProps {
   scenes: Scene[];
   totalScenes: number;
-  currentStage: "generating_descriptions" | "generating_images" | "complete";
+  currentStage: StoryboardStage;
   currentSceneNumber?: number;
   modelName?: string;
   estimatedCostPerImage?: number;
@@ -39,17 +49,40 @@ export const StoryboardGeneratingPhase = ({
   estimatedCostPerImage = 0.003,
   modelReason = "Default selection for fast, cost-effective generation",
 }: StoryboardGeneratingPhaseProps) => {
+  const imagesGenerated = scenes.filter((s) => s.imageUrl).length;
+
   const getProgress = () => {
-    if (currentStage === "generating_descriptions") return 20;
-    if (currentStage === "generating_images") {
-      const imagesGenerated = scenes.filter((s) => s.imageUrl).length;
-      return 20 + (imagesGenerated / totalScenes) * 80;
+    switch (currentStage) {
+      case "parsing_prompt":
+        return 5;
+      case "planning_scenes":
+        return 20;
+      case "selecting_voice":
+        return 35;
+      case "generating_images":
+        return 35 + (imagesGenerated / totalScenes) * 35;
+      case "generating_narrations":
+        return 80;
+      case "finalizing":
+        return 95;
+      case "complete":
+        return 100;
+      default:
+        return 0;
     }
-    return 100;
   };
 
   const progress = getProgress();
-  const imagesGenerated = scenes.filter((s) => s.imageUrl).length;
+
+  const stageDescriptionMap: Record<StoryboardStage, string> = {
+    parsing_prompt: "Parsing your prompt and questionnaire responses...",
+    planning_scenes: "Planning storyboard scenes with AI...",
+    selecting_voice: "Selecting the best narration voice...",
+    generating_images: `Generating scene imagery (${imagesGenerated}/${totalScenes})...`,
+    generating_narrations: "Synthesizing narration audio...",
+    finalizing: "Finalizing storyboard assets...",
+    complete: "Storyboard complete!",
+  };
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
@@ -61,11 +94,7 @@ export const StoryboardGeneratingPhase = ({
             <h1 className="text-3xl font-bold">Creating Your Storyboard</h1>
           </div>
           <p className="text-muted-foreground">
-            {currentStage === "generating_descriptions"
-              ? "Planning scenes and generating visual descriptions..."
-              : currentStage === "generating_images"
-                ? `Generating images (${imagesGenerated}/${totalScenes})...`
-                : "Storyboard complete!"}
+            {stageDescriptionMap[currentStage]}
           </p>
         </div>
 
@@ -124,7 +153,14 @@ export const StoryboardGeneratingPhase = ({
           <div className="text-sm text-muted-foreground">
             {currentStage === "complete"
               ? "All scenes generated successfully!"
-              : `Estimated time remaining: ${Math.ceil((totalScenes - imagesGenerated) * 10)}s`}
+              : currentStage === "generating_narrations"
+                ? "Generating narration audio for each scene..."
+                : currentStage === "finalizing"
+                  ? "Finalizing storyboard assets..."
+                  : `Estimated time remaining: ${Math.max(
+                      5,
+                      Math.ceil((totalScenes - imagesGenerated) * 8),
+                    )}s`}
           </div>
         </Card>
 
@@ -135,6 +171,12 @@ export const StoryboardGeneratingPhase = ({
               <ImageIcon className="w-5 h-5 text-muted-foreground" />
               <h3 className="text-sm font-semibold">Scene Generation</h3>
             </div>
+            {currentStage === "generating_narrations" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                <AudioLines className="w-4 h-4" />
+                Generating narration audio...
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Array.from({ length: totalScenes }).map((_, index) => {
                 const scene = scenes[index];

@@ -195,6 +195,8 @@ export interface ProjectStoreState {
     splitClip: (clipId: string, offset: number) => void;
     rippleDelete: (clipId: string) => void;
     reorderClips: (clips: Clip[]) => void;
+    setClipVolume: (clipId: string, volume: number) => void;
+    toggleTrackMute: (trackId: string) => void;
     undo: () => void;
     redo: () => void;
   };
@@ -469,6 +471,34 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           history,
           currentTime: Math.min(current.currentTime, duration),
         }));
+      },
+      setClipVolume: (clipId, volume) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) return state;
+          clip.volume = Math.max(0, Math.min(1, volume));
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot, history);
+          return { ...state, project: snapshot, history };
+        });
+      },
+      toggleTrackMute: (trackId) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const track = sequence.tracks.find((t) => t.id === trackId);
+          if (!track) return state;
+          track.muted = !track.muted;
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot, history);
+          return { ...state, project: snapshot, history };
+        });
       },
       undo: () =>
         set((state) => {

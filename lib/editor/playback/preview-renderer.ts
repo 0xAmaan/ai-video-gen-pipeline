@@ -21,6 +21,11 @@ export class PreviewRenderer {
   private isDrawingFrame = false;
   private isScrubbing = false;
   private wasPlayingBeforeScrub = false;
+  private audioBuffers: Map<string, AudioBuffer> = new Map();
+  private audioSources: Map<string, AudioBufferSourceNode> = new Map();
+  private audioGainNode?: GainNode;
+  private audioLoadPromises: Map<string, Promise<void>> = new Map();
+  private masterVolume = 1;
 
   // Performance metrics
   private frameCount = 0;
@@ -41,6 +46,48 @@ export class PreviewRenderer {
     }
   }
 
+  async preloadAudioAssets(assets: Record<string, MediaAssetMeta>) {
+    if (!this.audioContext) {
+      await this.createMediaElements();
+    }
+    const audioAssets = Object.values(assets).filter(
+      (asset) => asset.type === "audio" && !!asset.url,
+    );
+
+    await Promise.all(
+      audioAssets.map(async (asset) => {
+        if (!asset.url || this.audioBuffers.has(asset.id)) {
+          return;
+        }
+        if (this.audioLoadPromises.has(asset.id)) {
+          await this.audioLoadPromises.get(asset.id);
+          return;
+        }
+
+        const loadPromise = (async () => {
+          try {
+            const response = await fetch(asset.url, {
+              mode: "cors",
+              credentials: "omit",
+            });
+            const arrayBuffer = await response.arrayBuffer();
+            if (!this.audioContext) return;
+            const audioBuffer = await this.audioContext.decodeAudioData(
+              arrayBuffer,
+            );
+            this.audioBuffers.set(asset.id, audioBuffer);
+          } catch (error) {
+            console.error(`Failed to load audio asset ${asset.id}`, error);
+          }
+        })();
+
+        this.audioLoadPromises.set(asset.id, loadPromise);
+        await loadPromise;
+        this.audioLoadPromises.delete(asset.id);
+      }),
+    );
+  }
+
   private async createMediaElements() {
     this.videoEl = document.createElement("video");
     this.videoEl.crossOrigin = "anonymous";
@@ -49,7 +96,10 @@ export class PreviewRenderer {
     this.videoEl.muted = true;
     this.videoEl.addEventListener("ended", () => this.handleClipEnded());
     try {
-      this.audioContext = new AudioContext();
+      this.audioContext = new AudioContext({ sampleRate: 44100 });
+      this.audioGainNode = this.audioContext.createGain();
+      this.audioGainNode.gain.value = this.masterVolume;
+      this.audioGainNode.connect(this.audioContext.destination);
       await this.audioContext.audioWorklet.addModule(
         "/audio/preview-processor.js",
       );
@@ -58,7 +108,7 @@ export class PreviewRenderer {
         this.audioContext,
         "preview-processor",
       );
-      source.connect(this.workletNode).connect(this.audioContext.destination);
+      source.connect(this.workletNode).connect(this.audioGainNode);
     } catch (error) {
       // Silently handle audio worklet init errors
     }
@@ -66,6 +116,13 @@ export class PreviewRenderer {
 
   setTimeUpdateHandler(handler: TimeUpdateHandler) {
     this.onTimeUpdate = handler;
+  }
+
+  setMasterVolume(value: number) {
+    this.masterVolume = Math.max(0, Math.min(1, value));
+    if (this.audioGainNode) {
+      this.audioGainNode.gain.value = this.masterVolume;
+    }
   }
 
   getPerformanceMetrics() {
@@ -81,12 +138,14 @@ export class PreviewRenderer {
     this.lastFrameTime = undefined; // Reset timing on play
     await this.audioContext?.resume();
     await this.videoEl?.play().catch(() => undefined);
+    this.syncAudioToTimeline();
     this.loop();
   }
 
   pause() {
     this.playing = false;
     this.videoEl?.pause();
+    this.stopAllAudioSources();
     if (this.raf) {
       cancelAnimationFrame(this.raf);
       this.raf = undefined;
@@ -102,8 +161,13 @@ export class PreviewRenderer {
       clearTimeout(this.seekDebounceTimer);
     }
 
+    this.stopAllAudioSources();
+
     this.seekDebounceTimer = window.setTimeout(() => {
       this.syncMediaToTimeline();
+      if (this.playing) {
+        this.syncAudioToTimeline();
+      }
       this.seekDebounceTimer = undefined;
     }, 16); // ~60fps debounce
 
@@ -130,10 +194,13 @@ export class PreviewRenderer {
   detach() {
     this.pause();
     this.cache.clear();
+    this.audioBuffers.clear();
+    this.audioLoadPromises.clear();
     this.videoEl?.pause();
     this.videoEl?.removeAttribute("src");
     this.videoEl?.load();
     this.workletNode?.disconnect();
+    this.audioGainNode?.disconnect();
     this.audioContext?.close();
   }
 
@@ -162,6 +229,9 @@ export class PreviewRenderer {
     }
 
     this.syncMediaToTimeline();
+    if (this.playing) {
+      this.syncAudioToTimeline();
+    }
     this.drawFrame();
     this.onTimeUpdate?.(this.currentTime);
 
@@ -178,6 +248,18 @@ export class PreviewRenderer {
       this.frameCount = 0;
       this.lastFpsTime = renderEnd;
     }
+  }
+
+  private stopAllAudioSources() {
+    for (const [, source] of this.audioSources.entries()) {
+      try {
+        source.stop();
+      } catch {
+        // Source may already be stopped – safe to ignore
+      }
+      source.disconnect();
+    }
+    this.audioSources.clear();
   }
 
   private syncMediaToTimeline() {
@@ -268,6 +350,7 @@ export class PreviewRenderer {
 
   private resolveClip(sequence: Sequence, time: number) {
     for (const track of sequence.tracks) {
+      if (track.kind !== "video") continue;
       for (const clip of track.clips) {
         if (time >= clip.start && time <= clip.start + clip.duration) {
           return clip;
@@ -288,6 +371,89 @@ export class PreviewRenderer {
       this.syncMediaToTimeline();
     } else {
       this.pause();
+    }
+  }
+
+  private syncAudioToTimeline() {
+    if (!this.audioContext) return;
+    const sequence = this.getSequence();
+    if (!sequence) return;
+    const audioTrack = sequence.tracks.find((track) => track.kind === "audio");
+    if (!audioTrack || audioTrack.clips.length === 0) {
+      this.stopAllAudioSources();
+      return;
+    }
+
+    const activeClips = audioTrack.clips.filter(
+      (clip) =>
+        this.currentTime >= clip.start &&
+        this.currentTime < clip.start + clip.duration,
+    );
+
+    // Stop clips that are no longer active
+    for (const [clipId, source] of this.audioSources.entries()) {
+      const stillActive = activeClips.some((clip) => clip.id === clipId);
+      if (!stillActive) {
+        try {
+          source.stop();
+        } catch {
+          // Ignored
+        }
+        source.disconnect();
+        this.audioSources.delete(clipId);
+      }
+    }
+
+    // Start new clips
+    for (const clip of activeClips) {
+      if (this.audioSources.has(clip.id)) {
+        continue;
+      }
+      const asset = this.getAsset(clip.mediaId);
+      if (!asset) continue;
+      const buffer = this.audioBuffers.get(clip.mediaId);
+      if (!buffer) continue;
+
+      const source = this.audioContext.createBufferSource();
+      source.buffer = buffer;
+
+      const gainNode = this.audioContext.createGain();
+      const clipVolume = clip.volume ?? 1;
+      gainNode.gain.value = audioTrack.muted ? 0 : clipVolume;
+
+      const destination = this.audioGainNode ?? this.audioContext.destination;
+      source.connect(gainNode).connect(destination);
+
+      const clipOffset =
+        Math.max(0, this.currentTime - clip.start) + (clip.trimStart ?? 0);
+      const remainingDuration = Math.max(
+        0,
+        clip.duration - (this.currentTime - clip.start),
+      );
+      const maxOffset = Math.min(clipOffset, buffer.duration);
+      const maxDuration = Math.min(
+        remainingDuration,
+        buffer.duration - maxOffset,
+      );
+
+      if (maxDuration <= 0) {
+        source.disconnect();
+        continue;
+      }
+
+      try {
+        source.start(0, maxOffset, maxDuration);
+      } catch (error) {
+        console.error("Failed to start audio clip", error);
+        source.disconnect();
+        continue;
+      }
+
+      source.onended = () => {
+        this.audioSources.delete(clip.id);
+      };
+
+      this.audioSources.set(clip.id, source);
     }
   }
 }

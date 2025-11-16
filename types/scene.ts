@@ -1,3 +1,5 @@
+export type LipsyncStatus = "pending" | "processing" | "complete" | "failed";
+
 // Shared Scene interface used across the application
 export interface Scene {
   id: string; // Convex _id
@@ -6,4 +8,11 @@ export interface Scene {
   visualPrompt?: string; // Detailed 150-250 word prompt for video generation (optional for backwards compatibility)
   duration: number;
   sceneNumber: number; // From database, 1-indexed
+  narrationUrl?: string;
+  narrationText?: string;
+  voiceId?: string;
+  voiceName?: string;
+  lipsyncVideoUrl?: string;
+  lipsyncStatus?: LipsyncStatus;
+  lipsyncPredictionId?: string;
 }

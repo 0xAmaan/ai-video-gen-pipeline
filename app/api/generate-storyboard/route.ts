@@ -6,15 +6,48 @@ import { NextResponse } from "next/server";
 import Replicate from "replicate";
 import { STORYBOARD_SYSTEM_PROMPT, buildStoryboardPrompt } from "@/lib/prompts";
 import { IMAGE_MODELS } from "@/lib/image-models";
-import { ConvexHttpClient } from "convex/browser";
+import { extractReplicateUrl } from "@/lib/replicate";
+import { synthesizeNarrationAudio } from "@/lib/narration";
+import { generateVoiceSelection } from "@/lib/server/voice-selection";
+import { getConvexClient } from "@/lib/server/convex";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
+
+async function generateSceneImage(
+  scene: GeneratedScene,
+  modelConfig: ImageModelConfig,
+  style: string,
+) {
+  console.log(`🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`);
+  console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
+
+  const output = await replicate.run(
+    modelConfig.id as `${string}/${string}`,
+    {
+      input: {
+        prompt: scene.visualPrompt,
+        aspect_ratio: "16:9",
+        generation_mode: "quality",
+        contrast: "medium",
+        num_images: 1,
+        prompt_enhance: false,
+        style,
+      },
+    },
+  );
+
+  const imageUrl = extractReplicateUrl(
+    output,
+    `scene-${scene.sceneNumber}-image`,
+  );
+
+  console.log(`   ✅ Scene ${scene.sceneNumber} image URL:`, imageUrl);
+  return imageUrl;
+}
 
 // Zod schema for scene descriptions
 const sceneSchema = z.object({
@@ -24,12 +57,16 @@ const sceneSchema = z.object({
         sceneNumber: z.number(),
         description: z.string(),
         visualPrompt: z.string(),
+        narrationText: z.string(),
         duration: z.number(),
       }),
     )
     .min(3)
     .max(5),
 });
+
+type GeneratedScene = z.infer<typeof sceneSchema>["scenes"][number];
+type ImageModelConfig = (typeof IMAGE_MODELS)[keyof typeof IMAGE_MODELS];
 
 export async function POST(req: Request) {
   try {
@@ -41,6 +78,15 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    if (!projectId || typeof projectId !== "string") {
+      return NextResponse.json(
+        { error: "projectId is required" },
+        { status: 400 },
+      );
+    }
+
+    const projectConvexId = projectId as Id<"videoProjects">;
 
     // Step 1: Generate scene descriptions using Groq
     const hasGroqKey = !!process.env.GROQ_API_KEY;
@@ -75,6 +121,24 @@ export async function POST(req: Request) {
       prompt: buildStoryboardPrompt(prompt, responses),
       maxRetries: 3,
     });
+
+    // Step 2: Select voice for narration
+    const voiceSelection = await generateVoiceSelection(prompt, responses);
+
+    try {
+      const convex = await getConvexClient();
+      await convex.mutation(api.video.saveProjectVoiceSettings, {
+        projectId: projectConvexId,
+        selectedVoiceId: voiceSelection.voiceId,
+        selectedVoiceName: voiceSelection.voiceName,
+        voiceReasoning: voiceSelection.reasoning,
+        emotion: voiceSelection.emotion,
+        speed: voiceSelection.speed,
+        pitch: voiceSelection.pitch,
+      });
+    } catch (error) {
+      console.warn("Unable to persist voice selection to Convex:", error);
+    }
 
     // Step 2: Select style for Leonardo Phoenix
     console.log("\n" + "=".repeat(80));
@@ -121,78 +185,66 @@ export async function POST(req: Request) {
     console.log(`   Cost: ~$${modelConfig.estimatedCost}/image`);
     console.log("=".repeat(80) + "\n");
 
-    // Step 3: Generate images using Leonardo Phoenix via Replicate
-    const scenesWithImages = await Promise.all(
+    // Step 3 & 4: Generate images and narration in parallel for each scene
+    const scenesWithMedia = await Promise.all(
       sceneData.scenes.map(async (scene) => {
-        try {
-          console.log(
-            `🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`,
-          );
-          console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
-
-          const output = await replicate.run(
-            modelConfig.id as `${string}/${string}`,
-            {
-              input: {
-                prompt: scene.visualPrompt,
-                aspect_ratio: "16:9",
-                generation_mode: "quality",
-                contrast: "medium",
-                num_images: 1,
-                prompt_enhance: false,
-                style: phoenixStyle,
-              },
-            },
-          );
-
-          // Extract image URL from output
-          let imageUrl: string;
-          if (Array.isArray(output) && output.length > 0) {
-            imageUrl =
-              typeof output[0] === "string"
-                ? output[0]
-                : (output[0] as any).url?.() || output[0];
-          } else if (typeof output === "string") {
-            imageUrl = output;
-          } else {
-            throw new Error(`Unexpected output format: ${typeof output}`);
-          }
-
-          console.log(`   ✅ Scene ${scene.sceneNumber} image URL:`, imageUrl);
-
-          return {
-            sceneNumber: scene.sceneNumber,
-            description: scene.description,
-            visualPrompt: scene.visualPrompt,
-            imageUrl: imageUrl,
-            duration: scene.duration,
-          };
-        } catch (error) {
+        const imagePromise = generateSceneImage(
+          scene,
+          modelConfig,
+          phoenixStyle,
+        ).catch((error) => {
           console.error(
             `Error generating image for scene ${scene.sceneNumber}:`,
             error,
           );
+          return undefined;
+        });
 
-          return {
-            sceneNumber: scene.sceneNumber,
-            description: scene.description,
-            visualPrompt: scene.visualPrompt,
-            imageUrl: undefined,
-            duration: scene.duration,
-          };
-        }
+        const narrationPromise = synthesizeNarrationAudio({
+          text: scene.narrationText,
+          voiceId: voiceSelection.voiceId,
+          emotion: voiceSelection.emotion,
+          speed: voiceSelection.speed,
+          pitch: voiceSelection.pitch,
+        }).catch((error) => {
+          console.error(
+            `Error generating narration for scene ${scene.sceneNumber}:`,
+            error,
+          );
+          return null;
+        });
+
+        const [imageUrl, narrationResult] = await Promise.all([
+          imagePromise,
+          narrationPromise,
+        ]);
+
+        return {
+          sceneNumber: scene.sceneNumber,
+          description: scene.description,
+          visualPrompt: scene.visualPrompt,
+          narrationText:
+            narrationResult?.sanitizedText ?? scene.narrationText,
+          narrationUrl: narrationResult?.audioUrl,
+          imageUrl,
+          duration: scene.duration,
+          voiceId: narrationResult?.voiceId ?? voiceSelection.voiceId,
+          voiceName: narrationResult?.voiceName ?? voiceSelection.voiceName,
+        };
       }),
     );
 
     return NextResponse.json({
       success: true,
-      scenes: scenesWithImages,
+      scenes: scenesWithMedia,
       modelInfo: {
         modelKey: "leonardo-phoenix",
         modelName: modelConfig.name,
         style: phoenixStyle,
         estimatedCost: modelConfig.estimatedCost,
+        reason: `Selected ${modelConfig.name} (${phoenixStyle}) based on project preferences.`,
       },
+      voiceSelection,
     });
   } catch (error) {
     console.error("Error generating storyboard:", error);

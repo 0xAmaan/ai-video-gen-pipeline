@@ -32,6 +32,7 @@ export const StandaloneEditorApp = ({
     progress: number;
     status: string;
   } | null>(null);
+  const [masterVolume, setMasterVolume] = useState(1);
 
   // Convex hooks for project persistence
   const saveProject = useMutation(api.editor.saveProject);
@@ -158,7 +159,11 @@ export const StandaloneEditorApp = ({
       );
       rendererRef.current
         .attach(canvasRef.current)
-        .then(() => {
+        .then(async () => {
+          if (project?.mediaAssets) {
+            await rendererRef.current?.preloadAudioAssets(project.mediaAssets);
+          }
+          rendererRef.current?.setMasterVolume(masterVolume);
           // PERFORMANCE FIX: Don't update store on every frame (60x/sec)
           // Canvas updates independently, only sync on user actions (seek/play/pause)
           // rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time));
@@ -167,7 +172,21 @@ export const StandaloneEditorApp = ({
           // Silently handle attach errors
         });
     }
-  }, [ready, project, actions]);
+  }, [ready, project, actions, masterVolume]);
+
+  useEffect(() => {
+    if (!project?.mediaAssets || !rendererRef.current) return;
+    rendererRef.current
+      .preloadAudioAssets(project.mediaAssets)
+      .catch((error) => {
+        console.error("Failed to preload audio assets", error);
+      });
+  }, [project?.mediaAssets]);
+
+  useEffect(() => {
+    if (!rendererRef.current) return;
+    rendererRef.current.setMasterVolume(masterVolume);
+  }, [masterVolume]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -377,6 +396,46 @@ export const StandaloneEditorApp = ({
   );
   const zoom = project?.settings.zoom ?? 1;
 
+  const audioTrack = sequence?.tracks.find((track) => track.kind === "audio");
+  const audioTrackMuted = audioTrack?.muted ?? false;
+  const audioTrackId = audioTrack?.id ?? null;
+  const selectedClipId = selection.clipIds[0] ?? null;
+  const selectedClip =
+    selectedClipId && sequence
+      ? sequence.tracks
+          .flatMap((track) => track.clips)
+          .find((clip) => clip.id === selectedClipId) ?? null
+      : null;
+  const selectedAudioClipId =
+    selectedClip && selectedClip.kind === "audio" ? selectedClip.id : null;
+  const selectedAudioClipVolume =
+    selectedClip && selectedClip.kind === "audio"
+      ? selectedClip.volume ?? 1
+      : 1;
+
+  const handleMasterVolumeChange = useCallback((value: number) => {
+    const nextVolume = Math.max(0, Math.min(1, value));
+    setMasterVolume(nextVolume);
+    rendererRef.current?.setMasterVolume(nextVolume);
+  }, []);
+
+  const handleToggleAudioTrackMute = useCallback(() => {
+    if (audioTrackId) {
+      actions.toggleTrackMute(audioTrackId);
+    }
+  }, [actions, audioTrackId]);
+
+  const handleAudioClipVolumeChange = useCallback(
+    (value: number) => {
+      if (!selectedAudioClipId) return;
+      actions.setClipVolume(
+        selectedAudioClipId,
+        Math.max(0, Math.min(1, value)),
+      );
+    },
+    [actions, selectedAudioClipId],
+  );
+
   if (!ready || !project || !sequence) {
     return (
       <div className="flex h-screen items-center justify-center text-muted-foreground">
@@ -396,6 +455,16 @@ export const StandaloneEditorApp = ({
         onUndo={handleUndo}
         onRedo={handleRedo}
         onExport={handleOpenExport}
+        masterVolume={masterVolume}
+        onMasterVolumeChange={handleMasterVolumeChange}
+        audioTrackMuted={audioTrackMuted}
+        onToggleAudioTrack={handleToggleAudioTrackMute}
+        selectedAudioClipVolume={
+          selectedAudioClipId ? selectedAudioClipVolume : undefined
+        }
+        onAudioClipVolumeChange={
+          selectedAudioClipId ? handleAudioClipVolumeChange : undefined
+        }
       />
       {/* 2-row layout: Top row (media + preview) and bottom row (timeline) */}
       <div className="flex flex-1 flex-col overflow-hidden">
