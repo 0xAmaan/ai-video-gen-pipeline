@@ -38,6 +38,45 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4.0;
 const X_OFFSET = 10; // Padding from left edge
 const MIN_CLIP_WIDTH = 40; // Minimum width in pixels to prevent slivers
+const AUDIO_TRACK_HEIGHT = 60;
+const AUDIO_TRACK_GAP = 30;
+const AUDIO_CLIP_COLOR = "#4F46E5";
+const AUDIO_TRACK_LABEL_COLOR = "#9CA3AF";
+const AUDIO_TRACK_BG = "#0b0b0b";
+const AUDIO_WAVEFORM_COLOR = "#A5B4FC";
+const AUDIO_VOLUME_COLOR = "#FBBF24";
+const AUDIO_TRACK_Y = CLIP_Y + CLIP_HEIGHT + 20;
+
+const generateWaveformPoints = (
+  waveform: Float32Array,
+  xStart: number,
+  yCenter: number,
+  width: number,
+  height: number,
+): number[] => {
+  const points: number[] = [];
+  if (!Number.isFinite(width) || width <= 0) return points;
+
+  const samples = waveform.length;
+  if (!samples) return points;
+
+  const steps = Math.max(1, Math.floor(width));
+  const halfHeight = height / 2;
+
+  for (let i = 0; i < steps; i++) {
+    const ratio = i / steps;
+    const sampleIndex = Math.min(
+      Math.floor(ratio * samples),
+      Math.max(0, samples - 1),
+    );
+    const amplitude = waveform[sampleIndex] || 0;
+    const x = xStart + i;
+    const y = yCenter - amplitude * halfHeight;
+    points.push(x, y);
+  }
+
+  return points;
+};
 
 const KonvaTimelineComponent = ({
   sequence,
@@ -69,7 +108,10 @@ const KonvaTimelineComponent = ({
 
   // Get first video track
   const videoTrack = sequence.tracks.find((t) => t.kind === "video");
+  const audioTrack = sequence.tracks.find((t) => t.kind === "audio");
   const clips = videoTrack?.clips ?? [];
+  const audioClips = audioTrack?.clips ?? [];
+  const hasAudioTrack = audioClips.length > 0;
 
   // Create asset lookup Map for O(1) access instead of O(n) find
   const assetMap = useMemo(() => {
@@ -108,6 +150,8 @@ const KonvaTimelineComponent = ({
   const PIXELS_PER_SECOND =
     (containerWidth / DEFAULT_TIMELINE_DURATION) * zoomLevel;
   const TIMELINE_WIDTH = effectiveDuration * PIXELS_PER_SECOND + 50;
+  const timelineHeight =
+    containerHeight + (hasAudioTrack ? AUDIO_TRACK_HEIGHT + AUDIO_TRACK_GAP : 0);
 
   // Time <-> Pixel conversion
   const timeToPixels = useCallback(
@@ -127,7 +171,7 @@ const KonvaTimelineComponent = ({
     const updatePlayhead = () => {
       if (playheadLineRef.current) {
         const xPos = timeToPixels(currentTime) + X_OFFSET;
-        playheadLineRef.current.points([xPos, 0, xPos, containerHeight]);
+        playheadLineRef.current.points([xPos, 0, xPos, timelineHeight]);
         playheadLineRef.current.getLayer()?.batchDraw();
       }
 
@@ -140,7 +184,7 @@ const KonvaTimelineComponent = ({
 
     rafId = requestAnimationFrame(updatePlayhead);
     return () => cancelAnimationFrame(rafId);
-  }, [currentTime, timeToPixels, containerHeight]);
+  }, [currentTime, timeToPixels, timelineHeight]);
 
   // Zoom with Ctrl/Cmd + scroll wheel
   useEffect(() => {
@@ -377,12 +421,12 @@ const KonvaTimelineComponent = ({
       <div
         ref={containerRef}
         className="overflow-x-auto overflow-y-hidden flex-1"
-        style={{ height: `${containerHeight}px` }}
+        style={{ height: `${timelineHeight}px` }}
       >
         <Stage
           key="konva-timeline-stage"
           width={TIMELINE_WIDTH}
-          height={containerHeight}
+          height={timelineHeight}
           onMouseMove={handleTimelineMouseMove}
           onMouseLeave={handleTimelineMouseLeave}
         >
@@ -392,7 +436,7 @@ const KonvaTimelineComponent = ({
               x={0}
               y={0}
               width={TIMELINE_WIDTH}
-              height={containerHeight}
+              height={timelineHeight}
               fill="#1a1a1a"
               onClick={handleTimelineClick}
             />
@@ -406,6 +450,101 @@ const KonvaTimelineComponent = ({
               fill="#000000"
               cornerRadius={4}
             />
+
+            {/* Audio track */}
+            {hasAudioTrack && (
+              <>
+                <Rect
+                  x={X_OFFSET}
+                  y={AUDIO_TRACK_Y}
+                  width={TIMELINE_WIDTH - X_OFFSET * 2}
+                  height={AUDIO_TRACK_HEIGHT}
+                  fill={AUDIO_TRACK_BG}
+                  cornerRadius={4}
+                />
+                <Text
+                  x={X_OFFSET + 8}
+                  y={AUDIO_TRACK_Y - 18}
+                  text="Audio Track"
+                  fontSize={12}
+                  fill={AUDIO_TRACK_LABEL_COLOR}
+                />
+
+                {audioClips.map((clip) => {
+                  const asset = assetMap.get(clip.mediaId);
+                  const clipStartX = timeToPixels(clip.start) + X_OFFSET;
+                  const clipWidth = Math.max(
+                    MIN_CLIP_WIDTH,
+                    clip.duration * PIXELS_PER_SECOND,
+                  );
+                  const isSelected = clip.id === selectedClipId;
+                  const waveformPoints =
+                    asset?.waveform && clipWidth >= 10
+                      ? generateWaveformPoints(
+                          asset.waveform,
+                          clipStartX,
+                          AUDIO_TRACK_Y + AUDIO_TRACK_HEIGHT / 2,
+                          clipWidth,
+                          AUDIO_TRACK_HEIGHT - 16,
+                        )
+                      : null;
+
+                  return (
+                    <Group key={clip.id}>
+                      <Rect
+                        x={clipStartX}
+                        y={AUDIO_TRACK_Y + 4}
+                        width={clipWidth}
+                        height={AUDIO_TRACK_HEIGHT - 8}
+                        fill={AUDIO_CLIP_COLOR}
+                        opacity={0.85}
+                        cornerRadius={4}
+                        stroke={isSelected ? "#FFFFFF" : "#6366F1"}
+                        strokeWidth={isSelected ? 2 : 1}
+                        onClick={() => onClipSelect(clip.id)}
+                      />
+                      {waveformPoints && waveformPoints.length > 0 && (
+                        <Line
+                          points={waveformPoints}
+                          stroke={AUDIO_WAVEFORM_COLOR}
+                          strokeWidth={1}
+                          tension={0.3}
+                          listening={false}
+                        />
+                      )}
+                      <Text
+                        x={clipStartX + 6}
+                        y={AUDIO_TRACK_Y + 8}
+                        text={asset?.name || "Audio"}
+                        fontSize={10}
+                        fill="#FFFFFF"
+                        width={clipWidth - 12}
+                        ellipsis
+                        listening={false}
+                      />
+                      <Text
+                        x={clipStartX + 6}
+                        y={AUDIO_TRACK_Y + AUDIO_TRACK_HEIGHT - 22}
+                        text={`${clip.duration.toFixed(1)}s`}
+                        fontSize={9}
+                        fill="#C7D2FE"
+                        listening={false}
+                      />
+                      {clip.volume !== undefined && clip.volume !== 1 && (
+                        <Text
+                          x={clipStartX + clipWidth - 34}
+                          y={AUDIO_TRACK_Y + 8}
+                          text={`${Math.round((clip.volume ?? 1) * 100)}%`}
+                          fontSize={9}
+                          fill={AUDIO_VOLUME_COLOR}
+                          listening={false}
+                        />
+                      )}
+                    </Group>
+                  );
+                })}
+              </>
+            )}
 
             {/* Clips */}
             {clipsToRender.map((clip) => {
@@ -441,7 +580,7 @@ const KonvaTimelineComponent = ({
                   timeToPixels(scrubberTime) + X_OFFSET,
                   0,
                   timeToPixels(scrubberTime) + X_OFFSET,
-                  containerHeight,
+                  timelineHeight,
                 ]}
                 stroke="#EF4444"
                 strokeWidth={2}
@@ -456,7 +595,7 @@ const KonvaTimelineComponent = ({
                 timeToPixels(currentTime) + X_OFFSET,
                 0,
                 timeToPixels(currentTime) + X_OFFSET,
-                containerHeight,
+                timelineHeight,
               ]}
               stroke="#FFFFFF"
               strokeWidth={2}

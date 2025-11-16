@@ -13,7 +13,7 @@ type ConvexScene = Doc<"scenes">;
 
 const DEFAULT_RESOLUTION = { width: 1920, height: 1080 };
 const DEFAULT_FPS = 30;
-const DEFAULT_SAMPLE_RATE = 48000;
+const DEFAULT_SAMPLE_RATE = 44100;
 
 const parseResolution = (value?: string | null) => {
   if (!value) return DEFAULT_RESOLUTION;
@@ -42,6 +42,13 @@ const buildMediaAsset = (
     ? `Scene ${scene.sceneNumber}: ${scene.description.slice(0, 42)}`
     : `Clip ${index + 1}`;
   const safeDuration = Math.max(clip.duration ?? 0, 0.1);
+  const videoUrl =
+    clip.lipsyncVideoUrl ??
+    scene?.lipsyncVideoUrl ??
+    clip.videoUrl ??
+    clip.originalVideoUrl ??
+    "";
+
   return {
     id: clip._id,
     name,
@@ -50,7 +57,7 @@ const buildMediaAsset = (
     width,
     height,
     fps: DEFAULT_FPS,
-    url: clip.videoUrl ?? "",
+    url: videoUrl,
   };
 };
 
@@ -110,16 +117,51 @@ export const adaptConvexProjectToStandalone = ({
 
   const mediaAssets: Record<string, MediaAssetMeta> = {};
   const clipsForTrack: Clip[] = [];
+  const audioClips: Clip[] = [];
   let cursor = 0;
   let sequenceResolution = DEFAULT_RESOLUTION;
 
   readyClips.forEach(({ clip, scene }, index) => {
     const asset = buildMediaAsset(clip, scene, index);
+    const startTime = cursor;
     if (asset.width && asset.height) {
       sequenceResolution = { width: asset.width, height: asset.height };
     }
     mediaAssets[asset.id] = asset;
-    clipsForTrack.push(buildClip(asset, cursor, "video-1"));
+    clipsForTrack.push(buildClip(asset, startTime, "video-1"));
+
+    if (scene?.narrationUrl) {
+      const audioAssetId = `${scene._id}-narration`;
+      if (!mediaAssets[audioAssetId]) {
+        mediaAssets[audioAssetId] = {
+          id: audioAssetId,
+          name: `Scene ${scene.sceneNumber}: Narration`,
+          type: "audio",
+          duration: asset.duration,
+          width: 0,
+          height: 0,
+          fps: DEFAULT_FPS,
+          sampleRate: DEFAULT_SAMPLE_RATE,
+          url: scene.narrationUrl,
+        };
+      }
+
+      audioClips.push({
+        id: `${audioAssetId}-clip`,
+        mediaId: audioAssetId,
+        trackId: "audio-1",
+        kind: "audio",
+        start: startTime,
+        duration: asset.duration,
+        trimStart: 0,
+        trimEnd: 0,
+        opacity: 1,
+        volume: 1,
+        effects: [],
+        transitions: [],
+      });
+    }
+
     cursor += asset.duration;
   });
 
@@ -138,7 +180,7 @@ export const adaptConvexProjectToStandalone = ({
     allowOverlap: true,
     locked: false,
     muted: false,
-    clips: [],
+    clips: audioClips,
   };
 
   const sequence: Sequence = {

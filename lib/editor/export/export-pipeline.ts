@@ -3,6 +3,7 @@ import { FrameRenderer } from "./frame-renderer";
 import {
   Output,
   CanvasSource,
+  AudioBufferSource,
   Mp4OutputFormat,
   BufferTarget,
   QUALITY_HIGH,
@@ -33,12 +34,20 @@ export class ExportPipeline {
       const width = parseInt(widthStr) || 1280;
       const height = parseInt(heightStr) || 720;
       const fps = 30;
+      const sampleRate = sequence.sampleRate || 44100;
 
       onProgress?.(0, "Initializing encoder...");
 
       // Create frame renderer
       const frameRenderer = new FrameRenderer(width, height);
       const canvas = frameRenderer.getCanvas();
+
+      onProgress?.(2, "Mixing audio tracks...");
+      const audioBuffer = await this.mixAudioTracks(
+        sequence,
+        assets,
+        sampleRate,
+      );
 
       // Create MediaBunny output
       const output = new Output({
@@ -54,7 +63,21 @@ export class ExportPipeline {
 
       // Add video track and start output
       output.addVideoTrack(canvasSource, { frameRate: fps });
+
+      let audioSource: AudioBufferSource | null = null;
+      if (audioBuffer) {
+        audioSource = new AudioBufferSource({
+          codec: "aac",
+          bitrate: 128000,
+        });
+        output.addAudioTrack(audioSource);
+      }
+
       await output.start();
+
+      if (audioSource && audioBuffer) {
+        await audioSource.add(audioBuffer);
+      }
 
       onProgress?.(5, "Rendering and encoding...");
 
@@ -73,6 +96,7 @@ export class ExportPipeline {
 
           // Add the canvas frame (timestamp and duration in seconds)
           await canvasSource.add(timestamp, frameDuration);
+
           frameCount++;
 
           const progress = 5 + (frameCount / totalFrames) * 90;
@@ -88,6 +112,7 @@ export class ExportPipeline {
 
       // Finalize encoding
       canvasSource.close();
+      audioSource?.close();
       await output.finalize();
 
       onProgress?.(95, "Finalizing...");
@@ -116,6 +141,69 @@ export class ExportPipeline {
 
   cancel() {
     this.abortController?.abort();
+  }
+
+  private async mixAudioTracks(
+    sequence: Sequence,
+    assets: Record<string, MediaAssetMeta>,
+    sampleRate: number,
+  ): Promise<AudioBuffer | null> {
+    if (typeof OfflineAudioContext === "undefined") {
+      return null;
+    }
+
+    const audioTrack = sequence.tracks.find((track) => track.kind === "audio");
+    if (!audioTrack || audioTrack.clips.length === 0) {
+      return null;
+    }
+
+    const contextLength = Math.max(1, Math.ceil(sequence.duration * sampleRate));
+    const offlineContext = new OfflineAudioContext(
+      2,
+      contextLength,
+      sampleRate,
+    );
+
+    for (const clip of audioTrack.clips) {
+      const asset = assets[clip.mediaId];
+      if (!asset || asset.type !== "audio" || !asset.url) continue;
+
+      try {
+        const response = await fetch(asset.url, {
+          mode: "cors",
+          credentials: "omit",
+        });
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
+
+        const source = offlineContext.createBufferSource();
+        source.buffer = audioBuffer;
+
+        const gainNode = offlineContext.createGain();
+        const clipVolume = clip.volume ?? 1;
+        gainNode.gain.value = audioTrack.muted ? 0 : clipVolume;
+        source.connect(gainNode).connect(offlineContext.destination);
+
+        const trimStart = clip.trimStart ?? 0;
+        const trimEnd = clip.trimEnd ?? 0;
+        const clipDuration = Math.max(
+          0,
+          Math.min(clip.duration, audioBuffer.duration - trimStart),
+        );
+        const playbackDuration = Math.max(0, clipDuration - trimEnd);
+        if (playbackDuration <= 0) continue;
+
+        source.start(
+          clip.start,
+          trimStart,
+          Math.min(playbackDuration, audioBuffer.duration - trimStart),
+        );
+      } catch (error) {
+        console.error(`Failed to load audio for export: ${clip.mediaId}`, error);
+      }
+    }
+
+    return await offlineContext.startRendering();
   }
 }
 
