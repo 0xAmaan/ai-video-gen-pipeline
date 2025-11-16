@@ -1,0 +1,964 @@
+openapi: 3.1.0
+info:
+  title: AI Video Generation Pipeline API
+  version: 1.0.0
+  description: |
+    OpenAPI reference for the AI Video Generation Pipeline. This specification
+    documents all public Next.js API routes along with shared schemas derived
+    from Convex data models. All endpoints exchange JSON payloads and are
+    intended for internal team use.
+servers:
+  - url: https://{domain}
+    description: Primary deployment host
+    variables:
+      domain:
+        default: localhost:3000
+        description: Host domain for the Next.js application (override per env)
+tags:
+  - name: Questioning
+    description: Generate clarifying questions for projects
+  - name: Storyboarding
+    description: Scene planning and image generation workflows
+  - name: VideoGeneration
+    description: Video clip creation and lifecycle
+  - name: Operations
+    description: Internal tooling and diagnostics
+paths:
+  /api/generate-questions:
+    post:
+      tags: [Questioning]
+      summary: Generate clarifying questions for a project prompt
+      operationId: generateQuestions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateQuestionsRequest'
+      responses:
+        '200':
+          description: Successfully generated question set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateQuestionsResponse'
+        '400':
+          description: Invalid input prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Upstream model failure or missing credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/generate-storyboard:
+    post:
+      tags: [Storyboarding]
+      summary: Create storyboard scenes and preview images
+      operationId: generateStoryboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateStoryboardRequest'
+      responses:
+        '200':
+          description: Storyboard scenes generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateStoryboardResponse'
+        '400':
+          description: Missing or malformed prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Generation failed or models unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/generate-character-variations:
+    post:
+      tags: [Storyboarding]
+      summary: Create character reference variations from a scene prompt
+      operationId: generateCharacterVariations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateCharacterVariationsRequest'
+      responses:
+        '200':
+          description: Character variations generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateCharacterVariationsResponse'
+        '400':
+          description: Missing required prompt data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Replicate request failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/regenerate-scene:
+    post:
+      tags: [Storyboarding]
+      summary: Regenerate a single storyboard scene image
+      operationId: regenerateScene
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegenerateSceneRequest'
+      responses:
+        '200':
+          description: Scene regenerated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegenerateSceneResponse'
+        '400':
+          description: Missing visual prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Regeneration failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/generate-video-clip:
+    post:
+      tags: [VideoGeneration]
+      summary: Generate a video clip from an image and prompt
+      operationId: generateVideoClip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateVideoClipRequest'
+      responses:
+        '200':
+          description: Video clip generation initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateVideoClipResponse'
+        '400':
+          description: Missing image URL or prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Replicate returned an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/generate-all-clips:
+    post:
+      tags: [VideoGeneration]
+      summary: Create video predictions for all storyboard scenes
+      operationId: generateAllClips
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateAllClipsRequest'
+      responses:
+        '200':
+          description: Predictions queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateAllClipsResponse'
+        '400':
+          description: Missing scenes data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Prediction creation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/poll-prediction:
+    post:
+      tags: [VideoGeneration]
+      summary: Poll a Replicate prediction for completion status
+      operationId: pollPrediction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PollPredictionRequest'
+      responses:
+        '200':
+          description: Latest prediction status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollPredictionResponse'
+        '400':
+          description: Missing prediction identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Polling failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/test-speed:
+    post:
+      tags: [Operations]
+      summary: Benchmark different model pipelines for storyboard generation
+      operationId: runSpeedTest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestSpeedRequest'
+      responses:
+        '200':
+          description: Speed test results summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestSpeedResponse'
+        '400':
+          description: Missing benchmark prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Speed test execution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    GenerateQuestionsRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          description: High-level project description used to derive questions
+
+    QuestionOption:
+      type: object
+      required: [label, value, description]
+      properties:
+        label:
+          type: string
+          description: Short option label shown to the user
+        value:
+          type: string
+          description: Machine-readable option value
+        description:
+          type: string
+          description: Additional context for the option
+
+    ClarifyingQuestion:
+      type: object
+      required: [id, question, options]
+      properties:
+        id:
+          type: string
+          description: Stable identifier for the question
+        question:
+          type: string
+          description: Question text presented to the user
+        options:
+          type: array
+          minItems: 2
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/QuestionOption'
+
+    GenerateQuestionsResponse:
+      type: object
+      required: [questions]
+      properties:
+        questions:
+          type: array
+          minItems: 3
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/ClarifyingQuestion'
+
+    GenerateStoryboardRequest:
+      type: object
+      required: [prompt]
+      properties:
+        projectId:
+          type: string
+          description: Optional Convex project identifier to associate results
+        prompt:
+          type: string
+          description: Narrative brief used to draft storyboard scenes
+        responses:
+          type: object
+          description: Optional questionnaire answers influencing style/tone
+          additionalProperties: {}
+
+    StoryboardScene:
+      type: object
+      required: [sceneNumber, description, visualPrompt, duration]
+      properties:
+        sceneNumber:
+          type: integer
+          minimum: 1
+          description: Sequence position of the scene
+        description:
+          type: string
+          description: Concise scene summary for UI display
+        visualPrompt:
+          type: string
+          description: Expanded prompt (150-250 words) for image/video models
+        duration:
+          type: number
+          format: float
+          minimum: 1
+          description: Target duration in seconds
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional generated storyboard image URL (Leonardo Phoenix)
+
+    ModelInfo:
+      type: object
+      required: [modelKey, modelName, style, estimatedCost]
+      properties:
+        modelKey:
+          type: string
+          description: Internal key referencing the selected model configuration
+        modelName:
+          type: string
+          description: Human-readable provider/model name
+        style:
+          type: string
+          description: Applied style preset for Phoenix generation
+        estimatedCost:
+          type: number
+          format: float
+          description: Approximate USD cost per generated asset
+
+    GenerateStoryboardResponse:
+      type: object
+      required: [success, scenes, modelInfo]
+      properties:
+        success:
+          type: boolean
+        scenes:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryboardScene'
+        modelInfo:
+          $ref: '#/components/schemas/ModelInfo'
+
+    GenerateCharacterVariationsRequest:
+      type: object
+      required: [projectId, scenePrompt]
+      properties:
+        projectId:
+          type: string
+          description: Convex project identifier
+        scenePrompt:
+          type: string
+          description: Scene description used to seed character prompts
+        responses:
+          type: object
+          description: Questionnaire answers guiding visual style
+          additionalProperties: {}
+
+    CharacterVariation:
+      type: object
+      required: [model, modelName, imageUrl, cost]
+      properties:
+        model:
+          type: string
+          description: Internal key for the model configuration
+        modelName:
+          type: string
+          description: Provider/model name
+        imageUrl:
+          type: string
+          format: uri
+          description: Generated character reference image URL
+        cost:
+          type: number
+          format: float
+          description: Estimated USD cost for this generation
+
+    FailedModelInfo:
+      type: object
+      required: [model, error]
+      properties:
+        model:
+          type: string
+          description: Display name of the model that failed
+        error:
+          type: string
+          description: Failure message returned by the provider
+
+    GenerateCharacterVariationsResponse:
+      type: object
+      required: [success, variations, totalCost]
+      properties:
+        success:
+          type: boolean
+        variations:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CharacterVariation'
+        totalCost:
+          type: number
+          format: float
+          description: Sum of the estimated costs for successful variations
+        failedModels:
+          type: array
+          description: Details for any models that failed to generate output
+          items:
+            $ref: '#/components/schemas/FailedModelInfo'
+
+    RegenerateSceneRequest:
+      type: object
+      required: [visualPrompt]
+      properties:
+        visualPrompt:
+          type: string
+          description: Full prompt used to regenerate the scene
+        responses:
+          type: object
+          description: Optional questionnaire responses influencing style
+          additionalProperties: {}
+        style:
+          type: string
+          description: Override style preset for Leonardo Phoenix
+
+    RegenerateSceneResponse:
+      type: object
+      required: [success, imageUrl]
+      properties:
+        success:
+          type: boolean
+        imageUrl:
+          type: string
+          format: uri
+          description: Regenerated storyboard image URL
+
+    GenerateVideoClipRequest:
+      type: object
+      required: [imageUrl, prompt]
+      properties:
+        imageUrl:
+          type: string
+          format: uri
+          description: Source image URL used for image-to-video generation
+        prompt:
+          type: string
+          description: Motion prompt appended with cinematic modifiers
+        duration:
+          type: number
+          format: float
+          description: Desired clip length in seconds (defaults to 5)
+          minimum: 1
+        resolution:
+          type: string
+          description: Output resolution for the generated clip (default 720p)
+
+    GenerateVideoClipResponse:
+      type: object
+      required: [success, videoUrl]
+      properties:
+        success:
+          type: boolean
+        videoUrl:
+          type: string
+          format: uri
+          description: URL for the generated video asset
+
+    SceneClipInput:
+      type: object
+      required: [sceneNumber, id, imageUrl, duration]
+      properties:
+        sceneNumber:
+          type: integer
+          minimum: 1
+        id:
+          type: string
+          description: Convex scene identifier
+        imageUrl:
+          type: string
+          format: uri
+          description: Storyboard image URL used for motion generation
+        visualPrompt:
+          type: string
+          description: Detailed prompt guiding the motion model
+        description:
+          type: string
+          description: Optional scene description for auditing
+        duration:
+          type: number
+          format: float
+          description: Requested clip duration (rounded internally to 5 or 10)
+
+    GenerateAllClipsRequest:
+      type: object
+      required: [scenes]
+      properties:
+        scenes:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/SceneClipInput'
+
+    ScenePrediction:
+      type: object
+      required: [sceneNumber, sceneId, status, duration]
+      properties:
+        sceneNumber:
+          type: integer
+          minimum: 1
+        sceneId:
+          type: string
+          description: Convex scene identifier
+        predictionId:
+          type: string
+          nullable: true
+          description: Replicate prediction identifier (null on failure)
+        status:
+          type: string
+          enum: [pending, failed]
+        duration:
+          type: number
+          format: float
+        errorMessage:
+          type: string
+          description: Error returned by Replicate when status is failed
+
+    GenerateAllClipsResponse:
+      type: object
+      required: [success, predictions, summary]
+      properties:
+        success:
+          type: boolean
+          description: True when all predictions were created successfully
+        predictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenePrediction'
+        summary:
+          type: object
+          required: [total, successful, failed]
+          properties:
+            total:
+              type: integer
+            successful:
+              type: integer
+            failed:
+              type: integer
+
+    PollPredictionRequest:
+      type: object
+      required: [predictionId]
+      properties:
+        predictionId:
+          type: string
+          description: Replicate prediction identifier returned during creation
+
+    PollPredictionResponse:
+      oneOf:
+        - type: object
+          required: [status]
+          properties:
+            status:
+              const: processing
+            progress:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: Estimated completion percentage derived from logs
+        - type: object
+          required: [status, videoUrl]
+          properties:
+            status:
+              const: complete
+            videoUrl:
+              type: string
+              format: uri
+              nullable: true
+              description: Final video URL when generation succeeds
+        - type: object
+          required: [status, errorMessage]
+          properties:
+            status:
+              const: failed
+            errorMessage:
+              type: string
+              description: Reason the prediction failed
+
+    TestSpeedRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          description: Storyboard brief used across benchmarks
+        responses:
+          type: object
+          description: Optional questionnaire answers for consistent styling
+          additionalProperties: {}
+
+    TokensUsed:
+      type: object
+      required: [prompt, completion, total]
+      properties:
+        prompt:
+          type: integer
+        completion:
+          type: integer
+        total:
+          type: integer
+
+    SpeedTestSuccess:
+      type: object
+      required: [success, timeMs, timeSec, sceneCount, model]
+      properties:
+        success:
+          const: true
+        timeMs:
+          type: integer
+          description: Wall-clock duration in milliseconds
+        timeSec:
+          type: string
+          description: Human-readable seconds representation
+        sceneCount:
+          type: integer
+        model:
+          type: string
+        tokensUsed:
+          $ref: '#/components/schemas/TokensUsed'
+
+    SpeedTestFailure:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          const: false
+        error:
+          type: string
+          description: Error message returned during the benchmark
+
+    SpeedTestResult:
+      oneOf:
+        - $ref: '#/components/schemas/SpeedTestSuccess'
+        - $ref: '#/components/schemas/SpeedTestFailure'
+
+    TestSpeedResponse:
+      type: object
+      required: [success, results, summary]
+      properties:
+        success:
+          type: boolean
+          description: True when the benchmark completed without top-level errors
+        results:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SpeedTestResult'
+          description: Per-runner diagnostics keyed by runner name
+        summary:
+          type: object
+          properties:
+            winner:
+              type: string
+              description: Fastest successful runner (if any)
+            ranking:
+              type: array
+              items:
+                type: string
+              description: Fastest-to-slowest ordering of successful runners
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error summary
+        details:
+          type: string
+          description: Optional error details for debugging
+
+    # Convex Data Models (informational schemas)
+    ConvexId:
+      type: string
+      description: Convex document identifier (base64url string)
+
+    VideoProjectRecord:
+      type: object
+      required:
+        - _id
+        - userId
+        - prompt
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          $ref: '#/components/schemas/ConvexId'
+        userId:
+          type: string
+        prompt:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - questions_generated
+            - questions_answered
+            - character_selected
+            - generating_storyboard
+            - storyboard_created
+            - video_generated
+        lastActivePhase:
+          type: string
+          enum: [prompt, character-select, storyboard, video, editor]
+          nullable: true
+        referenceImageUrl:
+          type: string
+          format: uri
+          nullable: true
+        selectedModel:
+          type: string
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64
+        updatedAt:
+          type: integer
+          format: int64
+
+    ClarifyingQuestionsRecord:
+      type: object
+      required: [_id, projectId, questions, generatedAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ConvexId'
+        projectId:
+          $ref: '#/components/schemas/ConvexId'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClarifyingQuestion'
+        answers:
+          type: object
+          nullable: true
+          properties:
+            prompt:
+              type: string
+            responses:
+              type: object
+              additionalProperties: {}
+        generatedAt:
+          type: integer
+          format: int64
+
+    SceneRecord:
+      type: object
+      required:
+        - _id
+        - projectId
+        - sceneNumber
+        - description
+        - duration
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          $ref: '#/components/schemas/ConvexId'
+        projectId:
+          $ref: '#/components/schemas/ConvexId'
+        sceneNumber:
+          type: integer
+        description:
+          type: string
+        visualPrompt:
+          type: string
+          nullable: true
+        imageStorageId:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        duration:
+          type: number
+        replicateImageId:
+          type: string
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64
+        updatedAt:
+          type: integer
+          format: int64
+
+    VideoClipRecord:
+      type: object
+      required:
+        - _id
+        - sceneId
+        - projectId
+        - status
+        - duration
+        - resolution
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          $ref: '#/components/schemas/ConvexId'
+        sceneId:
+          $ref: '#/components/schemas/ConvexId'
+        projectId:
+          $ref: '#/components/schemas/ConvexId'
+        videoUrl:
+          type: string
+          format: uri
+          nullable: true
+        replicateVideoId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, processing, complete, failed]
+        duration:
+          type: number
+        resolution:
+          type: string
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64
+        updatedAt:
+          type: integer
+          format: int64
+
+    FinalVideoRecord:
+      type: object
+      required:
+        - _id
+        - projectId
+        - duration
+        - resolution
+        - clipCount
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        _id:
+          $ref: '#/components/schemas/ConvexId'
+        projectId:
+          $ref: '#/components/schemas/ConvexId'
+        videoUrl:
+          type: string
+          format: uri
+          nullable: true
+        duration:
+          type: number
+        resolution:
+          type: string
+        clipCount:
+          type: integer
+        totalCost:
+          type: number
+          nullable: true
+        status:
+          type: string
+          enum: [pending, processing, complete, failed]
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: integer
+          format: int64
+        updatedAt:
+          type: integer
+          format: int64
+
+    EditorProjectRecord:
+      type: object
+      required: [_id, userId, title, projectData, history, createdAt, updatedAt]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ConvexId'
+        userId:
+          type: string
+        title:
+          type: string
+        projectData:
+          type: object
+          description: Serialized editor project snapshot
+          additionalProperties: {}
+        history:
+          type: object
+          properties:
+            past:
+              type: array
+              items:
+                type: object
+                additionalProperties: {}
+            future:
+              type: array
+              items:
+                type: object
+                additionalProperties: {}
+        createdAt:
+          type: integer
+          format: int64
+        updatedAt:
+          type: integer
+          format: int64
