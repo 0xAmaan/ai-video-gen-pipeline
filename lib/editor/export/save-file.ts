@@ -11,7 +11,7 @@ export async function saveBlob(blob: Blob, filename: string) {
       await writable.close();
       return;
     } catch (error) {
-      console.warn("saveBlob: falling back to download", error);
+      // Silently fall back to download
     }
   }
   const url = URL.createObjectURL(blob);

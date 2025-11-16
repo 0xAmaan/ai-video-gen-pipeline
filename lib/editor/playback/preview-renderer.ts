@@ -22,6 +22,12 @@ export class PreviewRenderer {
   private isScrubbing = false;
   private wasPlayingBeforeScrub = false;
 
+  // Performance metrics
+  private frameCount = 0;
+  private lastFpsTime = 0;
+  private currentFps = 0;
+  private frameRenderTime = 0;
+
   constructor(
     private readonly getSequence: () => Sequence | null,
     private readonly getAsset: (id: string) => MediaAssetMeta | undefined,
@@ -54,12 +60,20 @@ export class PreviewRenderer {
       );
       source.connect(this.workletNode).connect(this.audioContext.destination);
     } catch (error) {
-      console.warn("PreviewRenderer: failed to init audio worklet", error);
+      // Silently handle audio worklet init errors
     }
   }
 
   setTimeUpdateHandler(handler: TimeUpdateHandler) {
     this.onTimeUpdate = handler;
+  }
+
+  getPerformanceMetrics() {
+    return {
+      fps: this.currentFps,
+      frameTime: this.frameRenderTime,
+      isPlaying: this.playing,
+    };
   }
 
   async play() {
@@ -132,6 +146,8 @@ export class PreviewRenderer {
   private render(timestamp?: number) {
     if (!this.canvas || !this.ctx) return;
 
+    const renderStart = performance.now();
+
     // Use timestamp-based timing instead of fixed increments
     if (timestamp !== undefined) {
       if (this.lastFrameTime !== undefined) {
@@ -148,6 +164,20 @@ export class PreviewRenderer {
     this.syncMediaToTimeline();
     this.drawFrame();
     this.onTimeUpdate?.(this.currentTime);
+
+    // Track performance metrics
+    const renderEnd = performance.now();
+    this.frameRenderTime = renderEnd - renderStart;
+    this.frameCount++;
+
+    // Update FPS every second
+    if (renderEnd >= this.lastFpsTime + 1000) {
+      this.currentFps = Math.round(
+        (this.frameCount * 1000) / (renderEnd - this.lastFpsTime),
+      );
+      this.frameCount = 0;
+      this.lastFpsTime = renderEnd;
+    }
   }
 
   private syncMediaToTimeline() {
@@ -185,16 +215,14 @@ export class PreviewRenderer {
     const canvasHeight = this.canvas.height;
     const video = this.videoEl;
 
-    // Clear canvas with black background
-    this.ctx.fillStyle = "#050505";
-    this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    if (
+    // Only clear if we have no video to draw (prevents flicker)
+    const hasVideo =
       video &&
       video.readyState >= 2 &&
       video.videoWidth > 0 &&
-      video.videoHeight > 0
-    ) {
+      video.videoHeight > 0;
+
+    if (hasVideo) {
       // Calculate aspect ratios
       const videoAspect = video.videoWidth / video.videoHeight;
       const canvasAspect = canvasWidth / canvasHeight;
@@ -210,11 +238,21 @@ export class PreviewRenderer {
         drawWidth = canvasWidth;
         drawHeight = canvasWidth / videoAspect;
         offsetY = (canvasHeight - drawHeight) / 2;
+
+        // Clear letterbox bars ONLY (not entire canvas)
+        this.ctx.fillStyle = "#050505";
+        this.ctx.fillRect(0, 0, canvasWidth, offsetY); // Top bar
+        this.ctx.fillRect(0, offsetY + drawHeight, canvasWidth, offsetY); // Bottom bar
       } else {
         // Video is taller - fit to height, add pillarbox (black bars left/right)
         drawHeight = canvasHeight;
         drawWidth = canvasHeight * videoAspect;
         offsetX = (canvasWidth - drawWidth) / 2;
+
+        // Clear pillarbox bars ONLY (not entire canvas)
+        this.ctx.fillStyle = "#050505";
+        this.ctx.fillRect(0, 0, offsetX, canvasHeight); // Left bar
+        this.ctx.fillRect(offsetX + drawWidth, 0, offsetX, canvasHeight); // Right bar
       }
 
       // Draw video centered with correct aspect ratio

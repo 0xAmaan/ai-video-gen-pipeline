@@ -50,7 +50,7 @@ When iterating on the engine:
 bun run dev
 ```
 
-The command above launches Next.js (Turbopack) and Convex simultaneously. Sign in with Clerk, walk through `/create`, and the onboarding flow redirects you to `/editor` which mounts the full CapCut-class experience backed by:
+The command above launches Next.js (Turbopack) and Convex simultaneously. Sign in with Clerk, create a new project via `/new`, and walk through the multi-phase workflow (prompt → storyboard → video → editor) which mounts the full CapCut-class experience backed by:
 
 - `lib/editor/core/project-store.ts`: Zustand store + IndexedDB persistence + timeline/WASM bindings.
 - `lib/editor/io/media-bunny-manager.ts`: Media ingest that streams File objects through the demux worker + MediaBunny.

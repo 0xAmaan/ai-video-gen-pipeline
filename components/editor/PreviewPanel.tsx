@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Play, Pause } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -21,7 +22,7 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs}`;
 };
 
-export const PreviewPanel = ({
+const PreviewPanelComponent = ({
   canvasRef,
   currentTime,
   duration,
@@ -61,3 +62,18 @@ export const PreviewPanel = ({
     </div>
   );
 };
+
+// Memoize to prevent re-renders when only currentTime changes
+// Canvas updates independently via PreviewRenderer
+export const PreviewPanel = memo(PreviewPanelComponent, (prevProps, nextProps) => {
+  // Only re-render if these props change (ignore currentTime for now)
+  return (
+    prevProps.canvasRef === nextProps.canvasRef &&
+    prevProps.duration === nextProps.duration &&
+    prevProps.isPlaying === nextProps.isPlaying &&
+    prevProps.onTogglePlayback === nextProps.onTogglePlayback &&
+    prevProps.onSeek === nextProps.onSeek
+    // Note: currentTime is intentionally excluded to reduce re-renders
+    // The time display will update less frequently, but canvas rendering is smooth
+  );
+});

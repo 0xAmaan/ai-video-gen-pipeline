@@ -56,18 +56,12 @@ export class MediaBunnyManager {
       }
       if (message.type === "THUMBNAIL_PROGRESS") {
         // Handle progress updates (for future progress UI)
-        console.log(
-          `[MediaBunny] Thumbnail progress: ${message.current}/${message.total} (${Math.round(message.progress * 100)}%)`,
-        );
         return;
       }
       if (message.type === "THUMBNAIL_RESULT") {
         const pending = this.thumbnailRequests.get(message.requestId);
         if (!pending) return;
         this.thumbnailRequests.delete(message.requestId);
-        console.log(
-          `[MediaBunny] Generated ${message.thumbnails.length} thumbnails for asset ${message.assetId}`,
-        );
         pending.resolve(message.thumbnails);
         return;
       }
@@ -78,8 +72,6 @@ export class MediaBunnyManager {
         pending.reject(new Error(message.error));
         return;
       }
-      // Log unhandled message types for debugging
-      console.warn(`[MediaBunny] Unhandled worker message type:`, message);
     };
   }
 

@@ -19,8 +19,12 @@ graph TB
             UI[UI Layer - React 19]
 
             subgraph "Page Components"
-                HomePage[Home Page<br/>Demo/Auth Landing]
-                CreatePage[Create Page<br/>Main Workflow<br/>Phase Management]
+                HomePage[Home Page<br/>Auth Landing]
+                NewPage[New Page<br/>Initial Prompt Input]
+                PromptPage[Prompt Page<br/>Clarifying Questions]
+                StoryboardPage[Storyboard Page<br/>Scene Review/Edit]
+                VideoPage[Video Page<br/>Generation Progress]
+                EditorPage[Editor Page<br/>CapCut-style Editor]
             end
 
             subgraph "Phase Components"
@@ -86,11 +90,11 @@ graph TB
     end
 
     %% Page to Phase connections
-    CreatePage --> InputPhase
-    CreatePage --> StoryboardGenPhase
-    CreatePage --> StoryboardPhase
-    CreatePage --> VideoGenPhase
-    CreatePage --> EditorPhase
+    NewPage --> InputPhase
+    PromptPage --> InputPhase
+    StoryboardPage --> StoryboardPhase
+    VideoPage --> VideoGenPhase
+    EditorPage --> EditorPhase
 
     %% Phase to State connections
     InputPhase --> ProjectState
@@ -104,7 +108,7 @@ graph TB
     ConvexClient -->|Mutations| Convex
 
     %% Phase orchestration
-    CreatePage --> PhaseOrchestration
+    PromptPage --> PhaseOrchestration
     PhaseOrchestration --> ProjectState
 
     %% API Routes connections
@@ -141,7 +145,7 @@ graph TB
     classDef missing fill:#ffebee,stroke:#c62828,stroke-width:2px,stroke-dasharray: 5 5
     classDef user fill:#fce4ec,stroke:#c2185b,stroke-width:3px
 
-    class HomePage,CreatePage,InputPhase,StoryboardGenPhase,StoryboardPhase,VideoGenPhase,EditorPhase,QuestionCard,ExportModal,UIKit,ProjectState,ConvexClient,PhaseOrchestration,PollingLogic client
+    class HomePage,NewPage,PromptPage,StoryboardPage,VideoPage,EditorPage,InputPhase,StoryboardGenPhase,StoryboardPhase,VideoGenPhase,EditorPhase,QuestionCard,ExportModal,UIKit,ProjectState,ConvexClient,PhaseOrchestration,PollingLogic client
     class GenQuestions,GenStoryboard,GenAllClips,PollPrediction,RegenerateScene,Clerk,Convex backend
     class OpenAI,FluxSchnell,ReplicateWAN ai
     class MultiProvider,BrandMgmt,Collaboration,ExportEngine,CapCutEngine missing
@@ -155,8 +159,12 @@ graph TB
 ### Frontend (Next.js 16 + React 19)
 
 **Pages**:
-- `app/page.tsx`: Demo landing (Clerk + Convex integration)
-- `app/create/page.tsx`: Main workflow orchestrator (5 phases, state management)
+- `app/page.tsx`: Auth landing (Clerk integration, redirects to /new)
+- `app/new/page.tsx`: Initial prompt input (creates project, redirects to /{projectId}/prompt)
+- `app/[projectId]/prompt/page.tsx`: Clarifying questions workflow
+- `app/[projectId]/storyboard/page.tsx`: Scene review and editing
+- `app/[projectId]/video/page.tsx`: Parallel video generation with real-time progress
+- `app/[projectId]/editor/page.tsx`: CapCut-style timeline editor
 
 **Phase Components** (`components/`):
 - `InputPhase`: Prompt + clarifying questions (multi-step wizard, keyboard nav)

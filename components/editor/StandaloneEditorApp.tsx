@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useProjectStore } from "@/lib/editor/core/project-store";
@@ -38,6 +38,17 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
   const currentTime = useProjectStore((state) => state.currentTime);
   const actions = useProjectStore((state) => state.actions);
 
+  // Debug toggle with 'D' key
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'd' || e.key === 'D') {
+        setDebugEnabled((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
+
   // Wire up Convex to the store
   useEffect(() => {
     actions.setSaveProject(saveProject);
@@ -53,7 +64,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     try {
       return getMediaBunnyManager();
     } catch (error) {
-      console.warn("Media imports disabled:", error);
       return null;
     }
   }, []);
@@ -64,7 +74,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     try {
       return getExportPipeline();
     } catch (error) {
-      console.warn("Export disabled:", error);
       return null;
     }
   }, []);
@@ -153,8 +162,14 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       );
       rendererRef.current
         .attach(canvasRef.current)
-        .then(() => rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time)))
-        .catch((error) => console.warn("preview attach failed", error));
+        .then(() => {
+          // PERFORMANCE FIX: Don't update store on every frame (60x/sec)
+          // Canvas updates independently, only sync on user actions (seek/play/pause)
+          // rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time));
+        })
+        .catch((error) => {
+          // Silently handle attach errors
+        });
     }
   }, [ready, project, actions]);
 
@@ -162,15 +177,20 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     const renderer = rendererRef.current;
     if (!renderer) return;
     if (isPlaying) {
-      renderer.play().catch((error) => console.warn("playback failed", error));
+      renderer.play().catch(() => {
+        // Silently handle playback errors
+      });
     } else {
       renderer.pause();
     }
   }, [isPlaying]);
 
-  useEffect(() => {
-    rendererRef.current?.seek(currentTime);
-  }, [currentTime]);
+  // REMOVED: This useEffect created a circular loop causing flickering
+  // The renderer updates its own time during playback
+  // We only need to seek when user manually seeks (handled in handleSeek callback)
+  // useEffect(() => {
+  //   rendererRef.current?.seek(currentTime);
+  // }, [currentTime]);
 
   // Generate thumbnails for videos that don't have them yet
   useEffect(() => {
@@ -185,25 +205,22 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
 
         // Skip if no URL
         if (!asset.url) {
-          console.log(`Skipping thumbnail generation for ${asset.name} (no URL)`);
           continue;
         }
 
         try {
-          console.log(`Generating thumbnails for ${asset.name}...`);
           const thumbnails = await mediaManager.generateThumbnails(
             asset.id,
             asset.url,
             asset.duration,
-            15
+            5 // Reduced from 15 to stay under Convex 1MB limit
           );
 
           // Update the asset in the store
           const updatedAsset = { ...asset, thumbnails, thumbnailCount: thumbnails.length };
           actions.addMediaAsset(updatedAsset);
-          console.log(`Generated ${thumbnails.length} thumbnails for ${asset.name}`);
         } catch (error) {
-          console.warn(`Thumbnail generation failed for ${asset.name}:`, error);
+          // Silently handle thumbnail generation errors
         }
       }
     };
@@ -223,18 +240,16 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     for (const asset of results) {
       if (asset.type === "video" && asset.url) {
         try {
-          console.log(`Generating thumbnails for ${asset.name}...`);
           const thumbnails = await mediaManager.generateThumbnails(
             asset.id,
             asset.url,
             asset.duration,
-            15 // 15 thumbnails per video
+            5 // Reduced from 15 to stay under Convex 1MB limit
           );
           asset.thumbnails = thumbnails;
           asset.thumbnailCount = thumbnails.length;
-          console.log(`Generated ${thumbnails.length} thumbnails for ${asset.name}`);
         } catch (error) {
-          console.warn(`Thumbnail generation failed for ${asset.name}:`, error);
+          // Silently handle thumbnail generation errors
         }
       }
       actions.addMediaAsset(asset);
@@ -264,6 +279,27 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     }
   };
 
+  // Memoize callbacks to prevent child re-renders
+  const handleTogglePlayback = useCallback(() => {
+    actions.togglePlayback();
+  }, [actions]);
+
+  const handleSeek = useCallback((time: number) => {
+    actions.setCurrentTime(time);
+  }, [actions]);
+
+  const handleUndo = useCallback(() => {
+    actions.undo();
+  }, [actions]);
+
+  const handleRedo = useCallback(() => {
+    actions.redo();
+  }, [actions]);
+
+  const handleOpenExport = useCallback(() => {
+    setExportOpen(true);
+  }, []);
+
   const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
   const zoom = project?.settings.zoom ?? 1;
@@ -283,10 +319,10 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
         isPlaying={isPlaying}
         currentTime={currentTime}
         duration={sequence.duration}
-        onTogglePlayback={() => actions.togglePlayback()}
-        onUndo={() => actions.undo()}
-        onRedo={() => actions.redo()}
-        onExport={() => setExportOpen(true)}
+        onTogglePlayback={handleTogglePlayback}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onExport={handleOpenExport}
       />
       {/* 2-row layout: Top row (media + preview) and bottom row (timeline) */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -302,8 +338,8 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             currentTime={currentTime}
             duration={sequence.duration}
             isPlaying={isPlaying}
-            onTogglePlayback={() => actions.togglePlayback()}
-            onSeek={(time) => actions.setCurrentTime(time)}
+            onTogglePlayback={handleTogglePlayback}
+            onSeek={handleSeek}
           />
         </div>
         {/* Bottom row: Timeline (full width) */}
@@ -325,7 +361,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             }}
             onClipReorder={(clips) => actions.reorderClips(clips)}
             onClipTrim={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
-            onSeek={(time) => actions.setCurrentTime(time)}
+            onSeek={handleSeek}
             onScrub={(time) => rendererRef.current?.seek(time)}
             onScrubStart={() => {
               if (rendererRef.current && typeof rendererRef.current.startScrubbing === 'function') {

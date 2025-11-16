@@ -116,18 +116,26 @@ const KonvaTimelineComponent = ({
   );
 
   // Update playhead position directly via ref to avoid 60fps re-renders
+  // Use RAF to throttle updates and prevent excessive canvas redraws
   useEffect(() => {
-    if (playheadLineRef.current) {
-      const xPos = timeToPixels(currentTime) + X_OFFSET;
-      playheadLineRef.current.points([xPos, 0, xPos, containerHeight]);
-      playheadLineRef.current.getLayer()?.batchDraw();
-    }
+    let rafId: number;
 
-    // Update HTML chevron position
-    if (playheadChevronRef.current) {
-      const xPos = timeToPixels(currentTime) + X_OFFSET;
-      playheadChevronRef.current.style.left = `${xPos}px`;
-    }
+    const updatePlayhead = () => {
+      if (playheadLineRef.current) {
+        const xPos = timeToPixels(currentTime) + X_OFFSET;
+        playheadLineRef.current.points([xPos, 0, xPos, containerHeight]);
+        playheadLineRef.current.getLayer()?.batchDraw();
+      }
+
+      // Update HTML chevron position
+      if (playheadChevronRef.current) {
+        const xPos = timeToPixels(currentTime) + X_OFFSET;
+        playheadChevronRef.current.style.left = `${xPos}px`;
+      }
+    };
+
+    rafId = requestAnimationFrame(updatePlayhead);
+    return () => cancelAnimationFrame(rafId);
   }, [currentTime, timeToPixels, containerHeight]);
 
   // Zoom with Ctrl/Cmd + scroll wheel

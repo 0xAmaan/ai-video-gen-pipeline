@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Play, Pause, Undo2, Redo2, Download } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -23,7 +24,7 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs}`;
 };
 
-export const TopBar = ({
+const TopBarComponent = ({
   title,
   isPlaying,
   currentTime,
@@ -59,3 +60,17 @@ export const TopBar = ({
     </div>
   );
 };
+
+// Memoize to prevent re-renders when only currentTime changes
+export const TopBar = memo(TopBarComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.title === nextProps.title &&
+    prevProps.isPlaying === nextProps.isPlaying &&
+    prevProps.duration === nextProps.duration &&
+    prevProps.onTogglePlayback === nextProps.onTogglePlayback &&
+    prevProps.onUndo === nextProps.onUndo &&
+    prevProps.onRedo === nextProps.onRedo &&
+    prevProps.onExport === nextProps.onExport
+    // Note: currentTime intentionally excluded to reduce re-renders
+  );
+});
