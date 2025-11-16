@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Stage, Layer, Rect, Line, Text, Group } from "react-konva";
-import type { Sequence, Clip } from "@/lib/editor/types";
+import type { Sequence, Clip, MediaAssetMeta } from "@/lib/editor/types";
 import { formatTime } from "@/lib/editor/utils/time-format";
 import { KonvaClipItem } from "./KonvaClipItem";
 
@@ -13,6 +13,7 @@ interface KonvaTimelineProps {
   isPlaying: boolean;
   containerWidth: number;
   containerHeight?: number;
+  assets: MediaAssetMeta[];
   onClipSelect: (clipId: string) => void;
   onClipMove: (clipId: string, newStart: number) => void;
   onClipReorder: (clips: Clip[]) => void;
@@ -36,6 +37,7 @@ export const KonvaTimeline = ({
   currentTime,
   containerWidth,
   containerHeight = TIMELINE_HEIGHT,
+  assets,
   onClipSelect,
   onClipMove,
   onClipReorder,
@@ -305,10 +307,12 @@ export const KonvaTimeline = ({
             {/* Clips */}
             {clipsToRender.map((clip) => {
               const isDragging = clip.id === draggingClipId;
+              const asset = assets.find((a) => a.id === clip.mediaId);
               return (
                 <KonvaClipItem
                   key={clip.id}
                   clip={clip}
+                  asset={asset}
                   isSelected={clip.id === selectedClipId}
                   isDragging={isDragging}
                   dragX={isDragging ? draggedClipX : undefined}

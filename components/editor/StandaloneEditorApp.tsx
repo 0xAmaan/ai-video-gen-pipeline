@@ -142,7 +142,27 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       imports.push(mediaManager.importFile(file));
     });
     const results = await Promise.all(imports);
-    results.forEach((asset) => actions.addMediaAsset(asset));
+
+    // Generate thumbnails for video assets
+    for (const asset of results) {
+      if (asset.type === "video") {
+        try {
+          console.log(`Generating thumbnails for ${asset.name}...`);
+          const thumbnails = await mediaManager.generateThumbnails(
+            asset.id,
+            asset.url,
+            asset.duration,
+            15 // 15 thumbnails per video
+          );
+          asset.thumbnails = thumbnails;
+          asset.thumbnailCount = thumbnails.length;
+          console.log(`Generated ${thumbnails.length} thumbnails for ${asset.name}`);
+        } catch (error) {
+          console.warn(`Thumbnail generation failed for ${asset.name}:`, error);
+        }
+      }
+      actions.addMediaAsset(asset);
+    }
   };
 
   const handleExport = async (options: { resolution: string; quality: string; format: string }) => {
@@ -219,6 +239,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             isPlaying={isPlaying}
             containerWidth={timelineWidth}
             containerHeight={340}
+            assets={assets}
             onClipSelect={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
             onClipMove={(clipId, newStart) => {
               const videoTrack = sequence.tracks.find((t) => t.kind === "video");

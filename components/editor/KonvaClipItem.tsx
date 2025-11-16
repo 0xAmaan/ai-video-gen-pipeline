@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef } from "react";
-import { Rect, Text, Group } from "react-konva";
-import type { Clip } from "@/lib/editor/types";
+import { useRef, useEffect, useState } from "react";
+import { Rect, Text, Group, Image as KonvaImage } from "react-konva";
+import type { Clip, MediaAssetMeta } from "@/lib/editor/types";
 
 interface KonvaClipItemProps {
   clip: Clip;
+  asset?: MediaAssetMeta;
   isSelected: boolean;
   pixelsPerSecond: number;
   xOffset?: number;
@@ -26,6 +27,7 @@ const MIN_CLIP_WIDTH = 40; // Minimum visual width in pixels
 
 export const KonvaClipItem = ({
   clip,
+  asset,
   isSelected,
   pixelsPerSecond,
   xOffset = 0,
@@ -39,6 +41,36 @@ export const KonvaClipItem = ({
 }: KonvaClipItemProps) => {
   const dragStartXRef = useRef(0);
   const trimDragStartRef = useRef({ trimStart: 0, trimEnd: 0 });
+  const [thumbnailImages, setThumbnailImages] = useState<HTMLImageElement[]>([]);
+
+  // Load thumbnail images from data URLs
+  useEffect(() => {
+    if (!asset?.thumbnails?.length) {
+      setThumbnailImages([]);
+      return;
+    }
+
+    const images: HTMLImageElement[] = [];
+    let loadedCount = 0;
+
+    asset.thumbnails.forEach((dataUrl, index) => {
+      const img = new window.Image();
+      img.onload = () => {
+        loadedCount++;
+        if (loadedCount === asset.thumbnails!.length) {
+          setThumbnailImages([...images]);
+        }
+      };
+      img.src = dataUrl;
+      images[index] = img;
+    });
+
+    return () => {
+      images.forEach((img) => {
+        img.src = "";
+      });
+    };
+  }, [asset?.thumbnails]);
 
   // Calculate clip dimensions with minimum width
   const clipWidth = Math.max(MIN_CLIP_WIDTH, clip.duration * pixelsPerSecond);
@@ -134,14 +166,14 @@ export const KonvaClipItem = ({
 
   return (
     <Group>
-      {/* Main clip body */}
+      {/* Background rect (fallback color) */}
       <Rect
         x={clipX}
         y={CLIP_Y}
         width={clipWidth}
         height={CLIP_HEIGHT}
-        fill={clipColor}
-        opacity={0.7}
+        fill={thumbnailImages.length > 0 ? "#000000" : clipColor}
+        opacity={thumbnailImages.length > 0 ? 1 : 0.7}
         cornerRadius={4}
         stroke={isSelected ? "#FFFFFF" : "transparent"}
         strokeWidth={isSelected ? 3 : 0}
@@ -149,6 +181,29 @@ export const KonvaClipItem = ({
         shadowColor="rgba(255, 255, 255, 0.5)"
         onClick={onSelect}
       />
+
+      {/* Render thumbnails if available */}
+      {thumbnailImages.length > 0 && asset && (
+        <>
+          {thumbnailImages.map((img, index) => {
+            // Calculate how many pixels each thumbnail should take
+            const thumbWidth = clipWidth / thumbnailImages.length;
+            const thumbX = clipX + index * thumbWidth;
+
+            return (
+              <KonvaImage
+                key={index}
+                image={img}
+                x={thumbX}
+                y={CLIP_Y}
+                width={thumbWidth}
+                height={CLIP_HEIGHT}
+                listening={false}
+              />
+            );
+          })}
+        </>
+      )}
 
       {/* Clip label - only show if width is sufficient */}
       {clipWidth > 60 && (
