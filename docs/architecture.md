@@ -191,7 +191,8 @@ videoProjects: { userId, prompt, status, createdAt, updatedAt }
 clarifyingQuestions: { projectId, questions[], answers }
 scenes: { projectId, sceneNumber, description, imageUrl, duration }
 videoClips: { sceneId, projectId, videoUrl, status, replicateVideoId }
-finalVideos: { projectId, videoUrl, duration, clipCount, totalCost } // unused
+editorProjects: { userId, title, projectData, createdAt, updatedAt }
+projectHistory: { projectId, userId, snapshot, historyType, sequenceNumber }
 ```
 
 **API Routes** (`app/api/`):

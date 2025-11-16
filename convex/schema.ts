@@ -5,6 +5,7 @@ export default defineSchema({
   videoProjects: defineTable({
     userId: v.string(),
     prompt: v.string(),
+    title: v.optional(v.string()), // Custom project title (defaults to prompt if not set)
     status: v.union(
       v.literal("draft"),
       v.literal("questions_generated"),
@@ -103,38 +104,20 @@ export default defineSchema({
       v.literal("processing"),
       v.literal("complete"),
       v.literal("failed"),
+      v.literal("cancelled"),
     ),
     duration: v.number(),
     resolution: v.string(),
     lipsyncVideoUrl: v.optional(v.string()), // Processed lip synced clip
     originalVideoUrl: v.optional(v.string()), // Original non-lipsynced clip
     hasLipsync: v.optional(v.boolean()), // Flag to indicate clip has lipsync applied
+    cancelledAt: v.optional(v.number()), // Timestamp when cancelled
     errorMessage: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_scene", ["sceneId"])
     .index("by_project", ["projectId"]),
-
-  finalVideos: defineTable({
-    projectId: v.id("videoProjects"),
-    videoUrl: v.optional(v.string()),
-    duration: v.number(),
-    resolution: v.string(),
-    clipCount: v.number(),
-    totalCost: v.optional(v.number()),
-    includesNarration: v.optional(v.boolean()),
-    narrationVoiceId: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("processing"),
-      v.literal("complete"),
-      v.literal("failed"),
-    ),
-    errorMessage: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
 
   // Editor projects (Konva timeline editor)
   editorProjects: defineTable({

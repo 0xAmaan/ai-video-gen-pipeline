@@ -341,8 +341,10 @@ export const updateSceneNarration = mutation({
     }
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
-    if (args.narrationUrl !== undefined) updates.narrationUrl = args.narrationUrl;
-    if (args.narrationText !== undefined) updates.narrationText = args.narrationText;
+    if (args.narrationUrl !== undefined)
+      updates.narrationUrl = args.narrationUrl;
+    if (args.narrationText !== undefined)
+      updates.narrationText = args.narrationText;
     if (args.voiceId !== undefined) updates.voiceId = args.voiceId;
     if (args.voiceName !== undefined) updates.voiceName = args.voiceName;
 
@@ -631,6 +633,33 @@ export const updateScene = mutation({
   },
 });
 
+// Update project title
+export const updateProjectTitle = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    title: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify the project belongs to the user
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    await ctx.db.patch(args.projectId, {
+      title: args.title,
+      updatedAt: Date.now(),
+    });
+
+    return args.projectId;
+  },
+});
+
 // Update project status
 export const updateProjectStatus = mutation({
   args: {
@@ -796,6 +825,7 @@ export const updateVideoClip = mutation({
         v.literal("processing"),
         v.literal("complete"),
         v.literal("failed"),
+        v.literal("cancelled"),
       ),
     ),
     videoUrl: v.optional(v.string()),
@@ -826,6 +856,44 @@ export const updateVideoClip = mutation({
       updates.errorMessage = args.errorMessage;
 
     await ctx.db.patch(args.clipId, updates);
+
+    return args.clipId;
+  },
+});
+
+// Cancel video clip generation
+export const cancelVideoClip = mutation({
+  args: {
+    clipId: v.id("videoClips"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Get the clip
+    const clip = await ctx.db.get(args.clipId);
+    if (!clip) {
+      throw new Error("Clip not found");
+    }
+
+    // Verify project ownership
+    const project = await ctx.db.get(clip.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    // Only cancel if still pending or processing
+    if (clip.status !== "pending" && clip.status !== "processing") {
+      throw new Error("Can only cancel pending or processing clips");
+    }
+
+    await ctx.db.patch(args.clipId, {
+      status: "cancelled",
+      cancelledAt: Date.now(),
+      updatedAt: Date.now(),
+    });
 
     return args.clipId;
   },
@@ -893,98 +961,6 @@ export const getVideoClips = query({
       .collect();
 
     return clips;
-  },
-});
-
-// Create final video record
-export const createFinalVideo = mutation({
-  args: {
-    projectId: v.id("videoProjects"),
-    duration: v.number(),
-    resolution: v.string(),
-    clipCount: v.number(),
-    includesNarration: v.optional(v.boolean()),
-    narrationVoiceId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    // Verify project ownership
-    const project = await ctx.db.get(args.projectId);
-    if (!project || project.userId !== identity.subject) {
-      throw new Error("Project not found or unauthorized");
-    }
-
-    const now = Date.now();
-    const videoId = await ctx.db.insert("finalVideos", {
-      projectId: args.projectId,
-      duration: args.duration,
-      resolution: args.resolution,
-      clipCount: args.clipCount,
-      includesNarration: args.includesNarration,
-      narrationVoiceId: args.narrationVoiceId,
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return videoId;
-  },
-});
-
-// Update final video
-export const updateFinalVideo = mutation({
-  args: {
-    videoId: v.id("finalVideos"),
-    status: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("processing"),
-        v.literal("complete"),
-        v.literal("failed"),
-      ),
-    ),
-    videoUrl: v.optional(v.string()),
-    totalCost: v.optional(v.number()),
-    includesNarration: v.optional(v.boolean()),
-    narrationVoiceId: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    // Get the video
-    const video = await ctx.db.get(args.videoId);
-    if (!video) {
-      throw new Error("Video not found");
-    }
-
-    // Verify project ownership
-    const project = await ctx.db.get(video.projectId);
-    if (!project || project.userId !== identity.subject) {
-      throw new Error("Project not found or unauthorized");
-    }
-
-    const updates: any = { updatedAt: Date.now() };
-    if (args.status !== undefined) updates.status = args.status;
-    if (args.videoUrl !== undefined) updates.videoUrl = args.videoUrl;
-    if (args.totalCost !== undefined) updates.totalCost = args.totalCost;
-    if (args.includesNarration !== undefined)
-      updates.includesNarration = args.includesNarration;
-    if (args.narrationVoiceId !== undefined)
-      updates.narrationVoiceId = args.narrationVoiceId;
-    if (args.errorMessage !== undefined)
-      updates.errorMessage = args.errorMessage;
-
-    await ctx.db.patch(args.videoId, updates);
-
-    return args.videoId;
   },
 });
 
