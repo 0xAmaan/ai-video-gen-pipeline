@@ -108,14 +108,52 @@ async function handleThumbnailRequest(message: ThumbnailRequestMessage): Promise
   const { requestId, assetId, mediaUrl, duration, count } = message;
 
   try {
+    // Validate mediaUrl
+    if (!mediaUrl || typeof mediaUrl !== 'string') {
+      throw new Error('Invalid media URL provided');
+    }
+
+    // Check if it's a blob URL that might be revoked
+    if (mediaUrl.startsWith('blob:')) {
+      // Try to verify the blob is still valid by attempting a HEAD request
+      try {
+        const response = await fetch(mediaUrl, { method: 'HEAD' });
+        if (!response.ok) {
+          throw new Error('Blob URL is no longer valid or accessible');
+        }
+      } catch (e) {
+        throw new Error('Blob URL appears to be revoked or inaccessible');
+      }
+    }
+
     // Fetch the video file
     const response = await fetch(mediaUrl);
     const blob = await response.blob();
-    const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
-    const videoTrack = await input.getPrimaryVideoTrack();
 
-    if (!videoTrack || !(await videoTrack.canDecode())) {
-      throw new Error("Video track cannot be decoded");
+    let input;
+    try {
+      input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+    } catch (e) {
+      throw new Error(`Failed to create Input from URL: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    let videoTrack;
+    try {
+      videoTrack = await input.getPrimaryVideoTrack();
+    } catch (e) {
+      input.dispose();
+      throw new Error(`Failed to get video track: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    if (!videoTrack) {
+      throw new Error("No video track found in media file");
+    }
+
+    const canDecode = await videoTrack.canDecode();
+
+    if (!canDecode) {
+      const codec = videoTrack.codec || 'unknown';
+      throw new Error(`Video codec '${codec}' cannot be decoded by browser`);
     }
 
     // Create CanvasSink with thumbnail dimensions (160x90 for timeline)
@@ -130,10 +168,16 @@ async function handleThumbnailRequest(message: ThumbnailRequestMessage): Promise
     const startTimestamp = await videoTrack.getFirstTimestamp();
     const endTimestamp = await videoTrack.computeDuration();
     const timestamps: number[] = [];
-    
-    for (let i = 0; i < count; i++) {
-      const t = i / (count - 1); // 0 to 1
-      timestamps.push(startTimestamp + t * (endTimestamp - startTimestamp));
+
+    if (count === 1) {
+      // Special case: only first frame
+      timestamps.push(startTimestamp);
+    } else {
+      // Multiple frames: equally spaced
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1); // 0 to 1
+        timestamps.push(startTimestamp + t * (endTimestamp - startTimestamp));
+      }
     }
 
     // Extract thumbnails
@@ -170,10 +214,18 @@ async function handleThumbnailRequest(message: ThumbnailRequestMessage): Promise
     ctx.postMessage(payload);
     input.dispose();
   } catch (error) {
+    // Provide more helpful error messages
+    let errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Check for common MediaBunny errors and provide better context
+    if (errorMessage.includes('unsupported') || errorMessage.includes('unrecognizable')) {
+      errorMessage = `Media format not supported: ${errorMessage}. The file may be corrupted or the blob URL may have been revoked.`;
+    }
+
     ctx.postMessage({
       type: "THUMBNAIL_ERROR",
       requestId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     });
   }
 }

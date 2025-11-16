@@ -20,6 +20,7 @@ interface StandaloneEditorAppProps {
 export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
+  const thumbnailAttemptsRef = useRef<Set<string>>(new Set());
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
   const ready = useProjectStore((state) => state.ready);
@@ -122,9 +123,15 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
   // Generate thumbnails for video assets that don't have them yet
   useEffect(() => {
     if (!ready || !project || !mediaManager) return;
-    
+
     const assetsNeedingThumbnails = Object.values(project.mediaAssets).filter(
-      (asset) => asset.type === "video" && asset.url && !asset.thumbnails
+      (asset) => {
+        // Skip if already attempted
+        if (thumbnailAttemptsRef.current.has(asset.id)) {
+          return false;
+        }
+        return asset.type === "video" && asset.url && !asset.thumbnails;
+      }
     );
 
     if (assetsNeedingThumbnails.length === 0) return;
@@ -133,13 +140,16 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
 
     // Generate thumbnails for all video assets in parallel
     const thumbnailPromises = assetsNeedingThumbnails.map(async (asset) => {
+      // Mark as attempted
+      thumbnailAttemptsRef.current.add(asset.id);
+
       try {
         console.log(`[Editor] Starting thumbnail generation for asset ${asset.id}`);
         const thumbnails = await mediaManager.generateThumbnails(
           asset.id,
           asset.url,
           asset.duration,
-          15 // Generate 15 thumbnails per video
+          1 // Generate only first frame (CapCut style)
         );
         actions.updateMediaAsset(asset.id, {
           thumbnails,
@@ -147,7 +157,18 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
         });
         console.log(`[Editor] Successfully updated asset ${asset.id} with ${thumbnails.length} thumbnails`);
       } catch (error) {
-        console.error(`[Editor] Failed to generate thumbnails for ${asset.id}:`, error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[Editor] Failed to generate thumbnails for ${asset.id}:`, {
+          error: errorMessage,
+          assetUrl: asset.url,
+          assetType: asset.type,
+        });
+
+        // Mark asset with empty thumbnail array to prevent retry loop
+        actions.updateMediaAsset(asset.id, {
+          thumbnails: [],
+          thumbnailCount: 0,
+        });
       }
     });
 
@@ -175,13 +196,16 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     if (videoAssets.length > 0) {
       console.log(`[Editor] Generating thumbnails for ${videoAssets.length} imported video(s)`);
       const thumbnailPromises = videoAssets.map(async (asset) => {
+        // Mark as attempted
+        thumbnailAttemptsRef.current.add(asset.id);
+
         try {
           console.log(`[Editor] Starting thumbnail generation for imported asset ${asset.id}`);
           const thumbnails = await mediaManager.generateThumbnails(
             asset.id,
             asset.url,
             asset.duration,
-            15 // Generate 15 thumbnails per video
+            1 // Generate only first frame (CapCut style)
           );
           // Update the asset with thumbnails
           actions.updateMediaAsset(asset.id, {
@@ -190,7 +214,18 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
           });
           console.log(`[Editor] Successfully updated imported asset ${asset.id} with ${thumbnails.length} thumbnails`);
         } catch (error) {
-          console.error(`[Editor] Failed to generate thumbnails for imported asset ${asset.id}:`, error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[Editor] Failed to generate thumbnails for imported asset ${asset.id}:`, {
+            error: errorMessage,
+            assetUrl: asset.url,
+            assetType: asset.type,
+          });
+
+          // Mark asset with empty thumbnail array to prevent retry loop
+          actions.updateMediaAsset(asset.id, {
+            thumbnails: [],
+            thumbnailCount: 0,
+          });
         }
       });
 
