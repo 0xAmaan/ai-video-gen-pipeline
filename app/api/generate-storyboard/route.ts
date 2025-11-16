@@ -4,10 +4,7 @@ import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import Replicate from "replicate";
-import {
-  STORYBOARD_SYSTEM_PROMPT,
-  buildStoryboardPrompt,
-} from "@/lib/prompts";
+import { STORYBOARD_SYSTEM_PROMPT, buildStoryboardPrompt } from "@/lib/prompts";
 import { IMAGE_MODELS } from "@/lib/image-models";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -50,11 +47,14 @@ export async function POST(req: Request) {
     const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
 
     if (!hasGroqKey && !hasOpenAIKey) {
-      console.error("❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local");
+      console.error(
+        "❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local",
+      );
       return NextResponse.json(
         {
           error: "No API keys configured",
-          details: "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file"
+          details:
+            "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file",
         },
         { status: 500 },
       );
@@ -64,7 +64,9 @@ export async function POST(req: Request) {
       ? groq("openai/gpt-oss-20b")
       : openai("gpt-4o-mini");
 
-    console.log(`🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o-mini) - SLOWER 🐌"}`);
+    console.log(
+      `🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o-mini) - SLOWER 🐌"}`,
+    );
 
     const { object: sceneData } = await generateObject({
       model: modelToUse,
@@ -82,19 +84,34 @@ export async function POST(req: Request) {
     const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
     let phoenixStyle = "cinematic"; // Default style
 
-    if (responses && responses['visual-style']) {
-      const visualStyle = responses['visual-style'].toLowerCase();
-      if (visualStyle.includes('documentary') || visualStyle.includes('black and white')) {
+    if (responses && responses["visual-style"]) {
+      const visualStyle = responses["visual-style"].toLowerCase();
+      if (
+        visualStyle.includes("documentary") ||
+        visualStyle.includes("black and white")
+      ) {
         phoenixStyle = "pro_bw_photography";
-      } else if (visualStyle.includes('cinematic') || visualStyle.includes('film')) {
+      } else if (
+        visualStyle.includes("cinematic") ||
+        visualStyle.includes("film")
+      ) {
         phoenixStyle = "cinematic";
-      } else if (visualStyle.includes('photo') || visualStyle.includes('realistic')) {
+      } else if (
+        visualStyle.includes("photo") ||
+        visualStyle.includes("realistic")
+      ) {
         phoenixStyle = "pro_color_photography";
-      } else if (visualStyle.includes('animated') || visualStyle.includes('cartoon')) {
+      } else if (
+        visualStyle.includes("animated") ||
+        visualStyle.includes("cartoon")
+      ) {
         phoenixStyle = "illustration";
-      } else if (visualStyle.includes('vintage') || visualStyle.includes('retro')) {
+      } else if (
+        visualStyle.includes("vintage") ||
+        visualStyle.includes("retro")
+      ) {
         phoenixStyle = "pro_film_photography";
-      } else if (visualStyle.includes('portrait')) {
+      } else if (visualStyle.includes("portrait")) {
         phoenixStyle = "portrait";
       }
     }
@@ -108,25 +125,33 @@ export async function POST(req: Request) {
     const scenesWithImages = await Promise.all(
       sceneData.scenes.map(async (scene) => {
         try {
-          console.log(`🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`);
+          console.log(
+            `🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`,
+          );
           console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
 
-          const output = await replicate.run(modelConfig.id as `${string}/${string}`, {
-            input: {
-              prompt: scene.visualPrompt,
-              aspect_ratio: "16:9",
-              generation_mode: "quality",
-              contrast: "medium",
-              num_images: 1,
-              prompt_enhance: false,
-              style: phoenixStyle,
+          const output = await replicate.run(
+            modelConfig.id as `${string}/${string}`,
+            {
+              input: {
+                prompt: scene.visualPrompt,
+                aspect_ratio: "16:9",
+                generation_mode: "quality",
+                contrast: "medium",
+                num_images: 1,
+                prompt_enhance: false,
+                style: phoenixStyle,
+              },
             },
-          });
+          );
 
           // Extract image URL from output
           let imageUrl: string;
           if (Array.isArray(output) && output.length > 0) {
-            imageUrl = typeof output[0] === "string" ? output[0] : (output[0] as any).url?.() || output[0];
+            imageUrl =
+              typeof output[0] === "string"
+                ? output[0]
+                : (output[0] as any).url?.() || output[0];
           } else if (typeof output === "string") {
             imageUrl = output;
           } else {
@@ -143,7 +168,10 @@ export async function POST(req: Request) {
             duration: scene.duration,
           };
         } catch (error) {
-          console.error(`Error generating image for scene ${scene.sceneNumber}:`, error);
+          console.error(
+            `Error generating image for scene ${scene.sceneNumber}:`,
+            error,
+          );
 
           return {
             sceneNumber: scene.sceneNumber,

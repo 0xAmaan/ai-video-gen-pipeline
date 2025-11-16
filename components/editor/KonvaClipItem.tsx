@@ -44,7 +44,9 @@ const KonvaClipItemComponent = ({
 }: KonvaClipItemProps) => {
   const dragStartXRef = useRef(0);
   const trimDragStartRef = useRef({ trimStart: 0, trimEnd: 0 });
-  const [thumbnailImages, setThumbnailImages] = useState<HTMLImageElement[]>([]);
+  const [thumbnailImages, setThumbnailImages] = useState<HTMLImageElement[]>(
+    [],
+  );
 
   // Load thumbnail images from data URLs with caching
   useEffect(() => {
@@ -101,7 +103,9 @@ const KonvaClipItemComponent = ({
       "#10B981", // green
       "#06B6D4", // cyan
     ];
-    const hash = clip.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const hash = clip.id
+      .split("")
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return colors[hash % colors.length];
   }, [clip.id]);
 
@@ -163,10 +167,7 @@ const KonvaClipItemComponent = ({
     // Calculate new trim end
     const newTrimEnd = Math.max(
       0,
-      Math.min(
-        clip.trimEnd - deltaTime,
-        clip.duration - MIN_CLIP_DURATION,
-      ),
+      Math.min(clip.trimEnd - deltaTime, clip.duration - MIN_CLIP_DURATION),
     );
 
     // Update trim
@@ -221,7 +222,9 @@ const KonvaClipItemComponent = ({
           <Text
             x={clipX + 10}
             y={CLIP_Y + 10}
-            text={clip.mediaId?.substring(0, Math.floor(clipWidth / 8)) || "Clip"}
+            text={
+              clip.mediaId?.substring(0, Math.floor(clipWidth / 8)) || "Clip"
+            }
             fontSize={13}
             fontStyle="bold"
             fill="#FFFFFF"
@@ -361,19 +364,22 @@ const KonvaClipItemComponent = ({
 };
 
 // Memoize component with custom comparison to prevent re-renders
-export const KonvaClipItem = memo(KonvaClipItemComponent, (prevProps, nextProps) => {
-  // Only re-render if these specific props change
-  return (
-    prevProps.clip.id === nextProps.clip.id &&
-    prevProps.clip.start === nextProps.clip.start &&
-    prevProps.clip.duration === nextProps.clip.duration &&
-    prevProps.clip.trimStart === nextProps.clip.trimStart &&
-    prevProps.clip.trimEnd === nextProps.clip.trimEnd &&
-    prevProps.isSelected === nextProps.isSelected &&
-    prevProps.isDragging === nextProps.isDragging &&
-    prevProps.dragX === nextProps.dragX &&
-    prevProps.pixelsPerSecond === nextProps.pixelsPerSecond &&
-    prevProps.xOffset === nextProps.xOffset &&
-    prevProps.asset?.thumbnails === nextProps.asset?.thumbnails
-  );
-});
+export const KonvaClipItem = memo(
+  KonvaClipItemComponent,
+  (prevProps, nextProps) => {
+    // Only re-render if these specific props change
+    return (
+      prevProps.clip.id === nextProps.clip.id &&
+      prevProps.clip.start === nextProps.clip.start &&
+      prevProps.clip.duration === nextProps.clip.duration &&
+      prevProps.clip.trimStart === nextProps.clip.trimStart &&
+      prevProps.clip.trimEnd === nextProps.clip.trimEnd &&
+      prevProps.isSelected === nextProps.isSelected &&
+      prevProps.isDragging === nextProps.isDragging &&
+      prevProps.dragX === nextProps.dragX &&
+      prevProps.pixelsPerSecond === nextProps.pixelsPerSecond &&
+      prevProps.xOffset === nextProps.xOffset &&
+      prevProps.asset?.thumbnails === nextProps.asset?.thumbnails
+    );
+  },
+);

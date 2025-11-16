@@ -30,7 +30,8 @@ export const PhaseGuard = ({ requiredPhase, children }: PhaseGuardProps) => {
   const hasAnswers = questions?.answers !== undefined;
   const hasScenes = scenes && scenes.length > 0;
   const hasClips = clips && clips.length > 0;
-  const allClipsComplete = hasClips && clips.every((clip) => clip.status === "complete");
+  const allClipsComplete =
+    hasClips && clips.every((clip) => clip.status === "complete");
 
   const isPhaseUnlocked = (phase: Phase): boolean => {
     switch (phase) {
@@ -72,7 +73,17 @@ export const PhaseGuard = ({ requiredPhase, children }: PhaseGuardProps) => {
       const fallbackPhase = furthestUnlockedPhase();
       router.push(`/${projectId}/${fallbackPhase}`);
     }
-  }, [isLoading, project, projectId, router, requiredPhase, hasAnswers, hasScenes, hasClips, allClipsComplete]);
+  }, [
+    isLoading,
+    project,
+    projectId,
+    router,
+    requiredPhase,
+    hasAnswers,
+    hasScenes,
+    hasClips,
+    allClipsComplete,
+  ]);
 
   // Show loading state
   if (isLoading) {

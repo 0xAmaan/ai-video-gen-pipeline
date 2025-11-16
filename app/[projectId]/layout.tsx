@@ -23,9 +23,7 @@ const PhaseIndicator = () => {
     { id: "editor", label: "Edit", path: `/${projectId}/editor` },
   ];
 
-  const currentPhaseIndex = phases.findIndex((p) =>
-    pathname?.includes(p.id),
-  );
+  const currentPhaseIndex = phases.findIndex((p) => pathname?.includes(p.id));
 
   return (
     <div className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">

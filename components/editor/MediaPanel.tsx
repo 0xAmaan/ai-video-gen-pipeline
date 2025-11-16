@@ -19,7 +19,11 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs}`;
 };
 
-export const MediaPanel = ({ assets, onImport, onAddToTimeline }: MediaPanelProps) => {
+export const MediaPanel = ({
+  assets,
+  onImport,
+  onAddToTimeline,
+}: MediaPanelProps) => {
   return (
     <div className="flex h-full flex-col border-r border-border bg-muted/20">
       <div className="border-b border-border px-3 py-2">
@@ -47,37 +51,37 @@ export const MediaPanel = ({ assets, onImport, onAddToTimeline }: MediaPanelProp
           )}
           <div className="grid grid-cols-3 gap-2">
             {assets.map((asset) => (
-            <button
-              key={asset.id}
-              onClick={() => onAddToTimeline(asset.id)}
-              className="group w-full rounded-lg border border-border bg-card overflow-hidden text-left hover:border-primary transition-all hover:shadow-md cursor-pointer"
-            >
-              {/* Thumbnail container */}
-              <div className="relative aspect-video bg-black/50 overflow-hidden">
-                {asset.thumbnails && asset.thumbnails.length > 0 ? (
-                  <img
-                    src={asset.thumbnails[0]}
-                    alt={asset.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                    <UploadCloud className="h-8 w-8 opacity-30" />
+              <button
+                key={asset.id}
+                onClick={() => onAddToTimeline(asset.id)}
+                className="group w-full rounded-lg border border-border bg-card overflow-hidden text-left hover:border-primary transition-all hover:shadow-md cursor-pointer"
+              >
+                {/* Thumbnail container */}
+                <div className="relative aspect-video bg-black/50 overflow-hidden">
+                  {asset.thumbnails && asset.thumbnails.length > 0 ? (
+                    <img
+                      src={asset.thumbnails[0]}
+                      alt={asset.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <UploadCloud className="h-8 w-8 opacity-30" />
+                    </div>
+                  )}
+                  {/* Duration badge overlay */}
+                  <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 backdrop-blur-sm px-2 py-1 rounded text-white text-xs font-medium">
+                    <Clock className="h-3 w-3" />
+                    {formatTime(asset.duration)}
                   </div>
-                )}
-                {/* Duration badge overlay */}
-                <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 backdrop-blur-sm px-2 py-1 rounded text-white text-xs font-medium">
-                  <Clock className="h-3 w-3" />
-                  {formatTime(asset.duration)}
                 </div>
-              </div>
-              {/* Filename */}
-              <div className="px-2 py-1.5">
-                <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">
-                  {asset.name}
-                </p>
-              </div>
-            </button>
+                {/* Filename */}
+                <div className="px-2 py-1.5">
+                  <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">
+                    {asset.name}
+                  </p>
+                </div>
+              </button>
             ))}
           </div>
         </div>

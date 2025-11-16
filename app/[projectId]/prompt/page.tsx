@@ -15,7 +15,7 @@ const PromptPage = () => {
   const projectId = params?.projectId as string;
 
   const { project, questions, isLoading } = useProjectData(
-    projectId as Id<"videoProjects">
+    projectId as Id<"videoProjects">,
   );
 
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
@@ -29,10 +29,22 @@ const PromptPage = () => {
 
   // Generate questions if they don't exist yet
   useEffect(() => {
-    if (!isLoading && project && !questions && !isGeneratingQuestions && !hasGeneratedQuestions) {
+    if (
+      !isLoading &&
+      project &&
+      !questions &&
+      !isGeneratingQuestions &&
+      !hasGeneratedQuestions
+    ) {
       generateQuestions();
     }
-  }, [isLoading, project, questions, isGeneratingQuestions, hasGeneratedQuestions]);
+  }, [
+    isLoading,
+    project,
+    questions,
+    isGeneratingQuestions,
+    hasGeneratedQuestions,
+  ]);
 
   const generateQuestions = async () => {
     if (!project) return;
@@ -108,7 +120,9 @@ const PromptPage = () => {
         <div className="flex items-center justify-center min-h-[50vh]">
           <div className="text-center space-y-4 max-w-md">
             <div className="text-destructive text-4xl">⚠️</div>
-            <h2 className="text-xl font-semibold">Error Generating Questions</h2>
+            <h2 className="text-xl font-semibold">
+              Error Generating Questions
+            </h2>
             <p className="text-muted-foreground">{error}</p>
             <button
               onClick={retryGenerateQuestions}

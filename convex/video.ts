@@ -302,7 +302,8 @@ export const updateScene = mutation({
     // Update the scene
     const updates: any = { updatedAt: Date.now() };
     if (args.description !== undefined) updates.description = args.description;
-    if (args.visualPrompt !== undefined) updates.visualPrompt = args.visualPrompt;
+    if (args.visualPrompt !== undefined)
+      updates.visualPrompt = args.visualPrompt;
     if (args.imageStorageId !== undefined)
       updates.imageStorageId = args.imageStorageId;
     if (args.imageUrl !== undefined) updates.imageUrl = args.imageUrl;

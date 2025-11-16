@@ -70,7 +70,7 @@ export const StoryboardGeneratingPhase = ({
         </div>
 
         {/* Model Selection Info */}
-        <Card className="p-5 mb-4 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/30">
+        <Card className="p-5 mb-4 bg-linear-to-r from-primary/10 via-primary/5 to-transparent border-primary/30">
           <div className="flex items-start gap-4">
             <div className="shrink-0">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
@@ -103,9 +103,7 @@ export const StoryboardGeneratingPhase = ({
                   <span>total cost</span>
                 </span>
                 <span className="text-muted-foreground/50">•</span>
-                <span>
-                  ${estimatedCostPerImage.toFixed(3)} per image
-                </span>
+                <span>${estimatedCostPerImage.toFixed(3)} per image</span>
               </div>
             </div>
           </div>

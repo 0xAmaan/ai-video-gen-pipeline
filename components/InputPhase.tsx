@@ -14,7 +14,7 @@ interface InputPhaseProps {
   projectId?: string;
   onQuestionsGenerated?: (
     prompt: string,
-    questions: Question[]
+    questions: Question[],
   ) => Promise<string | null>;
   initialPrompt?: string;
   initialQuestions?: Question[];
@@ -35,9 +35,13 @@ export const InputPhase = ({
   initialPrompt,
   initialQuestions,
 }: InputPhaseProps) => {
-  const [step, setStep] = useState<Step>(initialQuestions ? "questions" : "prompt");
+  const [step, setStep] = useState<Step>(
+    initialQuestions ? "questions" : "prompt",
+  );
   const [prompt, setPrompt] = useState(initialPrompt || "");
-  const [questions, setQuestions] = useState<Question[]>(initialQuestions || []);
+  const [questions, setQuestions] = useState<Question[]>(
+    initialQuestions || [],
+  );
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);

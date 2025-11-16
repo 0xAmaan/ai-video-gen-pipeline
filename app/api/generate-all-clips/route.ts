@@ -38,7 +38,8 @@ export async function POST(req: Request) {
             image: scene.imageUrl,
             // Use the detailed visualPrompt (150-250 words) if available, otherwise fallback to description
             prompt:
-              (scene.visualPrompt || scene.description) + ", cinematic, smooth motion, professional video",
+              (scene.visualPrompt || scene.description) +
+              ", cinematic, smooth motion, professional video",
             duration: validDuration,
             resolution: "720p",
             negative_prompt: "blur, distortion, jitter, artifacts, low quality",

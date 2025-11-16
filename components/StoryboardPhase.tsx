@@ -6,7 +6,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, GripVertical, Trash2, Sparkles, Plus, Loader2 } from "lucide-react";
+import {
+  ArrowRight,
+  GripVertical,
+  Trash2,
+  Sparkles,
+  Plus,
+  Loader2,
+} from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -27,7 +34,9 @@ export const StoryboardPhase = ({
 }: StoryboardPhaseProps) => {
   const [scenes, setScenes] = useState<Scene[]>(initialScenes);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [regeneratingScenes, setRegeneratingScenes] = useState<Set<string>>(new Set());
+  const [regeneratingScenes, setRegeneratingScenes] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Convex mutations
   const updateScene = useMutation(api.video.updateScene);
@@ -37,7 +46,7 @@ export const StoryboardPhase = ({
   // Load scenes from Convex
   const convexScenes = useQuery(
     api.video.getScenes,
-    projectId ? { projectId } : "skip"
+    projectId ? { projectId } : "skip",
   );
 
   // Sync Convex scenes to local state
@@ -161,16 +170,16 @@ export const StoryboardPhase = ({
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Regenerate API error:", errorData);
-        throw new Error(errorData.details || errorData.error || "Failed to regenerate scene");
+        throw new Error(
+          errorData.details || errorData.error || "Failed to regenerate scene",
+        );
       }
 
       const result = await response.json();
 
       // Update local state
       setScenes((prev) =>
-        prev.map((s) =>
-          s.id === id ? { ...s, image: result.imageUrl } : s
-        )
+        prev.map((s) => (s.id === id ? { ...s, image: result.imageUrl } : s)),
       );
 
       // Save to Convex
@@ -298,7 +307,11 @@ export const StoryboardPhase = ({
                     onClick={() => handleRegenerateScene(scene.id)}
                     disabled={regeneratingScenes.has(scene.id)}
                     className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 rounded-md transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                    title={regeneratingScenes.has(scene.id) ? "Regenerating..." : "Regenerate scene"}
+                    title={
+                      regeneratingScenes.has(scene.id)
+                        ? "Regenerating..."
+                        : "Regenerate scene"
+                    }
                   >
                     {regeneratingScenes.has(scene.id) ? (
                       <Loader2 className="w-4 h-4 text-white animate-spin" />
@@ -314,7 +327,10 @@ export const StoryboardPhase = ({
                 {/* Description (contains the detailed visual prompt for video generation) */}
                 <div>
                   <label className="text-sm font-medium mb-2 block">
-                    Scene Prompt <span className="text-muted-foreground font-normal">(for video generation)</span>
+                    Scene Prompt{" "}
+                    <span className="text-muted-foreground font-normal">
+                      (for video generation)
+                    </span>
                   </label>
                   <Textarea
                     value={scene.description}
@@ -385,7 +401,9 @@ export const StoryboardPhase = ({
                   />
                 ) : (
                   <div className="w-full h-full bg-accent flex items-center justify-center">
-                    <span className="text-xs text-muted-foreground">No image</span>
+                    <span className="text-xs text-muted-foreground">
+                      No image
+                    </span>
                   </div>
                 )}
                 <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent flex items-end p-1">

@@ -19,13 +19,18 @@ interface StandaloneEditorAppProps {
   autoHydrate?: boolean;
 }
 
-export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppProps) => {
+export const StandaloneEditorApp = ({
+  autoHydrate = true,
+}: StandaloneEditorAppProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
   const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
-  const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
+  const [exportStatus, setExportStatus] = useState<{
+    progress: number;
+    status: string;
+  } | null>(null);
 
   // Convex hooks for project persistence
   const saveProject = useMutation(api.editor.saveProject);
@@ -143,7 +148,8 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
           if (!state.project) return null;
           return (
             state.project.sequences.find(
-              (sequence) => sequence.id === state.project?.settings.activeSequenceId,
+              (sequence) =>
+                sequence.id === state.project?.settings.activeSequenceId,
             ) ?? null
           );
         },
@@ -202,11 +208,15 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             asset.id,
             asset.url,
             asset.duration,
-            5 // Reduced from 15 to stay under Convex 1MB limit
+            5, // Reduced from 15 to stay under Convex 1MB limit
           );
 
           // Update the asset in the store
-          const updatedAsset = { ...asset, thumbnails, thumbnailCount: thumbnails.length };
+          const updatedAsset = {
+            ...asset,
+            thumbnails,
+            thumbnailCount: thumbnails.length,
+          };
           actions.addMediaAsset(updatedAsset);
         } catch (error) {
           // Silently handle thumbnail generation errors
@@ -233,7 +243,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             asset.id,
             asset.url,
             asset.duration,
-            5 // Reduced from 15 to stay under Convex 1MB limit
+            5, // Reduced from 15 to stay under Convex 1MB limit
           );
           asset.thumbnails = thumbnails;
           asset.thumbnailCount = thumbnails.length;
@@ -245,7 +255,11 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     }
   };
 
-  const handleExport = async (options: { resolution: string; quality: string; format: string }) => {
+  const handleExport = async (options: {
+    resolution: string;
+    quality: string;
+    format: string;
+  }) => {
     if (!project || !exportManager) {
       if (!exportManager) {
         alert("Export is unavailable in this environment.");
@@ -253,12 +267,19 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       return;
     }
     const sequence =
-      project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ?? project.sequences[0];
+      project.sequences.find(
+        (seq) => seq.id === project.settings.activeSequenceId,
+      ) ?? project.sequences[0];
     setExportStatus({ progress: 0, status: "Preparing" });
     try {
-      const blob = await exportManager.exportSequence(sequence, project.mediaAssets, options, (progress, status) => {
-        setExportStatus({ progress, status });
-      });
+      const blob = await exportManager.exportSequence(
+        sequence,
+        project.mediaAssets,
+        options,
+        (progress, status) => {
+          setExportStatus({ progress, status });
+        },
+      );
       await saveBlob(blob, `${project.title || "export"}.${options.format}`);
       setExportStatus({ progress: 100, status: "Complete" });
     } catch (error) {
@@ -273,9 +294,12 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     actions.togglePlayback();
   }, [actions]);
 
-  const handleSeek = useCallback((time: number) => {
-    actions.setCurrentTime(time);
-  }, [actions]);
+  const handleSeek = useCallback(
+    (time: number) => {
+      actions.setCurrentTime(time);
+    },
+    [actions],
+  );
 
   const handleUndo = useCallback(() => {
     actions.undo();
@@ -289,8 +313,13 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     setExportOpen(true);
   }, []);
 
-  const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
-  const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
+  const assets = useMemo(
+    () => (project ? Object.values(project.mediaAssets) : []),
+    [project],
+  );
+  const sequence = project?.sequences.find(
+    (seq) => seq.id === project.settings.activeSequenceId,
+  );
   const zoom = project?.settings.zoom ?? 1;
 
   if (!ready || !project || !sequence) {
@@ -332,7 +361,10 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
           />
         </div>
         {/* Bottom row: Timeline (full width) */}
-        <div className="flex-none h-[340px] flex flex-col" ref={timelineContainerRef}>
+        <div
+          className="flex-none h-[340px] flex flex-col"
+          ref={timelineContainerRef}
+        >
           <KonvaTimeline
             sequence={sequence}
             selectedClipId={selection.clipIds[0] || null}
@@ -341,24 +373,36 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             containerWidth={timelineWidth}
             containerHeight={340}
             assets={assets}
-            onClipSelect={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
+            onClipSelect={(clipId) =>
+              actions.setSelection({ clipIds: [clipId], trackIds: [] })
+            }
             onClipMove={(clipId, newStart) => {
-              const videoTrack = sequence.tracks.find((t) => t.kind === "video");
+              const videoTrack = sequence.tracks.find(
+                (t) => t.kind === "video",
+              );
               if (videoTrack) {
                 actions.moveClip(clipId, videoTrack.id, newStart);
               }
             }}
             onClipReorder={(clips) => actions.reorderClips(clips)}
-            onClipTrim={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
+            onClipTrim={(clipId, trimStart, trimEnd) =>
+              actions.trimClip(clipId, trimStart, trimEnd)
+            }
             onSeek={handleSeek}
             onScrub={(time) => rendererRef.current?.seek(time)}
             onScrubStart={() => {
-              if (rendererRef.current && typeof rendererRef.current.startScrubbing === 'function') {
+              if (
+                rendererRef.current &&
+                typeof rendererRef.current.startScrubbing === "function"
+              ) {
                 rendererRef.current.startScrubbing();
               }
             }}
             onScrubEnd={() => {
-              if (rendererRef.current && typeof rendererRef.current.endScrubbing === 'function') {
+              if (
+                rendererRef.current &&
+                typeof rendererRef.current.endScrubbing === "function"
+              ) {
                 rendererRef.current.endScrubbing();
               }
             }}

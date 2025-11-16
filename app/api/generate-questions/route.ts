@@ -47,11 +47,14 @@ export async function POST(req: Request) {
     const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
 
     if (!hasGroqKey && !hasOpenAIKey) {
-      console.error("❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local");
+      console.error(
+        "❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local",
+      );
       return NextResponse.json(
         {
           error: "No API keys configured",
-          details: "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file"
+          details:
+            "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file",
         },
         { status: 500 },
       );
@@ -73,7 +76,10 @@ export async function POST(req: Request) {
         });
         object = result.object;
       } catch (groqError) {
-        console.warn(`⚠️ Groq failed, falling back to OpenAI:`, groqError instanceof Error ? groqError.message : groqError);
+        console.warn(
+          `⚠️ Groq failed, falling back to OpenAI:`,
+          groqError instanceof Error ? groqError.message : groqError,
+        );
 
         if (hasOpenAIKey) {
           const result = await generateObject({
@@ -105,12 +111,18 @@ export async function POST(req: Request) {
     return NextResponse.json(object);
   } catch (error) {
     console.error("Error generating questions:", error);
-    console.error("Full error details:", error instanceof Error ? error.message : error);
-    console.error("Stack trace:", error instanceof Error ? error.stack : "No stack trace");
+    console.error(
+      "Full error details:",
+      error instanceof Error ? error.message : error,
+    );
+    console.error(
+      "Stack trace:",
+      error instanceof Error ? error.stack : "No stack trace",
+    );
     return NextResponse.json(
       {
         error: "Failed to generate questions",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 },
     );

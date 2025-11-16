@@ -37,21 +37,42 @@ const TopBarComponent = ({
   return (
     <div className="flex items-center justify-between border-b border-border bg-card/80 px-4 py-2">
       <div className="flex items-center gap-2">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Project
+        </p>
         <h1 className="text-sm font-semibold truncate max-w-md">{title}</h1>
       </div>
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <span>
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
-        <Button variant="outline" size="icon" onClick={onUndo} aria-label="Undo">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onUndo}
+          aria-label="Undo"
+        >
           <Undo2 className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="icon" onClick={onRedo} aria-label="Redo">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onRedo}
+          aria-label="Redo"
+        >
           <Redo2 className="h-4 w-4" />
         </Button>
-        <Button variant="secondary" size="icon" onClick={onTogglePlayback} aria-label="Toggle playback">
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={onTogglePlayback}
+          aria-label="Toggle playback"
+        >
+          {isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
         </Button>
         <Button onClick={onExport} className="gap-2">
           <Download className="h-4 w-4" /> Export

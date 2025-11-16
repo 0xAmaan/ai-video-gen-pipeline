@@ -59,7 +59,9 @@ async function testQuestionGeneration(prompt: string) {
     console.log("✅ 'image-generation-priority' question WAS generated");
   } else {
     console.log("❌ 'image-generation-priority' question was NOT generated");
-    console.log("   Model selection will use fallback inference from other questions");
+    console.log(
+      "   Model selection will use fallback inference from other questions",
+    );
   }
   console.log("=".repeat(80) + "\n");
 

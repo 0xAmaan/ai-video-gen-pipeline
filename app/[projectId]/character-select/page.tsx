@@ -30,10 +30,9 @@ export default function CharacterSelectPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Get project data including questionnaire responses
-  const projectData = useQuery(
-    api.video.getProjectWithAllData,
-    { projectId: projectId as Id<"videoProjects"> }
-  );
+  const projectData = useQuery(api.video.getProjectWithAllData, {
+    projectId: projectId as Id<"videoProjects">,
+  });
 
   // Mutation to save the selected character reference
   // TEMPORARY: Using updateProjectStatus instead since saveCharacterReference isn't deployed
@@ -49,11 +48,18 @@ export default function CharacterSelectPage() {
       try {
         setError(null);
         // Use the actual video prompt from the project
-        const videoPrompt = projectData.questions.answers.prompt ||
+        const videoPrompt =
+          projectData.questions.answers.prompt ||
           "A character in a cinematic scene";
 
-        console.log("📹 Using video prompt for character generation:", videoPrompt);
-        console.log("📋 Questionnaire responses:", projectData.questions.answers.responses);
+        console.log(
+          "📹 Using video prompt for character generation:",
+          videoPrompt,
+        );
+        console.log(
+          "📋 Questionnaire responses:",
+          projectData.questions.answers.responses,
+        );
 
         const response = await fetch("/api/generate-character-variations", {
           method: "POST",

@@ -97,49 +97,64 @@ export async function POST(req: Request) {
     // Incorporate user preferences from questionnaire
     if (responses) {
       // Visual style preferences - be very explicit about the style
-      if (responses['visual-style']) {
-        const visualStyle = responses['visual-style'].toLowerCase();
-        characterPrompt += `Visual style: ${responses['visual-style']}. `;
+      if (responses["visual-style"]) {
+        const visualStyle = responses["visual-style"].toLowerCase();
+        characterPrompt += `Visual style: ${responses["visual-style"]}. `;
 
         // Add specific instructions for different styles
-        if (visualStyle.includes('documentary') || visualStyle.includes('black and white')) {
-          characterPrompt += 'Black and white photography, documentary style, cinéma vérité, realistic natural lighting, high contrast, grainy film texture, authentic candid composition. ';
-        } else if (visualStyle.includes('cinematic')) {
-          characterPrompt += 'Cinematic lighting, film grain, professional color grading, shallow depth of field. ';
-        } else if (visualStyle.includes('animated') || visualStyle.includes('cartoon')) {
-          characterPrompt += 'Illustrated art style, stylized character design, vibrant colors. ';
-        } else if (visualStyle.includes('vintage') || visualStyle.includes('retro')) {
-          characterPrompt += 'Vintage aesthetic, retro color palette, film photography style. ';
+        if (
+          visualStyle.includes("documentary") ||
+          visualStyle.includes("black and white")
+        ) {
+          characterPrompt +=
+            "Black and white photography, documentary style, cinéma vérité, realistic natural lighting, high contrast, grainy film texture, authentic candid composition. ";
+        } else if (visualStyle.includes("cinematic")) {
+          characterPrompt +=
+            "Cinematic lighting, film grain, professional color grading, shallow depth of field. ";
+        } else if (
+          visualStyle.includes("animated") ||
+          visualStyle.includes("cartoon")
+        ) {
+          characterPrompt +=
+            "Illustrated art style, stylized character design, vibrant colors. ";
+        } else if (
+          visualStyle.includes("vintage") ||
+          visualStyle.includes("retro")
+        ) {
+          characterPrompt +=
+            "Vintage aesthetic, retro color palette, film photography style. ";
         }
       }
 
-      if (responses['image-generation-priority']) {
-        const priority = responses['image-generation-priority'];
-        if (priority === 'photorealism') {
-          characterPrompt += 'Photorealistic, highly detailed, professional photography. ';
-        } else if (priority === 'artistic') {
-          characterPrompt += 'Artistic, stylized, creative interpretation. ';
-        } else if (priority === 'text-quality') {
-          characterPrompt += 'Clear, sharp, professional rendering. ';
+      if (responses["image-generation-priority"]) {
+        const priority = responses["image-generation-priority"];
+        if (priority === "photorealism") {
+          characterPrompt +=
+            "Photorealistic, highly detailed, professional photography. ";
+        } else if (priority === "artistic") {
+          characterPrompt += "Artistic, stylized, creative interpretation. ";
+        } else if (priority === "text-quality") {
+          characterPrompt += "Clear, sharp, professional rendering. ";
         }
       }
 
       // Emotion/mood
-      if (responses['primary-emotion']) {
-        characterPrompt += `Character should evoke ${responses['primary-emotion']} emotion. `;
+      if (responses["primary-emotion"]) {
+        characterPrompt += `Character should evoke ${responses["primary-emotion"]} emotion. `;
       }
-      if (responses['mood'] || responses['tone']) {
-        const mood = responses['mood'] || responses['tone'];
+      if (responses["mood"] || responses["tone"]) {
+        const mood = responses["mood"] || responses["tone"];
         characterPrompt += `Overall mood: ${mood}. `;
       }
 
       // Any other relevant context
-      if (responses['target-audience']) {
-        characterPrompt += `Audience: ${responses['target-audience']}. `;
+      if (responses["target-audience"]) {
+        characterPrompt += `Audience: ${responses["target-audience"]}. `;
       }
     }
 
-    characterPrompt += 'Focus on the main character with clear, consistent features. Professional quality, well-lit, clear details.';
+    characterPrompt +=
+      "Focus on the main character with clear, consistent features. Professional quality, well-lit, clear details.";
 
     console.log("🎭 Character prompt:", characterPrompt);
 
@@ -165,8 +180,7 @@ export async function POST(req: Request) {
             modelName: config.name,
             imageUrl: "",
             cost: 0,
-            error:
-              error instanceof Error ? error.message : "Generation failed",
+            error: error instanceof Error ? error.message : "Generation failed",
           };
         }
       },

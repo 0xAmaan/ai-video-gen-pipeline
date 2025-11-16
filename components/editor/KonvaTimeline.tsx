@@ -19,7 +19,11 @@ interface KonvaTimelineProps {
   onClipSelect: (clipId: string) => void;
   onClipMove: (clipId: string, newStart: number) => void;
   onClipReorder: (clips: Clip[]) => void;
-  onClipTrim: (clipId: string, newTrimStart: number, newTrimEnd: number) => void;
+  onClipTrim: (
+    clipId: string,
+    newTrimStart: number,
+    newTrimEnd: number,
+  ) => void;
   onSeek: (time: number) => void;
   onScrub?: (time: number) => void;
   onScrubStart?: () => void;
@@ -87,7 +91,7 @@ const KonvaTimelineComponent = ({
     // Target: fill 70% of screen with actual content
     const targetViewDuration = sequence.duration / 0.7;
     const basePixelsPerSecond = containerWidth / DEFAULT_TIMELINE_DURATION;
-    const smartZoom = (containerWidth / targetViewDuration) / basePixelsPerSecond;
+    const smartZoom = containerWidth / targetViewDuration / basePixelsPerSecond;
 
     // Clamp between min and max zoom
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, smartZoom));
@@ -246,65 +250,74 @@ const KonvaTimelineComponent = ({
   };
 
   // Clip drag handlers - memoized to prevent child re-renders
-  const handleClipDragStart = useCallback((clipId: string, startX: number) => {
-    setDraggingClipId(clipId);
-    setDraggedClipX(startX);
-    setVirtualClipOrder((prev) => [...clips]);
-  }, [clips]);
+  const handleClipDragStart = useCallback(
+    (clipId: string, startX: number) => {
+      setDraggingClipId(clipId);
+      setDraggedClipX(startX);
+      setVirtualClipOrder((prev) => [...clips]);
+    },
+    [clips],
+  );
 
-  const handleClipDragMove = useCallback((clipId: string, currentX: number) => {
-    setDraggedClipX(currentX);
+  const handleClipDragMove = useCallback(
+    (clipId: string, currentX: number) => {
+      setDraggedClipX(currentX);
 
-    setVirtualClipOrder((prevOrder) => {
-      const draggedClip = prevOrder.find((c) => c.id === clipId);
-      if (!draggedClip) return prevOrder;
+      setVirtualClipOrder((prevOrder) => {
+        const draggedClip = prevOrder.find((c) => c.id === clipId);
+        if (!draggedClip) return prevOrder;
 
-      const draggedClipCenter =
-        currentX + (draggedClip.duration * PIXELS_PER_SECOND) / 2;
-      const otherClips = prevOrder.filter((c) => c.id !== clipId);
-      const newOrder = [...otherClips];
+        const draggedClipCenter =
+          currentX + (draggedClip.duration * PIXELS_PER_SECOND) / 2;
+        const otherClips = prevOrder.filter((c) => c.id !== clipId);
+        const newOrder = [...otherClips];
 
-      let insertIndex = 0;
-      let cumulativeTime = 0;
+        let insertIndex = 0;
+        let cumulativeTime = 0;
 
-      for (let i = 0; i < otherClips.length; i++) {
-        const clip = otherClips[i];
-        const clipStart = cumulativeTime * PIXELS_PER_SECOND;
-        const clipEnd = clipStart + clip.duration * PIXELS_PER_SECOND;
-        const clipCenter = (clipStart + clipEnd) / 2;
+        for (let i = 0; i < otherClips.length; i++) {
+          const clip = otherClips[i];
+          const clipStart = cumulativeTime * PIXELS_PER_SECOND;
+          const clipEnd = clipStart + clip.duration * PIXELS_PER_SECOND;
+          const clipCenter = (clipStart + clipEnd) / 2;
 
-        if (draggedClipCenter > clipCenter) {
-          insertIndex = i + 1;
+          if (draggedClipCenter > clipCenter) {
+            insertIndex = i + 1;
+          }
+
+          cumulativeTime += clip.duration;
         }
 
-        cumulativeTime += clip.duration;
-      }
+        newOrder.splice(insertIndex, 0, draggedClip);
+        return newOrder;
+      });
+    },
+    [PIXELS_PER_SECOND],
+  );
 
-      newOrder.splice(insertIndex, 0, draggedClip);
-      return newOrder;
-    });
-  }, [PIXELS_PER_SECOND]);
+  const handleClipDragEnd = useCallback(
+    (clipId: string) => {
+      setVirtualClipOrder((prevOrder) => {
+        if (!draggingClipId) return prevOrder;
 
-  const handleClipDragEnd = useCallback((clipId: string) => {
-    setVirtualClipOrder((prevOrder) => {
-      if (!draggingClipId) return prevOrder;
+        // Reflow clips to be sequential
+        let cumulativeTime = 0;
+        const reorderedClips = prevOrder.map((clip) => {
+          const reflowedClip = { ...clip, start: cumulativeTime };
+          cumulativeTime += clip.duration;
+          return reflowedClip;
+        });
 
-      // Reflow clips to be sequential
-      let cumulativeTime = 0;
-      const reorderedClips = prevOrder.map((clip) => {
-        const reflowedClip = { ...clip, start: cumulativeTime };
-        cumulativeTime += clip.duration;
-        return reflowedClip;
+        onClipReorder(reorderedClips);
+        return prevOrder;
       });
 
-      onClipReorder(reorderedClips);
-      return prevOrder;
-    });
-
-    setDraggingClipId(null);
-    setDraggedClipX(0);
-    setVirtualClipOrder([]);
-  }, [draggingClipId, onClipReorder]);
+      setDraggingClipId(null);
+      setDraggedClipX(0);
+      setVirtualClipOrder([]);
+    },
+    [draggingClipId, onClipReorder],
+  );
 
   // Render clips
   const clipsToRender = draggingClipId ? virtualClipOrder : clips;
@@ -338,7 +351,7 @@ const KonvaTimelineComponent = ({
                   style={{ left: `${x}px`, top: "2px" }}
                 >
                   {formatTime(time)}
-                </div>
+                </div>,
               );
             }
 
@@ -410,7 +423,9 @@ const KonvaTimelineComponent = ({
                   xOffset={X_OFFSET}
                   onSelect={() => onClipSelect(clip.id)}
                   onDragStart={(startX) => handleClipDragStart(clip.id, startX)}
-                  onDragMove={(currentX) => handleClipDragMove(clip.id, currentX)}
+                  onDragMove={(currentX) =>
+                    handleClipDragMove(clip.id, currentX)
+                  }
                   onDragEnd={() => handleClipDragEnd(clip.id)}
                   onTrim={(newTrimStart, newTrimEnd) =>
                     onClipTrim(clip.id, newTrimStart, newTrimEnd)

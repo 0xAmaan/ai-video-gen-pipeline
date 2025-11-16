@@ -16,9 +16,11 @@ const StoryboardPage = () => {
   const params = useParams();
   const projectId = params?.projectId as string;
 
-  const { project, questions, scenes: convexScenes } = useProjectData(
-    projectId as Id<"videoProjects">,
-  );
+  const {
+    project,
+    questions,
+    scenes: convexScenes,
+  } = useProjectData(projectId as Id<"videoProjects">);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [storyboardStatus, setStoryboardStatus] = useState<{
@@ -42,7 +44,12 @@ const StoryboardPage = () => {
 
   // Check if we need to generate storyboard
   useEffect(() => {
-    if (project && questions?.answers && convexScenes.length === 0 && !isGenerating) {
+    if (
+      project &&
+      questions?.answers &&
+      convexScenes.length === 0 &&
+      !isGenerating
+    ) {
       // Need to generate storyboard
       setIsGenerating(true);
       generateStoryboard();
@@ -117,7 +124,10 @@ const StoryboardPage = () => {
           estimatedCost: result.modelInfo.estimatedCost,
           reason: result.modelInfo.reason,
         });
-        console.log("✅ UI updated with actual model:", result.modelInfo.modelName);
+        console.log(
+          "✅ UI updated with actual model:",
+          result.modelInfo.modelName,
+        );
       }
 
       // Switch to generating images stage

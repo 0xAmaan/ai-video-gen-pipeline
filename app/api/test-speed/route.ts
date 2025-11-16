@@ -3,10 +3,7 @@ import { groq } from "@ai-sdk/groq";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import {
-  STORYBOARD_SYSTEM_PROMPT,
-  buildStoryboardPrompt,
-} from "@/lib/prompts";
+import { STORYBOARD_SYSTEM_PROMPT, buildStoryboardPrompt } from "@/lib/prompts";
 
 const sceneSchema = z.object({
   scenes: z
@@ -83,7 +80,9 @@ export async function POST(req: Request) {
         model: "llama-3.3-70b-versatile",
       };
 
-      console.log(`✅ Vercel SDK (Groq): ${groqTime}ms (${(groqTime / 1000).toFixed(2)}s)`);
+      console.log(
+        `✅ Vercel SDK (Groq): ${groqTime}ms (${(groqTime / 1000).toFixed(2)}s)`,
+      );
       console.log(`   Generated ${groqData.scenes.length} scenes`);
     } catch (error) {
       results.vercelSdkGroq = {
@@ -101,28 +100,31 @@ export async function POST(req: Request) {
     const openaiDirectStart = Date.now();
 
     try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: STORYBOARD_SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "storyboard_scenes",
-              strict: true,
-              schema: openaiJsonSchema,
-            },
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
-        }),
-      });
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: STORYBOARD_SYSTEM_PROMPT },
+              { role: "user", content: userPrompt },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "storyboard_scenes",
+                strict: true,
+                schema: openaiJsonSchema,
+              },
+            },
+          }),
+        },
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -148,9 +150,13 @@ export async function POST(req: Request) {
         },
       };
 
-      console.log(`✅ Direct OpenAI API: ${openaiDirectTime}ms (${(openaiDirectTime / 1000).toFixed(2)}s)`);
+      console.log(
+        `✅ Direct OpenAI API: ${openaiDirectTime}ms (${(openaiDirectTime / 1000).toFixed(2)}s)`,
+      );
       console.log(`   Generated ${parsedData.scenes.length} scenes`);
-      console.log(`   Tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`);
+      console.log(
+        `   Tokens: ${data.usage.total_tokens} (prompt: ${data.usage.prompt_tokens}, completion: ${data.usage.completion_tokens})`,
+      );
     } catch (error) {
       results.directOpenAI = {
         success: false,
@@ -184,7 +190,9 @@ export async function POST(req: Request) {
         model: "gpt-4o",
       };
 
-      console.log(`✅ Vercel SDK (OpenAI): ${vercelOpenaiTime}ms (${(vercelOpenaiTime / 1000).toFixed(2)}s)`);
+      console.log(
+        `✅ Vercel SDK (OpenAI): ${vercelOpenaiTime}ms (${(vercelOpenaiTime / 1000).toFixed(2)}s)`,
+      );
       console.log(`   Generated ${openaiData.scenes.length} scenes`);
     } catch (error) {
       results.vercelSdkOpenAI = {
@@ -202,26 +210,37 @@ export async function POST(req: Request) {
 
     const times: { name: string; ms: number }[] = [];
     if (results.vercelSdkGroq?.success) {
-      times.push({ name: "Vercel SDK (Groq)", ms: results.vercelSdkGroq.timeMs });
+      times.push({
+        name: "Vercel SDK (Groq)",
+        ms: results.vercelSdkGroq.timeMs,
+      });
     }
     if (results.directOpenAI?.success) {
-      times.push({ name: "Direct OpenAI API", ms: results.directOpenAI.timeMs });
+      times.push({
+        name: "Direct OpenAI API",
+        ms: results.directOpenAI.timeMs,
+      });
     }
     if (results.vercelSdkOpenAI?.success) {
-      times.push({ name: "Vercel SDK (OpenAI)", ms: results.vercelSdkOpenAI.timeMs });
+      times.push({
+        name: "Vercel SDK (OpenAI)",
+        ms: results.vercelSdkOpenAI.timeMs,
+      });
     }
 
     times.sort((a, b) => a.ms - b.ms);
 
     times.forEach((t, i) => {
       const emoji = i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉";
-      console.log(`${emoji} ${t.name}: ${t.ms}ms (${(t.ms / 1000).toFixed(2)}s)`);
+      console.log(
+        `${emoji} ${t.name}: ${t.ms}ms (${(t.ms / 1000).toFixed(2)}s)`,
+      );
     });
 
     if (times.length > 1) {
       const fastest = times[0].ms;
       const slowest = times[times.length - 1].ms;
-      const speedup = ((slowest - fastest) / slowest * 100).toFixed(1);
+      const speedup = (((slowest - fastest) / slowest) * 100).toFixed(1);
       console.log(`\n⚡ Fastest is ${speedup}% faster than slowest`);
     }
 
