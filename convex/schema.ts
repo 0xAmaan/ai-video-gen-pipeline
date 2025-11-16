@@ -53,7 +53,8 @@ export default defineSchema({
   scenes: defineTable({
     projectId: v.id("videoProjects"),
     sceneNumber: v.number(),
-    description: v.string(),
+    description: v.string(), // Short narrative description for UI display
+    visualPrompt: v.optional(v.string()), // Detailed 150-250 word prompt for video generation
     imageStorageId: v.optional(v.string()),
     imageUrl: v.optional(v.string()), // Convex storage URL
     duration: v.number(), // Duration in seconds

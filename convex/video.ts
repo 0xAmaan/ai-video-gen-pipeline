@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+// Schema update: Added visualPrompt support for detailed scene descriptions
 
 // Create a new video project
 export const createProject = mutation({
@@ -184,6 +185,7 @@ export const getUserProjects = query({
 });
 
 // Save generated scenes for a project
+// UPDATED: Added visualPrompt field for detailed video generation prompts
 export const saveScenes = mutation({
   args: {
     projectId: v.id("videoProjects"),
@@ -191,6 +193,7 @@ export const saveScenes = mutation({
       v.object({
         sceneNumber: v.number(),
         description: v.string(),
+        visualPrompt: v.optional(v.string()), // ADDED: Detailed prompt for video generation
         imageStorageId: v.optional(v.string()),
         imageUrl: v.optional(v.string()),
         duration: v.number(),
@@ -219,6 +222,7 @@ export const saveScenes = mutation({
         projectId: args.projectId,
         sceneNumber: scene.sceneNumber,
         description: scene.description,
+        visualPrompt: scene.visualPrompt,
         imageStorageId: scene.imageStorageId,
         imageUrl: scene.imageUrl,
         duration: scene.duration,
@@ -271,6 +275,7 @@ export const updateScene = mutation({
   args: {
     sceneId: v.id("scenes"),
     description: v.optional(v.string()),
+    visualPrompt: v.optional(v.string()),
     imageStorageId: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     duration: v.optional(v.number()),
@@ -297,6 +302,7 @@ export const updateScene = mutation({
     // Update the scene
     const updates: any = { updatedAt: Date.now() };
     if (args.description !== undefined) updates.description = args.description;
+    if (args.visualPrompt !== undefined) updates.visualPrompt = args.visualPrompt;
     if (args.imageStorageId !== undefined)
       updates.imageStorageId = args.imageStorageId;
     if (args.imageUrl !== undefined) updates.imageUrl = args.imageUrl;

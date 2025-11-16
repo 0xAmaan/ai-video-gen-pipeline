@@ -60,18 +60,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // Note: Using openai/gpt-oss-20b - supports strict JSON schema, 250K TPM, very fast
+    // Using gpt-oss-20b - very fast and supports JSON mode
     const modelToUse = hasGroqKey
       ? groq("openai/gpt-oss-20b")
-      : openai("gpt-4o");
+      : openai("gpt-4o-mini");
 
-    console.log(`🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o) - SLOWER 🐌"}`);
+    console.log(`🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o-mini) - SLOWER 🐌"}`);
 
     const { object: sceneData } = await generateObject({
       model: modelToUse,
       schema: sceneSchema,
       system: STORYBOARD_SYSTEM_PROMPT,
       prompt: buildStoryboardPrompt(prompt, responses),
+      maxRetries: 3, // Allow retries if JSON generation fails
     });
 
     // Step 3: Select optimal image generation model
@@ -172,6 +173,7 @@ export async function POST(req: Request) {
           return {
             sceneNumber: scene.sceneNumber,
             description: scene.description,
+            visualPrompt: scene.visualPrompt, // Store the detailed prompt for video generation
             imageUrl: imageUrl,
             duration: scene.duration,
             replicateImageId: undefined, // Could extract from output metadata if needed
@@ -224,6 +226,7 @@ export async function POST(req: Request) {
               return {
                 sceneNumber: scene.sceneNumber,
                 description: scene.description,
+                visualPrompt: scene.visualPrompt,
                 imageUrl: fallbackImageUrl,
                 duration: scene.duration,
                 replicateImageId: undefined,
@@ -240,6 +243,7 @@ export async function POST(req: Request) {
           return {
             sceneNumber: scene.sceneNumber,
             description: scene.description,
+            visualPrompt: scene.visualPrompt,
             imageUrl: undefined,
             duration: scene.duration,
             replicateImageId: undefined,

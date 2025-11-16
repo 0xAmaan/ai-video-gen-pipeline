@@ -132,10 +132,28 @@ const StoryboardPage = () => {
       }
 
       // Save all scenes to Convex at once
-      await saveScenes({
-        projectId: projectId as Id<"videoProjects">,
-        scenes: result.scenes,
-      });
+      try {
+        await saveScenes({
+          projectId: projectId as Id<"videoProjects">,
+          scenes: result.scenes,
+        });
+      } catch (error) {
+        // TEMPORARY WORKAROUND: If Convex schema hasn't updated yet,
+        // store visualPrompt in description temporarily to preserve the data
+        console.warn("Convex schema not updated - storing visualPrompt in description temporarily...", error);
+        const scenesWithVisualPromptInDescription = result.scenes.map((scene: any) => {
+          const { visualPrompt, description, ...rest } = scene;
+          return {
+            ...rest,
+            // Store the detailed visualPrompt in description field temporarily
+            description: visualPrompt || description,
+          };
+        });
+        await saveScenes({
+          projectId: projectId as Id<"videoProjects">,
+          scenes: scenesWithVisualPromptInDescription,
+        });
+      }
 
       setStoryboardStatus({
         stage: "complete",
