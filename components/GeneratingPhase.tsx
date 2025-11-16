@@ -30,7 +30,7 @@ const STAGES: Stage[] = [
   {
     id: "audio",
     label: "Processing Audio",
-    description: "Generating audio structure and beat detection",
+    description: "Generating narration audio with AI voice synthesis",
   },
   {
     id: "clips",
@@ -197,7 +197,8 @@ export const GeneratingPhase = ({ onComplete }: GeneratingPhaseProps) => {
         <div className="mt-6 text-center">
           <p className="text-sm text-muted-foreground">
             Estimated cost:{" "}
-            <span className="font-medium text-foreground">$1.20</span>
+            <span className="font-medium text-foreground">$1.25</span>{" "}
+            (includes narration)
           </p>
         </div>
       </div>

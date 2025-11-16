@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Film, AlertCircle } from "lucide-react";
+import { Loader2, Check, Film, AlertCircle, Mic } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { Scene } from "@/types/scene";
 
@@ -14,34 +14,72 @@ interface VideoGeneratingPhaseProps {
   scenes: Scene[];
   projectId: Id<"videoProjects">;
   onComplete: (clips: any[]) => void;
+  enableLipsync: boolean;
+  onToggleLipsync: (value: boolean) => void;
 }
 
 export const VideoGeneratingPhase = ({
   scenes,
   projectId,
   onComplete,
+  enableLipsync,
+  onToggleLipsync,
 }: VideoGeneratingPhaseProps) => {
   // Query video clips from Convex to track real-time status
   const videoClips = useQuery(api.video.getVideoClips, { projectId });
   const hasCalledComplete = useRef(false);
 
   // Calculate progress
-  const totalClips = scenes.length;
+  const totalClips = scenes.length || 1;
   const completedClips =
     videoClips?.filter((c) => c.status === "complete").length || 0;
   const failedClips =
     videoClips?.filter((c) => c.status === "failed").length || 0;
   const processingClips =
-    videoClips?.filter((c) => c.status === "processing").length || 0;
-  const progress = (completedClips / totalClips) * 100;
-
-  // Check if all clips are done
-  const allComplete = videoClips && completedClips + failedClips === totalClips;
+    videoClips?.filter(
+      (c) => c.status === "processing" || c.status === "pending",
+    ).length || 0;
+  const videoProgress = enableLipsync
+    ? (completedClips / totalClips) * 50
+    : (completedClips / totalClips) * 100;
+  const lipsyncCompleteScenes = scenes.filter((scene) => {
+    if (!enableLipsync) return true;
+    if (!scene.narrationUrl) return true;
+    return scene.lipsyncStatus === "complete";
+  }).length;
+  const lipsyncProcessingScenes =
+    scenes.filter((scene) => scene.lipsyncStatus === "processing").length || 0;
+  const lipsyncFailedScenes =
+    scenes.filter((scene) => scene.lipsyncStatus === "failed").length || 0;
+  const lipsyncProgress = enableLipsync
+    ? (lipsyncCompleteScenes / totalClips) * 50
+    : 0;
+  const totalProgress = Math.min(100, videoProgress + lipsyncProgress);
+  const videoGenerationComplete =
+    videoClips && completedClips + failedClips === totalClips;
+  const lipsyncSettled = scenes.every((scene) => {
+    if (!enableLipsync || !scene.narrationUrl) return true;
+    return (
+      scene.lipsyncStatus === "complete" || scene.lipsyncStatus === "failed"
+    );
+  });
+  const readyForEditor =
+    Boolean(videoGenerationComplete) && Boolean(lipsyncSettled);
+  const lipsyncEligibleCount =
+    scenes.filter((scene) => !!scene.narrationUrl).length || 0;
+  const lipsyncToggleLocked = completedClips > 0;
+  const imageCost = scenes.length * 0.08;
+  const audioCost = scenes.length * 0.01;
+  const videoCost = scenes.length * 0.34;
+  const lipsyncCost = enableLipsync
+    ? scenes.reduce((sum, scene) => sum + (scene.duration || 0) * 0.05, 0)
+    : 0;
+  const estimatedCost = imageCost + audioCost + videoCost + lipsyncCost;
 
   // Trigger completion callback in useEffect to avoid state update during render
   useEffect(() => {
     console.log("Completion check:", {
-      allComplete,
+      readyForEditor,
       failedClips,
       hasClips: !!videoClips,
       clipCount: videoClips?.length,
@@ -49,17 +87,12 @@ export const VideoGeneratingPhase = ({
       hasCalledComplete: hasCalledComplete.current,
     });
 
-    if (
-      allComplete &&
-      !failedClips &&
-      videoClips &&
-      !hasCalledComplete.current
-    ) {
-      console.log("✅ All clips complete! Navigating to editor...");
+    if (readyForEditor && videoClips && !hasCalledComplete.current) {
+      console.log("✅ All clips processed! Navigating to editor...");
       hasCalledComplete.current = true;
       onComplete(videoClips);
     }
-  }, [allComplete, failedClips, videoClips, onComplete, completedClips]);
+  }, [readyForEditor, videoClips, onComplete, completedClips]);
 
   // Map video clips to scenes for display
   const getClipForScene = (sceneId: string) => {
@@ -76,11 +109,13 @@ export const VideoGeneratingPhase = ({
             <h1 className="text-3xl font-bold">Generating Video Clips</h1>
           </div>
           <p className="text-muted-foreground">
-            {allComplete
-              ? failedClips > 0
-                ? `Generation complete with ${failedClips} failed clip(s)`
-                : "All clips generated successfully!"
-              : `Generating clips (${completedClips}/${totalClips})...`}
+            {readyForEditor
+              ? failedClips + lipsyncFailedScenes > 0
+                ? `Generation finished with ${failedClips + lipsyncFailedScenes} issue(s)`
+                : "All clips generated and audio synced!"
+              : enableLipsync
+                ? `Generating videos (${completedClips}/${totalClips}) • Lip sync ${Math.min(lipsyncCompleteScenes, totalClips)}/${totalClips}`
+                : `Generating videos (${completedClips}/${totalClips})...`}
           </p>
         </div>
 
@@ -88,21 +123,51 @@ export const VideoGeneratingPhase = ({
         <Card className="p-8 mb-6">
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium">Overall Progress</span>
+              <span className="text-sm font-medium">
+                Overall Progress{enableLipsync ? " (Video + Lip Sync)" : ""}
+              </span>
               <span className="text-2xl font-bold text-primary">
-                {Math.round(progress)}%
+                {Math.round(totalProgress)}%
               </span>
             </div>
-            <Progress value={progress} className="h-3" />
+            <Progress value={totalProgress} className="h-3" />
           </div>
 
           <div className="flex items-center justify-between text-sm flex-wrap gap-2">
             <span className="text-muted-foreground">
-              {allComplete
-                ? `Completed: ${completedClips} | Failed: ${failedClips}`
-                : `Estimated time remaining: ${Math.ceil((totalClips - completedClips) * 90)}s`}
+              Videos {completedClips}/{totalClips} • Lip sync{" "}
+              {enableLipsync
+                ? `${Math.min(lipsyncCompleteScenes, totalClips)}/${totalClips}`
+                : "disabled"}
             </span>
             <Badge variant="secondary">Using WAN 2.5 i2v Fast</Badge>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={enableLipsync}
+                onChange={(event) => onToggleLipsync(event.target.checked)}
+                disabled={lipsyncToggleLocked}
+              />
+              <span>
+                Enable lip sync (adds ~$0.25/clip)
+                {lipsyncToggleLocked && (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    (locked after generation starts)
+                  </span>
+                )}
+              </span>
+            </label>
+            <span className="text-muted-foreground">
+              {processingClips > 0
+                ? `Video stage: ${processingClips} clip(s) processing`
+                : readyForEditor
+                  ? "Video stage complete"
+                  : "Queueing clips..."}
+            </span>
           </div>
         </Card>
 
@@ -223,13 +288,61 @@ export const VideoGeneratingPhase = ({
           </div>
         </Card>
 
+        {enableLipsync ? (
+          <Card className="p-6 mt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Mic className="w-5 h-5 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">Lip Sync Processing</h3>
+            </div>
+            <Progress
+              value={(lipsyncCompleteScenes / totalClips) * 100}
+              className="h-2 mb-2"
+            />
+            <p className="text-sm text-muted-foreground">
+              {Math.min(lipsyncCompleteScenes, totalClips)}/{totalClips} clips
+              synced
+            </p>
+            {lipsyncProcessingScenes > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Processing {lipsyncProcessingScenes} clip(s)...
+              </p>
+            )}
+            {lipsyncEligibleCount === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Scenes without narration are automatically considered synced.
+              </p>
+            )}
+            {lipsyncFailedScenes > 0 && (
+              <p className="text-sm text-destructive mt-2">
+                {lipsyncFailedScenes} clip(s) failed to sync. We’ll fall back to
+                the original video.
+              </p>
+            )}
+          </Card>
+        ) : (
+          <Card className="p-6 mt-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Mic className="w-5 h-5 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">Lip Sync Disabled</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Original WAN clips will be used without additional processing.
+            </p>
+          </Card>
+        )}
+
         {/* Cost Info */}
         <div className="mt-6 text-center">
           <p className="text-sm text-muted-foreground">
             Estimated cost:{" "}
             <span className="font-medium text-foreground">
-              ${(totalClips * 0.34).toFixed(2)}
+              ${estimatedCost.toFixed(2)}
             </span>
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Images ${imageCost.toFixed(2)} + Audio ${audioCost.toFixed(2)} +
+            Video ${videoCost.toFixed(2)}
+            {enableLipsync ? ` + Lip Sync $${lipsyncCost.toFixed(2)}` : ""}
           </p>
         </div>
       </div>
