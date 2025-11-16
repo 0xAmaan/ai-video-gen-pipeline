@@ -135,6 +135,39 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     rendererRef.current?.seek(currentTime);
   }, [currentTime]);
 
+  // Generate thumbnails for videos that don't have them yet
+  useEffect(() => {
+    if (!ready || !project || !mediaManager) return;
+
+    const generateMissingThumbnails = async () => {
+      const assets = Object.values(project.mediaAssets);
+
+      for (const asset of assets) {
+        // Skip if not a video or already has thumbnails
+        if (asset.type !== "video" || asset.thumbnails?.length) continue;
+
+        try {
+          console.log(`Generating thumbnails for ${asset.name}...`);
+          const thumbnails = await mediaManager.generateThumbnails(
+            asset.id,
+            asset.url,
+            asset.duration,
+            15
+          );
+
+          // Update the asset in the store
+          const updatedAsset = { ...asset, thumbnails, thumbnailCount: thumbnails.length };
+          actions.addMediaAsset(updatedAsset);
+          console.log(`Generated ${thumbnails.length} thumbnails for ${asset.name}`);
+        } catch (error) {
+          console.warn(`Thumbnail generation failed for ${asset.name}:`, error);
+        }
+      }
+    };
+
+    generateMissingThumbnails();
+  }, [ready, project, mediaManager, actions]);
+
   const handleImport = async (files: FileList | null) => {
     if (!files || !mediaManager) return;
     const imports: Promise<MediaAssetMeta>[] = [];
