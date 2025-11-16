@@ -29,8 +29,36 @@ export interface ImageModel {
 /**
  * Available text-to-image models with their configurations
  */
+const withEnvOverride = (envVar: string | undefined, fallback: string) =>
+  envVar && envVar.trim().length > 0 ? envVar.trim() : fallback;
+
 export const IMAGE_MODELS: Record<string, ImageModel> = {
   // FLUX Models (Ideogram's choice)
+  "leonardo-phoenix": {
+    id: "leonardoai/phoenix-1.0",
+    name: "Leonardo Phoenix 1.0",
+    speed: "medium",
+    quality: "excellent",
+    cost: "moderate",
+    bestFor: [
+      "cinematic",
+      "photorealism",
+      "high-quality",
+      "prompt-adherence",
+      "professional",
+    ],
+    features: [
+      "cinematic-quality",
+      "photorealistic",
+      "prompt-adherence",
+      "style-presets",
+      "up-to-5mp",
+    ],
+    estimatedCost: 0.032,
+    notes:
+      "Leonardo AI's foundational model. Exceptional prompt adherence and photorealistic results. Supports multiple styles (cinematic, portrait, etc.).",
+  },
+
   "flux-schnell": {
     id: "black-forest-labs/flux-schnell",
     name: "FLUX.1 Schnell",
@@ -85,6 +113,61 @@ export const IMAGE_MODELS: Record<string, ImageModel> = {
     estimatedCost: 0.055,
     notes:
       "⚠️ May not be available on Replicate. Using flux-pro as alternative.",
+  },
+
+  "flux-kontext-pro": {
+    id: withEnvOverride(
+      process.env.REPLICATE_KONTEXT_MODEL,
+      "black-forest-labs/flux-kontext-pro",
+    ),
+    name: "FLUX.1 Kontext Pro",
+    speed: "medium",
+    quality: "excellent",
+    cost: "moderate",
+    bestFor: [
+      "character-consistency",
+      "image-reference",
+      "scene-variation",
+      "character-preservation",
+    ],
+    features: [
+      "reference-image-support",
+      "character-consistency",
+      "high-quality",
+      "prompt-adherence",
+    ],
+    estimatedCost: 0.04,
+    notes:
+      "DEPRECATED: Use consistent-character instead for better results. Image-to-image model that maintains character consistency across scenes using a reference image. Requires input_image parameter.",
+  },
+
+  "consistent-character": {
+    id: withEnvOverride(
+      process.env.REPLICATE_CONSISTENT_CHARACTER_MODEL,
+      "fofr/consistent-character",
+    ),
+    name: "Consistent Character (InstantID + IPAdapter)",
+    speed: "medium",
+    quality: "excellent",
+    cost: "moderate",
+    bestFor: [
+      "character-consistency",
+      "face-preservation",
+      "pose-variation",
+      "multi-scene-consistency",
+      "photorealism",
+    ],
+    features: [
+      "instantid-technology",
+      "ipadapter-integration",
+      "controlnet-support",
+      "face-detailing",
+      "90-95-percent-consistency",
+      "pose-control",
+    ],
+    estimatedCost: 0.073,
+    notes:
+      "⭐ BEST FOR CHARACTER CONSISTENCY. Uses InstantID + IPAdapter + ControlNet for 90-95% character preservation across different poses and scenes. Purpose-built for maintaining identical characters.",
   },
 
   // SDXL Models

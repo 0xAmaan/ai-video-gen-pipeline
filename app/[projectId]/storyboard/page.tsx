@@ -77,10 +77,25 @@ const StoryboardPage = () => {
 
       // Call the storyboard generation API
       const apiStartTime = Date.now();
+
+      // TEMPORARY: Get character reference from localStorage
+      const characterData = localStorage.getItem(`character-${projectId}`);
+      const characterReference = characterData
+        ? JSON.parse(characterData).referenceImageUrl
+        : undefined;
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (characterReference) {
+        headers["x-character-reference"] = characterReference;
+      }
+
       const response = await fetch("/api/generate-storyboard", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
+          projectId: projectId,
           prompt: questions.answers.prompt,
           responses: questions.answers.responses,
         }),
@@ -131,29 +146,11 @@ const StoryboardPage = () => {
         }
       }
 
-      // Save all scenes to Convex at once
-      try {
-        await saveScenes({
-          projectId: projectId as Id<"videoProjects">,
-          scenes: result.scenes,
-        });
-      } catch (error) {
-        // TEMPORARY WORKAROUND: If Convex schema hasn't updated yet,
-        // store visualPrompt in description temporarily to preserve the data
-        console.warn("Convex schema not updated - storing visualPrompt in description temporarily...", error);
-        const scenesWithVisualPromptInDescription = result.scenes.map((scene: any) => {
-          const { visualPrompt, description, ...rest } = scene;
-          return {
-            ...rest,
-            // Store the detailed visualPrompt in description field temporarily
-            description: visualPrompt || description,
-          };
-        });
-        await saveScenes({
-          projectId: projectId as Id<"videoProjects">,
-          scenes: scenesWithVisualPromptInDescription,
-        });
-      }
+      // Save all scenes to Convex (including visualPrompt for video generation)
+      await saveScenes({
+        projectId: projectId as Id<"videoProjects">,
+        scenes: result.scenes,
+      });
 
       setStoryboardStatus({
         stage: "complete",
@@ -187,6 +184,7 @@ const StoryboardPage = () => {
         id: `temp-${index}`,
         image: scene.imageUrl || "",
         description: scene.description,
+        visualPrompt: scene.visualPrompt,
         duration: scene.duration,
         sceneNumber: scene.sceneNumber,
       }))
@@ -194,6 +192,7 @@ const StoryboardPage = () => {
         id: scene._id,
         image: scene.imageUrl || "",
         description: scene.description,
+        visualPrompt: scene.visualPrompt,
         duration: scene.duration,
         sceneNumber: scene.sceneNumber,
       }));

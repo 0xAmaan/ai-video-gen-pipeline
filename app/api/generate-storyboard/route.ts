@@ -8,12 +8,12 @@ import {
   STORYBOARD_SYSTEM_PROMPT,
   buildStoryboardPrompt,
 } from "@/lib/prompts";
-import {
-  selectImageModel,
-  getSelectedModelConfig,
-  explainModelSelection,
-} from "@/lib/select-image-model";
-import { FALLBACK_IMAGE_MODEL, getImageModel } from "@/lib/image-models";
+import { IMAGE_MODELS } from "@/lib/image-models";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -26,8 +26,8 @@ const sceneSchema = z.object({
       z.object({
         sceneNumber: z.number(),
         description: z.string(),
-        visualPrompt: z.string(), // Enhanced prompt for image generation
-        duration: z.number(), // Duration in seconds
+        visualPrompt: z.string(),
+        duration: z.number(),
       }),
     )
     .min(3)
@@ -36,7 +36,7 @@ const sceneSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { prompt, responses } = await req.json();
+    const { projectId, prompt, responses } = await req.json();
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Step 2: Generate scene descriptions using Groq (much faster than GPT-4o)
+    // Step 1: Generate scene descriptions using Groq
     const hasGroqKey = !!process.env.GROQ_API_KEY;
     const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
 
@@ -60,7 +60,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Using gpt-oss-20b - very fast and supports JSON mode
     const modelToUse = hasGroqKey
       ? groq("openai/gpt-oss-20b")
       : openai("gpt-4o-mini");
@@ -72,181 +71,86 @@ export async function POST(req: Request) {
       schema: sceneSchema,
       system: STORYBOARD_SYSTEM_PROMPT,
       prompt: buildStoryboardPrompt(prompt, responses),
-      maxRetries: 3, // Allow retries if JSON generation fails
+      maxRetries: 3,
     });
 
-    // Step 3: Select optimal image generation model
+    // Step 2: Select style for Leonardo Phoenix
     console.log("\n" + "=".repeat(80));
-    console.log("🔍 MODEL SELECTION DEBUG");
+    console.log("🔍 LEONARDO PHOENIX MODEL SELECTION");
     console.log("=".repeat(80));
-    console.log("Questionnaire responses received:");
-    console.log(JSON.stringify(responses, null, 2));
 
-    const selectedModelKey = selectImageModel(responses);
-    const modelConfig = getSelectedModelConfig(responses);
-    const modelSelection = explainModelSelection(responses);
+    const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
+    let phoenixStyle = "cinematic"; // Default style
 
-    console.log("\n✅ Model Selection Result:");
-    console.log(`   Model: ${modelConfig.name} (${selectedModelKey})`);
-    console.log(`   Reason: ${modelSelection.reason}`);
+    if (responses && responses['visual-style']) {
+      const visualStyle = responses['visual-style'].toLowerCase();
+      if (visualStyle.includes('documentary') || visualStyle.includes('black and white')) {
+        phoenixStyle = "pro_bw_photography";
+      } else if (visualStyle.includes('cinematic') || visualStyle.includes('film')) {
+        phoenixStyle = "cinematic";
+      } else if (visualStyle.includes('photo') || visualStyle.includes('realistic')) {
+        phoenixStyle = "pro_color_photography";
+      } else if (visualStyle.includes('animated') || visualStyle.includes('cartoon')) {
+        phoenixStyle = "illustration";
+      } else if (visualStyle.includes('vintage') || visualStyle.includes('retro')) {
+        phoenixStyle = "pro_film_photography";
+      } else if (visualStyle.includes('portrait')) {
+        phoenixStyle = "portrait";
+      }
+    }
+
+    console.log(`   Model: ${modelConfig.name}`);
+    console.log(`   Style: ${phoenixStyle}`);
     console.log(`   Cost: ~$${modelConfig.estimatedCost}/image`);
-    console.log(`   Quality: ${modelConfig.quality}, Speed: ${modelConfig.speed}`);
     console.log("=".repeat(80) + "\n");
 
-    // Step 4: Generate images using selected model
+    // Step 3: Generate images using Leonardo Phoenix via Replicate
     const scenesWithImages = await Promise.all(
       sceneData.scenes.map(async (scene) => {
         try {
-          // Call Replicate with dynamically selected model
-          const output = await replicate.run(modelConfig.id, {
+          console.log(`🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`);
+          console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
+
+          const output = await replicate.run(modelConfig.id as `${string}/${string}`, {
             input: {
               prompt: scene.visualPrompt,
+              aspect_ratio: "16:9",
+              generation_mode: "quality",
+              contrast: "medium",
+              num_images: 1,
+              prompt_enhance: false,
+              style: phoenixStyle,
             },
           });
 
-          // Get the image URL from Replicate
+          // Extract image URL from output
           let imageUrl: string;
-
-          // Handle FileOutput object (has .url() method)
-          if (
-            output &&
-            typeof output === "object" &&
-            "url" in output &&
-            typeof (output as any).url === "function"
-          ) {
-            imageUrl = (output as any).url();
-          }
-          // Handle array of FileOutput objects
-          else if (Array.isArray(output) && output.length > 0) {
-            const firstOutput = output[0];
-            if (
-              typeof firstOutput === "object" &&
-              "url" in firstOutput &&
-              typeof firstOutput.url === "function"
-            ) {
-              imageUrl = firstOutput.url();
-            } else if (typeof firstOutput === "string") {
-              imageUrl = firstOutput;
-            } else {
-              throw new Error(
-                `Unexpected array item format: ${JSON.stringify(firstOutput)}`,
-              );
-            }
-          }
-          // Handle plain string
-          else if (typeof output === "string") {
+          if (Array.isArray(output) && output.length > 0) {
+            imageUrl = typeof output[0] === "string" ? output[0] : (output[0] as any).url?.() || output[0];
+          } else if (typeof output === "string") {
             imageUrl = output;
-          }
-          // Handle object with url property (not a function)
-          else if (
-            output &&
-            typeof output === "object" &&
-            "url" in output &&
-            typeof (output as any).url === "string"
-          ) {
-            imageUrl = (output as any).url;
-          }
-          // Handle object with output property
-          else if (output && typeof output === "object" && "output" in output) {
-            const outputData = (output as any).output;
-            if (Array.isArray(outputData) && outputData.length > 0) {
-              imageUrl = outputData[0];
-            } else if (typeof outputData === "string") {
-              imageUrl = outputData;
-            } else {
-              throw new Error(
-                `Unexpected output.output format: ${JSON.stringify(outputData)}`,
-              );
-            }
           } else {
-            console.error("Unexpected output:", output);
             throw new Error(`Unexpected output format: ${typeof output}`);
           }
 
-          console.log(`Scene ${scene.sceneNumber} image URL:`, imageUrl);
-
-          // TODO: Future enhancement - upload to Convex storage
-          // const imageResponse = await fetch(imageUrl);
-          // const imageBlob = await imageResponse.blob();
-          // Upload blob to Convex storage for permanent hosting
+          console.log(`   ✅ Scene ${scene.sceneNumber} image URL:`, imageUrl);
 
           return {
             sceneNumber: scene.sceneNumber,
             description: scene.description,
-            visualPrompt: scene.visualPrompt, // Store the detailed prompt for video generation
+            visualPrompt: scene.visualPrompt,
             imageUrl: imageUrl,
             duration: scene.duration,
-            replicateImageId: undefined, // Could extract from output metadata if needed
           };
         } catch (error) {
-          console.error(
-            `Error generating image for scene ${scene.sceneNumber} with ${modelConfig.name}:`,
-            error,
-          );
+          console.error(`Error generating image for scene ${scene.sceneNumber}:`, error);
 
-          // Fallback: Try with backup model
-          if (selectedModelKey !== FALLBACK_IMAGE_MODEL) {
-            console.log(
-              `Retrying scene ${scene.sceneNumber} with fallback model...`,
-            );
-            try {
-              const fallbackModel = getImageModel(FALLBACK_IMAGE_MODEL);
-              const fallbackOutput = await replicate.run(fallbackModel.id, {
-                input: {
-                  prompt: scene.visualPrompt,
-                },
-              });
-
-              // Extract URL from fallback output
-              let fallbackImageUrl: string;
-              if (
-                fallbackOutput &&
-                typeof fallbackOutput === "object" &&
-                "url" in fallbackOutput &&
-                typeof (fallbackOutput as any).url === "function"
-              ) {
-                fallbackImageUrl = (fallbackOutput as any).url();
-              } else if (
-                Array.isArray(fallbackOutput) &&
-                fallbackOutput.length > 0
-              ) {
-                fallbackImageUrl =
-                  typeof fallbackOutput[0] === "string"
-                    ? fallbackOutput[0]
-                    : fallbackOutput[0].url();
-              } else if (typeof fallbackOutput === "string") {
-                fallbackImageUrl = fallbackOutput;
-              } else {
-                throw new Error("Fallback also failed");
-              }
-
-              console.log(
-                `Scene ${scene.sceneNumber} generated with fallback model`,
-              );
-              return {
-                sceneNumber: scene.sceneNumber,
-                description: scene.description,
-                visualPrompt: scene.visualPrompt,
-                imageUrl: fallbackImageUrl,
-                duration: scene.duration,
-                replicateImageId: undefined,
-              };
-            } catch (fallbackError) {
-              console.error(
-                `Fallback also failed for scene ${scene.sceneNumber}:`,
-                fallbackError,
-              );
-            }
-          }
-
-          // Return scene without image if both primary and fallback fail
           return {
             sceneNumber: scene.sceneNumber,
             description: scene.description,
             visualPrompt: scene.visualPrompt,
             imageUrl: undefined,
             duration: scene.duration,
-            replicateImageId: undefined,
           };
         }
       }),
@@ -256,10 +160,10 @@ export async function POST(req: Request) {
       success: true,
       scenes: scenesWithImages,
       modelInfo: {
-        modelKey: selectedModelKey,
+        modelKey: "leonardo-phoenix",
         modelName: modelConfig.name,
+        style: phoenixStyle,
         estimatedCost: modelConfig.estimatedCost,
-        reason: modelSelection.reason,
       },
     });
   } catch (error) {

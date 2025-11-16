@@ -9,6 +9,7 @@ export default defineSchema({
       v.literal("draft"),
       v.literal("questions_generated"),
       v.literal("questions_answered"),
+      v.literal("character_selected"),
       v.literal("generating_storyboard"),
       v.literal("storyboard_created"),
       v.literal("video_generated"),
@@ -16,11 +17,14 @@ export default defineSchema({
     lastActivePhase: v.optional(
       v.union(
         v.literal("prompt"),
+        v.literal("character-select"),
         v.literal("storyboard"),
         v.literal("video"),
         v.literal("editor"),
       ),
     ),
+    referenceImageUrl: v.optional(v.string()),
+    selectedModel: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),

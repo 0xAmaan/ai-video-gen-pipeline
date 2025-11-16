@@ -1,14 +1,6 @@
 import { NextResponse } from "next/server";
 import Replicate from "replicate";
-import {
-  selectImageModel,
-  getSelectedModelConfig,
-} from "@/lib/select-image-model";
-import {
-  FALLBACK_IMAGE_MODEL,
-  DEFAULT_IMAGE_MODEL,
-  getImageModel,
-} from "@/lib/image-models";
+import { IMAGE_MODELS } from "@/lib/image-models";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -16,7 +8,7 @@ const replicate = new Replicate({
 
 export async function POST(req: Request) {
   try {
-    const { visualPrompt, responses, modelKey } = await req.json();
+    const { visualPrompt, responses, style } = await req.json();
 
     if (!visualPrompt || typeof visualPrompt !== "string") {
       return NextResponse.json(
@@ -25,81 +17,47 @@ export async function POST(req: Request) {
       );
     }
 
-    // Select model: explicit override > from responses > default
-    let selectedModelKey: string;
-    let modelConfig;
+    const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
 
-    if (modelKey && getImageModel(modelKey)) {
-      // Explicit model override provided
-      selectedModelKey = modelKey;
-      modelConfig = getImageModel(modelKey);
-      console.log(`Using explicitly requested model: ${modelConfig.name}`);
-    } else if (responses) {
-      // Infer from responses
-      selectedModelKey = selectImageModel(responses);
-      modelConfig = getSelectedModelConfig(responses);
-      console.log(`Selected model from responses: ${modelConfig.name}`);
-    } else {
-      // Default: no responses provided
-      selectedModelKey = DEFAULT_IMAGE_MODEL;
-      modelConfig = getImageModel(DEFAULT_IMAGE_MODEL);
-      console.log(`Using default model: ${modelConfig.name}`);
+    // Select style based on responses or use provided style
+    let phoenixStyle = style || "cinematic";
+
+    if (!style && responses && responses['visual-style']) {
+      const visualStyle = responses['visual-style'].toLowerCase();
+      if (visualStyle.includes('documentary') || visualStyle.includes('black and white')) {
+        phoenixStyle = "pro_bw_photography";
+      } else if (visualStyle.includes('cinematic') || visualStyle.includes('film')) {
+        phoenixStyle = "cinematic";
+      } else if (visualStyle.includes('photo') || visualStyle.includes('realistic')) {
+        phoenixStyle = "pro_color_photography";
+      } else if (visualStyle.includes('animated') || visualStyle.includes('cartoon')) {
+        phoenixStyle = "illustration";
+      } else if (visualStyle.includes('vintage') || visualStyle.includes('retro')) {
+        phoenixStyle = "pro_film_photography";
+      }
     }
 
-    console.log(
-      `Regenerating scene with ${modelConfig.name} (cost: ~$${modelConfig.estimatedCost})`,
-    );
+    console.log(`Regenerating scene with ${modelConfig.name} (style: ${phoenixStyle})`);
 
-    // Generate new image using selected model
-    const output = await replicate.run(modelConfig.id, {
+    const output = await replicate.run(modelConfig.id as `${string}/${string}`, {
       input: {
         prompt: visualPrompt,
+        aspect_ratio: "16:9",
+        generation_mode: "quality",
+        contrast: "medium",
+        num_images: 1,
+        prompt_enhance: false,
+        style: phoenixStyle,
       },
     });
 
-    // Get the image URL from Replicate
+    // Extract image URL from output
     let imageUrl: string;
-
-    // Handle FileOutput object (has .url() method)
-    if (
-      output &&
-      typeof output === "object" &&
-      "url" in output &&
-      typeof (output as any).url === "function"
-    ) {
-      imageUrl = (output as any).url();
-    }
-    // Handle array of FileOutput objects
-    else if (Array.isArray(output) && output.length > 0) {
-      const firstOutput = output[0];
-      if (
-        typeof firstOutput === "object" &&
-        "url" in firstOutput &&
-        typeof firstOutput.url === "function"
-      ) {
-        imageUrl = firstOutput.url();
-      } else if (typeof firstOutput === "string") {
-        imageUrl = firstOutput;
-      } else {
-        throw new Error(
-          `Unexpected array item format: ${JSON.stringify(firstOutput)}`,
-        );
-      }
-    }
-    // Handle plain string
-    else if (typeof output === "string") {
+    if (Array.isArray(output) && output.length > 0) {
+      imageUrl = typeof output[0] === "string" ? output[0] : (output[0] as any).url?.() || output[0];
+    } else if (typeof output === "string") {
       imageUrl = output;
-    }
-    // Handle object with url property (not a function)
-    else if (
-      output &&
-      typeof output === "object" &&
-      "url" in output &&
-      typeof (output as any).url === "string"
-    ) {
-      imageUrl = (output as any).url;
     } else {
-      console.error("Unexpected output:", output);
       throw new Error(`Unexpected output format: ${typeof output}`);
     }
 

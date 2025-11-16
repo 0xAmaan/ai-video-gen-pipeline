@@ -86,8 +86,27 @@ SCENE GENERATION RULES:
 - Ensure visual continuity and narrative flow between scenes
 - Deeply consider the user's specified tone, style, emotion, and preferences from questionnaire responses
 
+CRITICAL CHARACTER CONSISTENCY RULE:
+- If the video features a main character/person, that SAME character MUST appear prominently in EVERY scene
+- The character should be the focal point of each shot, not just background elements
+- Describe the character's appearance, actions, and emotions in each scene
+- Even in action scenes (driving, running, etc.), the character must be VISIBLE in frame (through windshield, in driver's seat, face shown, etc.)
+- DO NOT generate scenes where the character is implied but not visible (e.g., "a car driving" - instead: "view through windshield showing the driver's face")
+- The character's consistent presence enables AI character consistency technology to work properly
+
 VISUAL PROMPT REQUIREMENTS (CRITICAL):
-Your visual prompts MUST be exhaustively detailed, similar to Ideogram.ai "Magic Prompt" style. Include ALL of these elements:
+Your visual prompts MUST be exhaustively detailed, similar to Ideogram.ai "Magic Prompt" style.
+
+CRITICAL CONSISTENCY RULE:
+- The user has selected specific visual preferences (style, mood, tone) in their questionnaire
+- You MUST honor these preferences in EVERY SINGLE SCENE without exception
+- If they chose "black and white documentary", ALL scenes must emphasize black and white, monochrome, grayscale
+- If they chose "cinematic", ALL scenes must emphasize cinematic lighting and composition
+- If they chose "animated", ALL scenes must emphasize illustrated/cartoon art style
+- Be EXTREMELY EXPLICIT about the visual style in every visualPrompt - repetition is good!
+- Never let the scene content override the user's style preferences
+
+Include ALL of these elements in every visualPrompt:
 
 COMPOSITION & FRAMING:
 - Exact camera angle (eye-level, low-angle, bird's-eye, dutch angle, over-shoulder)
@@ -145,11 +164,17 @@ MOTION & DYNAMICS (for video):
 - Dynamic elements vs static composition
 - Sense of movement and energy
 
-Example of EXCELLENT visual prompt (Ideogram.ai style):
+Example of EXCELLENT visual prompt (Ideogram.ai style - COLOR):
 "A cinematic portrait photograph captures a young Korean woman leaning thoughtfully against the ornate railing of a classic cinema hall. She possesses dark, wavy shoulder-length hair with soft, natural volume, adorned with a pastel lavender silk scarf loosely draped around her neck, complementing her fair skin tone and chiffon blouse in pastel mint hue. Her posture exudes elegant contemplation as she gazes wistfully into the distance. Soft light from a distant chandelier illuminates her expressive eyes and delicate features, creating an enchanting, almost ethereal aura as she appears lost in thought. The background features faded pastel yellow walls with Art Deco molding, creating a nostalgic, vintage cinema atmosphere with a shallow depth of field achieved through an 85mm lens at f/1.8. The scene is bathed in a warm, diffused glow, enhancing the romantic and elegant retro-cinematic atmosphere with a gentle amber cast, evoking the golden age of cinema, highly detailed, photorealistic, soft bokeh background."
+
+Example of EXCELLENT visual prompt (BLACK AND WHITE DOCUMENTARY style):
+"BLACK AND WHITE PHOTOGRAPHY, monochrome, grayscale, no color. A gritty documentary-style medium shot captures a weathered fisherman standing on the deck of a trawler at dawn, shot with a 50mm lens at f/2.8. The composition follows the rule of thirds with the subject positioned left, his weathered face showing deep lines and texture enhanced by high-contrast black and white film grain. Harsh side-lighting from the rising sun creates dramatic shadows across his face, emphasizing every wrinkle and crease. His hands grip thick rope, calluses visible in sharp detail. The background shows the industrial fishing port in soft focus, with cranes and boats rendered in various shades of gray. Atmospheric morning mist adds depth, creating layers of lighter and darker tones. The image has authentic 35mm film grain texture, high contrast with deep blacks and bright highlights, cinéma vérité aesthetic, documentary realism, candid composition. Shot on Tri-X 400 black and white film stock, grainy texture, photojournalistic style, monochromatic, absolutely no color whatsoever."
 
 Example of POOR visual prompt (too basic):
 "A woman standing in a cinema lobby looking thoughtful"
+
+Example of POOR visual prompt (doesn't respect user's black and white preference):
+"A fisherman on a boat at sunrise with golden orange light" ← WRONG! User wanted black and white!
 
 Your visual prompts should read like professional Ideogram.ai Magic Prompts - verbose, specific, and packed with visual information. Aim for 150-250 words per visualPrompt.`;
 
@@ -163,10 +188,19 @@ export function buildStoryboardPrompt(
         .join("\n")
     : "";
 
+  // Extract critical visual style for emphasis
+  let styleEmphasis = '';
+  if (responses?.['visual-style']) {
+    const visualStyle = responses['visual-style'];
+    styleEmphasis = `\n⚠️ CRITICAL: EVERY SCENE must use "${visualStyle}" style. This is NON-NEGOTIABLE.\nBe EXTREMELY explicit about this style in every single visualPrompt.\n`;
+  }
+
   return `Video concept: "${videoPrompt}"
 
-User preferences:
+User preferences (MUST be honored in ALL scenes):
 ${responsesText}
+${styleEmphasis}
+Generate 3-5 storyboard scenes that bring this video to life. Make the visual prompts extremely detailed and optimized for AI image generation.
 
-Generate 3-5 storyboard scenes that bring this video to life. Make the visual prompts extremely detailed and optimized for AI image generation.`;
+Remember: The visual style preference MUST appear prominently in EVERY visualPrompt. If the user selected "black and white documentary", then EVERY scene must explicitly state BLACK AND WHITE, monochrome, grayscale at the beginning of the visualPrompt.`;
 }

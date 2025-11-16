@@ -656,6 +656,35 @@ export const updateLastActivePhase = mutation({
   },
 });
 
+// Save selected character reference image
+export const saveCharacterReference = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    referenceImageUrl: v.string(),
+    selectedModel: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    await ctx.db.patch(args.projectId, {
+      referenceImageUrl: args.referenceImageUrl,
+      selectedModel: args.selectedModel,
+      status: "character_selected",
+      updatedAt: Date.now(),
+    });
+
+    return args.projectId;
+  },
+});
+
 // Get project with all related data
 export const getProjectWithAllData = query({
   args: {

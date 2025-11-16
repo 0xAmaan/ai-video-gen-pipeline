@@ -59,18 +59,48 @@ export async function POST(req: Request) {
 
     // Generate clarifying questions using Groq (much faster) or OpenAI (fallback)
     // Note: Using openai/gpt-oss-20b - supports strict JSON schema, 250K TPM, very fast
-    const modelToUse = hasGroqKey
-      ? groq("openai/gpt-oss-20b")
-      : openai("gpt-4o-mini");
+    let object;
 
-    console.log(`🔧 Using model: ${hasGroqKey ? "Groq (gpt-oss-20b)" : "OpenAI (gpt-4o-mini)"}`);
+    if (hasGroqKey) {
+      console.log(`🔧 Trying Groq (gpt-oss-20b) - FAST ⚡`);
+      try {
+        const result = await generateObject({
+          model: groq("openai/gpt-oss-20b"),
+          schema: questionSchema,
+          system: QUESTION_GENERATION_SYSTEM_PROMPT,
+          prompt: buildQuestionGenerationPrompt(prompt),
+          maxRetries: 2,
+        });
+        object = result.object;
+      } catch (groqError) {
+        console.warn(`⚠️ Groq failed, falling back to OpenAI:`, groqError instanceof Error ? groqError.message : groqError);
 
-    const { object } = await generateObject({
-      model: modelToUse,
-      schema: questionSchema,
-      system: QUESTION_GENERATION_SYSTEM_PROMPT,
-      prompt: buildQuestionGenerationPrompt(prompt),
-    });
+        if (hasOpenAIKey) {
+          const result = await generateObject({
+            model: openai("gpt-4o-mini"),
+            schema: questionSchema,
+            system: QUESTION_GENERATION_SYSTEM_PROMPT,
+            prompt: buildQuestionGenerationPrompt(prompt),
+            maxRetries: 2,
+          });
+          object = result.object;
+        } else {
+          throw groqError; // Re-throw if no OpenAI fallback available
+        }
+      }
+    } else if (hasOpenAIKey) {
+      console.log(`🔧 Using OpenAI (gpt-4o-mini)`);
+      const result = await generateObject({
+        model: openai("gpt-4o-mini"),
+        schema: questionSchema,
+        system: QUESTION_GENERATION_SYSTEM_PROMPT,
+        prompt: buildQuestionGenerationPrompt(prompt),
+        maxRetries: 2,
+      });
+      object = result.object;
+    } else {
+      throw new Error("No API keys configured");
+    }
 
     return NextResponse.json(object);
   } catch (error) {
