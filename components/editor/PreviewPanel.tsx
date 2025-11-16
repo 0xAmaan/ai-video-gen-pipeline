@@ -30,7 +30,6 @@ export const PreviewPanel = ({
   onSeek,
 }: PreviewPanelProps) => {
   return (
-<<<<<<< HEAD
     <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
       {/* Aspect ratio wrapper to maintain 16:9 and prevent distortion */}
       <div className="flex flex-1 items-center justify-center overflow-hidden">
@@ -42,15 +41,6 @@ export const PreviewPanel = ({
           style={{ maxWidth: '100%', maxHeight: '100%', aspectRatio: '16/9' }}
         />
       </div>
-=======
-    <div className="flex flex-col gap-3 border-b border-border bg-card/50 p-4">
-      <canvas
-        ref={canvasRef}
-        className="aspect-video w-full max-h-[55vh] rounded-md bg-black"
-        width={1280}
-        height={720}
-      />
->>>>>>> remotes/origin/feature/timelineThumbnails
       <div className="flex items-center gap-3">
         <Button variant="secondary" size="icon" onClick={onTogglePlayback} aria-label="Toggle playback">
           {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
