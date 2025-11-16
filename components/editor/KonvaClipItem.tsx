@@ -193,28 +193,69 @@ const KonvaClipItemComponent = ({
         onClick={onSelect}
       />
 
-      {/* Render thumbnails if available */}
-      {thumbnailImages.length > 0 && asset && (
-        <>
-          {thumbnailImages.map((img, index) => {
-            // Calculate how many pixels each thumbnail should take
-            const thumbWidth = clipWidth / thumbnailImages.length;
-            const thumbX = clipX + index * thumbWidth;
+      {/* Render thumbnails if available - CapCut-style tiling */}
+      {thumbnailImages.length > 0 && asset && (() => {
+        // Thumbnail dimensions from demux-worker.ts (160x90)
+        const THUMBNAIL_WIDTH = 160;
+        const THUMBNAIL_HEIGHT = 90;
+        const thumbnailAspectRatio = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
 
-            return (
+        // Calculate how many thumbnails we can fit maintaining aspect ratio
+        const tileWidth = CLIP_HEIGHT * thumbnailAspectRatio; // Maintain aspect ratio based on clip height
+        const tilesNeeded = Math.ceil(clipWidth / tileWidth);
+
+        // Generate tiles by repeating/cycling through available thumbnails
+        const tiles: JSX.Element[] = [];
+        for (let i = 0; i < tilesNeeded; i++) {
+          const thumbnailIndex = i % thumbnailImages.length; // Cycle through thumbnails
+          const img = thumbnailImages[thumbnailIndex];
+          const tileX = clipX + (i * tileWidth);
+
+          // For the last tile, we might need to crop from the center
+          const isLastTile = i === tilesNeeded - 1;
+          const remainingWidth = clipWidth - (i * tileWidth);
+
+          if (isLastTile && remainingWidth < tileWidth) {
+            // Center-crop: show the middle portion of the thumbnail
+            const cropRatio = remainingWidth / tileWidth;
+            const croppedPixelWidth = THUMBNAIL_WIDTH * cropRatio;
+            const cropStartX = (THUMBNAIL_WIDTH - croppedPixelWidth) / 2; // Center the crop
+
+            tiles.push(
               <KonvaImage
-                key={index}
+                key={i}
                 image={img}
-                x={thumbX}
+                x={tileX}
                 y={CLIP_Y}
-                width={thumbWidth}
+                width={remainingWidth}
+                height={CLIP_HEIGHT}
+                crop={{
+                  x: cropStartX,
+                  y: 0,
+                  width: croppedPixelWidth,
+                  height: THUMBNAIL_HEIGHT,
+                }}
+                listening={false}
+              />
+            );
+          } else {
+            // Full tile
+            tiles.push(
+              <KonvaImage
+                key={i}
+                image={img}
+                x={tileX}
+                y={CLIP_Y}
+                width={tileWidth}
                 height={CLIP_HEIGHT}
                 listening={false}
               />
             );
-          })}
-        </>
-      )}
+          }
+        }
+
+        return <>{tiles}</>;
+      })()}
 
       {/* Clip label - only show if width is sufficient */}
       {clipWidth > 60 && (

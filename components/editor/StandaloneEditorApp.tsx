@@ -219,7 +219,9 @@ export const StandaloneEditorApp = ({
           asset.duration,
           1 // Generate only first frame (CapCut style)
         );
-        actions.updateMediaAsset(asset.id, {
+        // Update asset with thumbnails
+        actions.addMediaAsset({
+          ...asset,
           thumbnails,
           thumbnailCount: thumbnails.length,
         });
@@ -233,7 +235,8 @@ export const StandaloneEditorApp = ({
         });
 
         // Mark asset with empty thumbnail array to prevent retry loop
-        actions.updateMediaAsset(asset.id, {
+        actions.addMediaAsset({
+          ...asset,
           thumbnails: [],
           thumbnailCount: 0,
         });
@@ -272,7 +275,8 @@ export const StandaloneEditorApp = ({
             1 // Generate only first frame (CapCut style)
           );
           // Update the asset with thumbnails
-          actions.updateMediaAsset(asset.id, {
+          actions.addMediaAsset({
+            ...asset,
             thumbnails,
             thumbnailCount: thumbnails.length,
           });
@@ -286,7 +290,8 @@ export const StandaloneEditorApp = ({
           });
 
           // Mark asset with empty thumbnail array to prevent retry loop
-          actions.updateMediaAsset(asset.id, {
+          actions.addMediaAsset({
+            ...asset,
             thumbnails: [],
             thumbnailCount: 0,
           });
