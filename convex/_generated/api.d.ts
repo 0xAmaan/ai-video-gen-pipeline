@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as editor from "../editor.js";
 import type * as video from "../video.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  editor: typeof editor;
   video: typeof video;
 }>;
 

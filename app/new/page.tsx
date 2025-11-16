@@ -69,10 +69,9 @@ const NewProjectPage = () => {
 
           <div className="flex justify-between items-center">
             <p className="text-sm text-muted-foreground">
-              Press{" "}
-              <kbd className="px-2 py-1 bg-muted rounded text-xs">⌘</kbd> +{" "}
-              <kbd className="px-2 py-1 bg-muted rounded text-xs">Enter</kbd> to
-              continue
+              Press <kbd className="px-2 py-1 bg-muted rounded text-xs">⌘</kbd>{" "}
+              + <kbd className="px-2 py-1 bg-muted rounded text-xs">Enter</kbd>{" "}
+              to continue
             </p>
             <Button
               onClick={handleSubmit}

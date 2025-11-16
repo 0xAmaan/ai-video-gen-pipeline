@@ -1,6 +1,6 @@
 # AI Video Gen Pipeline
 
-AI Video Generation Pipeline is a modern web application built with Next.js 16, React 19, and TypeScript that enables users to create AI-generated videos through an intuitive multi-phase workflow. The application features a four-stage pipeline (Input, Storyboard, Generation, and Editor) where users can specify their video requirements including prompt, target audience, tone, duration, and style, then review AI-generated storyboards before final video generation. Built with Convex for real-time data management, Clerk for authentication, and Tailwind CSS with Radix UI components for a polished user interface, the platform provides a seamless experience from concept to final video export with built-in editing capabilities..
+AI Video Generation Pipeline is a modern web application built with Next.js 16, React 19, and TypeScript that enables users to create AI-generated videos through an intuitive multi-phase workflow. The application features a four-stage pipeline (Input, Storyboard, Generation, and Editor) where users can specify their video requirements including prompt, target audience, tone, duration, and style, then review AI-generated storyboards before final video generation. Built with Convex for real-time data management, Clerk for authentication, and Tailwind CSS with Radix UI components for a polished user interface, the platform provides a seamless experience from concept to final video export with built-in editing capabilities.
 
 ## Prerequisites
 
@@ -50,7 +50,7 @@ When iterating on the engine:
 bun run dev
 ```
 
-The command above launches Next.js (Turbopack) and Convex simultaneously. Sign in with Clerk, walk through `/create`, and the onboarding flow redirects you to `/editor` which mounts the full CapCut-class experience backed by:
+The command above launches Next.js (Turbopack) and Convex simultaneously. Sign in with Clerk, create a new project via `/new`, and walk through the multi-phase workflow (prompt → storyboard → video → editor) which mounts the full CapCut-class experience backed by:
 
 - `lib/editor/core/project-store.ts`: Zustand store + IndexedDB persistence + timeline/WASM bindings.
 - `lib/editor/io/media-bunny-manager.ts`: Media ingest that streams File objects through the demux worker + MediaBunny.

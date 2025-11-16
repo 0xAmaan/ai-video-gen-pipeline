@@ -56,7 +56,10 @@ const VideoPage = () => {
             clipId,
             status: "failed",
           });
-        } else if (result.status === "processing" || result.status === "starting") {
+        } else if (
+          result.status === "processing" ||
+          result.status === "starting"
+        ) {
           // Update to processing and continue polling
           await updateVideoClip({
             clipId,
@@ -98,7 +101,7 @@ const VideoPage = () => {
     if (!clips || clips.length === 0) return;
 
     const processingClips = clips.filter(
-      (clip) => clip.status === "processing" || clip.status === "pending"
+      (clip) => clip.status === "processing" || clip.status === "pending",
     );
 
     if (processingClips.length > 0) {
@@ -113,7 +116,11 @@ const VideoPage = () => {
 
   const generateVideoClips = async () => {
     try {
-      console.log("Starting video clip generation for", convexScenes.length, "scenes");
+      console.log(
+        "Starting video clip generation for",
+        convexScenes.length,
+        "scenes",
+      );
 
       // Prepare scenes data for API
       const scenesData = convexScenes.map((scene, index) => ({
@@ -149,7 +156,7 @@ const VideoPage = () => {
             replicateVideoId: prediction.predictionId,
           });
           return { clipId, predictionId: prediction.predictionId };
-        })
+        }),
       );
 
       console.log("Created clip records:", clipRecords);

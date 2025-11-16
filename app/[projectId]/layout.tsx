@@ -4,7 +4,7 @@ import { useParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Check } from "lucide-react";
 
-type Phase = "prompt" | "storyboard" | "video" | "editor";
+type Phase = "prompt" | "character-select" | "storyboard" | "video" | "editor";
 
 const PhaseIndicator = () => {
   const params = useParams();
@@ -13,14 +13,17 @@ const PhaseIndicator = () => {
 
   const phases: { id: Phase; label: string; path: string }[] = [
     { id: "prompt", label: "Input", path: `/${projectId}/prompt` },
+    {
+      id: "character-select",
+      label: "Character",
+      path: `/${projectId}/character-select`,
+    },
     { id: "storyboard", label: "Storyboard", path: `/${projectId}/storyboard` },
     { id: "video", label: "Video", path: `/${projectId}/video` },
     { id: "editor", label: "Edit", path: `/${projectId}/editor` },
   ];
 
-  const currentPhaseIndex = phases.findIndex((p) =>
-    pathname?.includes(p.id),
-  );
+  const currentPhaseIndex = phases.findIndex((p) => pathname?.includes(p.id));
 
   return (
     <div className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
@@ -73,6 +76,15 @@ const PhaseIndicator = () => {
 };
 
 const ProjectLayout = ({ children }: { children: React.ReactNode }) => {
+  const pathname = usePathname();
+  const isEditor = pathname?.endsWith("/editor");
+
+  // Editor needs full-screen layout without container constraints
+  if (isEditor) {
+    return <div className="h-screen bg-background-base">{children}</div>;
+  }
+
+  // Other phases use centered container layout
   return (
     <div className="min-h-screen bg-background-base">
       <PhaseIndicator />

@@ -27,9 +27,12 @@ export const VideoGeneratingPhase = ({
 
   // Calculate progress
   const totalClips = scenes.length;
-  const completedClips = videoClips?.filter((c) => c.status === "complete").length || 0;
-  const failedClips = videoClips?.filter((c) => c.status === "failed").length || 0;
-  const processingClips = videoClips?.filter((c) => c.status === "processing").length || 0;
+  const completedClips =
+    videoClips?.filter((c) => c.status === "complete").length || 0;
+  const failedClips =
+    videoClips?.filter((c) => c.status === "failed").length || 0;
+  const processingClips =
+    videoClips?.filter((c) => c.status === "processing").length || 0;
   const progress = (completedClips / totalClips) * 100;
 
   // Check if all clips are done
@@ -43,10 +46,15 @@ export const VideoGeneratingPhase = ({
       hasClips: !!videoClips,
       clipCount: videoClips?.length,
       completedCount: completedClips,
-      hasCalledComplete: hasCalledComplete.current
+      hasCalledComplete: hasCalledComplete.current,
     });
 
-    if (allComplete && !failedClips && videoClips && !hasCalledComplete.current) {
+    if (
+      allComplete &&
+      !failedClips &&
+      videoClips &&
+      !hasCalledComplete.current
+    ) {
       console.log("✅ All clips complete! Navigating to editor...");
       hasCalledComplete.current = true;
       onComplete(videoClips);
@@ -109,7 +117,8 @@ export const VideoGeneratingPhase = ({
               const clip = getClipForScene(scene.id);
               const hasVideo = clip?.status === "complete";
               const hasFailed = clip?.status === "failed";
-              const isProcessing = clip?.status === "processing" || clip?.status === "pending";
+              const isProcessing =
+                clip?.status === "processing" || clip?.status === "pending";
 
               return (
                 <div
@@ -197,10 +206,10 @@ export const VideoGeneratingPhase = ({
                       )}
 
                       {/* Source Image Preview */}
-                      {!hasVideo && !hasFailed && scene.imageUrl && (
+                      {!hasVideo && !hasFailed && scene.image && (
                         <div className="mt-2 rounded-md overflow-hidden border border-border opacity-50">
                           <img
-                            src={scene.imageUrl}
+                            src={scene.image}
                             alt={`Scene ${index + 1}`}
                             className="w-full h-24 object-cover"
                           />

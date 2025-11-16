@@ -9,7 +9,9 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
   const { isSignedIn } = useAuth();
 
   // Extract project ID from pathname (e.g., /abc123/prompt -> abc123)
-  const projectIdMatch = pathname?.match(/^\/([^/]+)\/(prompt|storyboard|video|editor)/);
+  const projectIdMatch = pathname?.match(
+    /^\/([^/]+)\/(prompt|storyboard|video|editor)/,
+  );
   const activeProjectId = projectIdMatch ? projectIdMatch[1] : null;
 
   // Don't show sidebar on home login page or if not signed in

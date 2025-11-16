@@ -85,11 +85,25 @@ export interface EncodeRequestMessage {
   type: "ENCODE_REQUEST";
   requestId: string;
   sequenceId: string;
+  sequence: any; // Full sequence data
+  assets: Record<string, any>; // Media assets
   settings: {
     resolution: string;
     quality: string;
     format: string;
   };
+}
+
+export interface EncodeFrameMessage {
+  type: "ENCODE_FRAME";
+  requestId: string;
+  frameData: ImageData;
+  timestamp: number;
+}
+
+export interface EncodeCompleteMessage {
+  type: "ENCODE_COMPLETE";
+  requestId: string;
 }
 
 export interface EncodeProgressMessage {
@@ -116,9 +130,13 @@ export interface EncodeCancelMessage {
   requestId: string;
 }
 
-export type EffectsWorkerMessage = EffectsRequestMessage | EffectsResponseMessage;
+export type EffectsWorkerMessage =
+  | EffectsRequestMessage
+  | EffectsResponseMessage;
 export type EncodeWorkerMessage =
   | EncodeRequestMessage
+  | EncodeFrameMessage
+  | EncodeCompleteMessage
   | EncodeProgressMessage
   | EncodeResultMessage
   | EncodeErrorMessage

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { getMediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
 import { PreviewRenderer } from "@/lib/editor/playback/preview-renderer";
@@ -9,7 +11,7 @@ import { saveBlob } from "@/lib/editor/export/save-file";
 import { TopBar } from "@/components/editor/TopBar";
 import { MediaPanel } from "@/components/editor/MediaPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
-import { Timeline } from "@/components/editor/Timeline";
+import { KonvaTimeline } from "@/components/editor/KonvaTimeline";
 import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
 
@@ -17,18 +19,39 @@ interface StandaloneEditorAppProps {
   autoHydrate?: boolean;
 }
 
-export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppProps) => {
+export const StandaloneEditorApp = ({
+  autoHydrate = true,
+}: StandaloneEditorAppProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
   const thumbnailAttemptsRef = useRef<Set<string>>(new Set());
+  const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
-  const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
+  const [exportStatus, setExportStatus] = useState<{
+    progress: number;
+    status: string;
+  } | null>(null);
+
+  // Convex hooks for project persistence
+  const saveProject = useMutation(api.editor.saveProject);
+  const loadProject = useQuery(api.editor.loadProject, {});
+
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
   const actions = useProjectStore((state) => state.actions);
+
+  // Wire up Convex to the store
+  useEffect(() => {
+    actions.setSaveProject(saveProject);
+    actions.setLoadProject(async (args) => {
+      // Convex hooks return data directly, wrap in async function
+      return loadProject || null;
+    });
+  }, [actions, saveProject, loadProject]);
   const mediaManager = useMemo(() => {
     if (typeof window === "undefined") {
       return null;
@@ -36,7 +59,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     try {
       return getMediaBunnyManager();
     } catch (error) {
-      console.warn("Media imports disabled:", error);
       return null;
     }
   }, []);
@@ -47,7 +69,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     try {
       return getExportPipeline();
     } catch (error) {
-      console.warn("Export disabled:", error);
       return null;
     }
   }, []);
@@ -79,10 +100,45 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
   }, []);
 
   useEffect(() => {
+    const handleKeySpace = (event: KeyboardEvent) => {
+      if (event.key !== " ") {
+        return;
+      }
+      const active = document.activeElement;
+      if (
+        active &&
+        (active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement ||
+          active.getAttribute("contenteditable") === "true")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      actions.togglePlayback();
+    };
+    window.addEventListener("keydown", handleKeySpace);
+    return () => window.removeEventListener("keydown", handleKeySpace);
+  }, [actions]);
+
+  useEffect(() => {
     if (autoHydrate) {
       actions.hydrate();
     }
   }, [actions, autoHydrate]);
+
+  // Track timeline container width for responsive Konva canvas
+  useEffect(() => {
+    if (!timelineContainerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setTimelineWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(timelineContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!ready || !project || !canvasRef.current) return;
@@ -93,7 +149,8 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
           if (!state.project) return null;
           return (
             state.project.sequences.find(
-              (sequence) => sequence.id === state.project?.settings.activeSequenceId,
+              (sequence) =>
+                sequence.id === state.project?.settings.activeSequenceId,
             ) ?? null
           );
         },
@@ -101,8 +158,14 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       );
       rendererRef.current
         .attach(canvasRef.current)
-        .then(() => rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time)))
-        .catch((error) => console.warn("preview attach failed", error));
+        .then(() => {
+          // PERFORMANCE FIX: Don't update store on every frame (60x/sec)
+          // Canvas updates independently, only sync on user actions (seek/play/pause)
+          // rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time));
+        })
+        .catch((error) => {
+          // Silently handle attach errors
+        });
     }
   }, [ready, project, actions]);
 
@@ -110,17 +173,22 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     const renderer = rendererRef.current;
     if (!renderer) return;
     if (isPlaying) {
-      renderer.play().catch((error) => console.warn("playback failed", error));
+      renderer.play().catch(() => {
+        // Silently handle playback errors
+      });
     } else {
       renderer.pause();
     }
   }, [isPlaying]);
 
-  useEffect(() => {
-    rendererRef.current?.seek(currentTime);
-  }, [currentTime]);
+  // REMOVED: This useEffect created a circular loop causing flickering
+  // The renderer updates its own time during playback
+  // We only need to seek when user manually seeks (handled in handleSeek callback)
+  // useEffect(() => {
+  //   rendererRef.current?.seek(currentTime);
+  // }, [currentTime]);
 
-  // Generate thumbnails for video assets that don't have them yet
+  // Generate thumbnails for videos that don't have them yet
   useEffect(() => {
     if (!ready || !project || !mediaManager) return;
 
@@ -186,11 +254,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       imports.push(mediaManager.importFile(file));
     });
     const results = await Promise.all(imports);
-    results.forEach((asset) => {
-      console.log(`[Editor] Added media asset: ${asset.id} (${asset.type})`);
-      actions.addMediaAsset(asset);
-    });
-    
+
     // Generate thumbnails for video assets
     const videoAssets = results.filter((asset) => asset.type === "video" && asset.url);
     if (videoAssets.length > 0) {
@@ -233,9 +297,19 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
         .then(() => console.log(`[Editor] All import thumbnail generation complete`))
         .catch((err) => console.error(`[Editor] Import thumbnail generation error:`, err));
     }
+
+    // Add all assets to the store
+    results.forEach((asset) => {
+      console.log(`[Editor] Added media asset: ${asset.id} (${asset.type})`);
+      actions.addMediaAsset(asset);
+    });
   };
 
-  const handleExport = async (options: { resolution: string; quality: string; format: string }) => {
+  const handleExport = async (options: {
+    resolution: string;
+    quality: string;
+    format: string;
+  }) => {
     if (!project || !exportManager) {
       if (!exportManager) {
         alert("Export is unavailable in this environment.");
@@ -243,12 +317,19 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       return;
     }
     const sequence =
-      project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ?? project.sequences[0];
+      project.sequences.find(
+        (seq) => seq.id === project.settings.activeSequenceId,
+      ) ?? project.sequences[0];
     setExportStatus({ progress: 0, status: "Preparing" });
     try {
-      const blob = await exportManager.exportSequence(sequence, options, (progress, status) => {
-        setExportStatus({ progress, status });
-      });
+      const blob = await exportManager.exportSequence(
+        sequence,
+        project.mediaAssets,
+        options,
+        (progress, status) => {
+          setExportStatus({ progress, status });
+        },
+      );
       await saveBlob(blob, `${project.title || "export"}.${options.format}`);
       setExportStatus({ progress: 100, status: "Complete" });
     } catch (error) {
@@ -258,8 +339,37 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     }
   };
 
-  const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
-  const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
+  // Memoize callbacks to prevent child re-renders
+  const handleTogglePlayback = useCallback(() => {
+    actions.togglePlayback();
+  }, [actions]);
+
+  const handleSeek = useCallback(
+    (time: number) => {
+      actions.setCurrentTime(time);
+    },
+    [actions],
+  );
+
+  const handleUndo = useCallback(() => {
+    actions.undo();
+  }, [actions]);
+
+  const handleRedo = useCallback(() => {
+    actions.redo();
+  }, [actions]);
+
+  const handleOpenExport = useCallback(() => {
+    setExportOpen(true);
+  }, []);
+
+  const assets = useMemo(
+    () => (project ? Object.values(project.mediaAssets) : []),
+    [project],
+  );
+  const sequence = project?.sequences.find(
+    (seq) => seq.id === project.settings.activeSequenceId,
+  );
   const zoom = project?.settings.zoom ?? 1;
 
   if (!ready || !project || !sequence) {
@@ -271,49 +381,82 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <TopBar
         title={project.title}
         isPlaying={isPlaying}
         currentTime={currentTime}
         duration={sequence.duration}
-        onTogglePlayback={() => actions.togglePlayback()}
-        onUndo={() => actions.undo()}
-        onRedo={() => actions.redo()}
-        onExport={() => setExportOpen(true)}
+        onTogglePlayback={handleTogglePlayback}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onExport={handleOpenExport}
       />
-      <div className="flex flex-1 overflow-hidden">
-        <MediaPanel
-          assets={assets}
-          onImport={handleImport}
-          onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
-        />
-        <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <div className="flex-none">
-            <PreviewPanel
-              canvasRef={canvasRef}
-              currentTime={currentTime}
-              duration={sequence.duration}
-              isPlaying={isPlaying}
-              onTogglePlayback={() => actions.togglePlayback()}
-              onSeek={(time) => actions.setCurrentTime(time)}
-            />
-          </div>
-          <div className="flex-1 min-h-[280px]">
-            <Timeline
-              sequence={sequence}
-              selection={selection}
-              zoom={zoom}
-              snap={project.settings.snap}
-              currentTime={currentTime}
-              assets={assets}
-              onSelectionChange={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
-              onMoveClip={(clipId, trackId, start) => actions.moveClip(clipId, trackId, start)}
-              onTrimClip={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
-              onSeek={(time) => actions.setCurrentTime(time)}
-              onZoomChange={(value) => actions.setZoom(value)}
-            />
-          </div>
+      {/* 2-row layout: Top row (media + preview) and bottom row (timeline) */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Top row: Media (1/3) + Preview (2/3) */}
+        <div className="grid grid-cols-[1fr_2fr] flex-1 overflow-hidden">
+          <MediaPanel
+            assets={assets}
+            onImport={handleImport}
+            onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
+          />
+          <PreviewPanel
+            canvasRef={canvasRef}
+            currentTime={currentTime}
+            duration={sequence.duration}
+            isPlaying={isPlaying}
+            onTogglePlayback={handleTogglePlayback}
+            onSeek={handleSeek}
+          />
+        </div>
+        {/* Bottom row: Timeline (full width) */}
+        <div
+          className="flex-none h-[340px] flex flex-col"
+          ref={timelineContainerRef}
+        >
+          <KonvaTimeline
+            sequence={sequence}
+            selectedClipId={selection.clipIds[0] || null}
+            currentTime={currentTime}
+            isPlaying={isPlaying}
+            containerWidth={timelineWidth}
+            containerHeight={340}
+            assets={assets}
+            onClipSelect={(clipId) =>
+              actions.setSelection({ clipIds: [clipId], trackIds: [] })
+            }
+            onClipMove={(clipId, newStart) => {
+              const videoTrack = sequence.tracks.find(
+                (t) => t.kind === "video",
+              );
+              if (videoTrack) {
+                actions.moveClip(clipId, videoTrack.id, newStart);
+              }
+            }}
+            onClipReorder={(clips) => actions.reorderClips(clips)}
+            onClipTrim={(clipId, trimStart, trimEnd) =>
+              actions.trimClip(clipId, trimStart, trimEnd)
+            }
+            onSeek={handleSeek}
+            onScrub={(time) => rendererRef.current?.seek(time)}
+            onScrubStart={() => {
+              if (
+                rendererRef.current &&
+                typeof rendererRef.current.startScrubbing === "function"
+              ) {
+                rendererRef.current.startScrubbing();
+              }
+            }}
+            onScrubEnd={() => {
+              if (
+                rendererRef.current &&
+                typeof rendererRef.current.endScrubbing === "function"
+              ) {
+                rendererRef.current.endScrubbing();
+              }
+            }}
+          />
         </div>
       </div>
       <ExportModal

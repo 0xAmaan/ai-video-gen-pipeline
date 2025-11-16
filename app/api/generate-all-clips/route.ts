@@ -36,8 +36,10 @@ export async function POST(req: Request) {
             "66226b38d223f8ac7a81aa33b8519759e300c2f9818a215e32900827ad6d2db5", // WAN 2.5 i2v Fast (latest)
           input: {
             image: scene.imageUrl,
+            // Use the detailed visualPrompt (150-250 words) if available, otherwise fallback to description
             prompt:
-              scene.description + ", cinematic, smooth motion, professional",
+              (scene.visualPrompt || scene.description) +
+              ", cinematic, smooth motion, professional video",
             duration: validDuration,
             resolution: "720p",
             negative_prompt: "blur, distortion, jitter, artifacts, low quality",

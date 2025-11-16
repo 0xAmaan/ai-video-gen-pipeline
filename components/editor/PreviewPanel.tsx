@@ -1,10 +1,11 @@
 "use client";
 
+import { memo } from "react";
 import { Play, Pause } from "lucide-react";
 import { Button } from "../ui/button";
 
 interface PreviewPanelProps {
-  canvasRef: React.RefObject<HTMLCanvasElement>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
@@ -21,7 +22,7 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs}`;
 };
 
-export const PreviewPanel = ({
+const PreviewPanelComponent = ({
   canvasRef,
   currentTime,
   duration,
@@ -30,16 +31,30 @@ export const PreviewPanel = ({
   onSeek,
 }: PreviewPanelProps) => {
   return (
-    <div className="flex flex-col gap-3 border-b border-border bg-card/50 p-4">
-      <canvas
-        ref={canvasRef}
-        className="aspect-video w-full max-h-[55vh] rounded-md bg-black"
-        width={1280}
-        height={720}
-      />
+    <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
+      {/* Aspect ratio wrapper to maintain 16:9 and prevent distortion */}
+      <div className="flex flex-1 items-center justify-center overflow-hidden">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full object-contain rounded-md bg-black"
+          width={1280}
+          height={720}
+          style={{ maxWidth: "100%", maxHeight: "100%", aspectRatio: "16/9" }}
+        />
+      </div>
       <div className="flex items-center gap-3">
-        <Button variant="secondary" size="icon" onClick={onTogglePlayback} aria-label="Toggle playback">
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={onTogglePlayback}
+          aria-label="Toggle playback"
+          className="shrink-0"
+        >
+          {isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4 ml-0.5" />
+          )}
         </Button>
         <input
           type="range"
@@ -57,3 +72,21 @@ export const PreviewPanel = ({
     </div>
   );
 };
+
+// Memoize to prevent re-renders when only currentTime changes
+// Canvas updates independently via PreviewRenderer
+export const PreviewPanel = memo(
+  PreviewPanelComponent,
+  (prevProps, nextProps) => {
+    // Only re-render if these props change (ignore currentTime for now)
+    return (
+      prevProps.canvasRef === nextProps.canvasRef &&
+      prevProps.duration === nextProps.duration &&
+      prevProps.isPlaying === nextProps.isPlaying &&
+      prevProps.onTogglePlayback === nextProps.onTogglePlayback &&
+      prevProps.onSeek === nextProps.onSeek
+      // Note: currentTime is intentionally excluded to reduce re-renders
+      // The time display will update less frequently, but canvas rendering is smooth
+    );
+  },
+);

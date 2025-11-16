@@ -13,18 +13,16 @@ const ProjectsPage = () => {
     return prompt.length > 50 ? prompt.slice(0, 50) + "..." : prompt;
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      draft: { label: "Draft", color: "bg-muted text-muted-foreground" },
-      questions_generated: { label: "Questions", color: "bg-primary/20 text-primary" },
-      questions_answered: { label: "Answered", color: "bg-primary/30 text-primary" },
-      generating_storyboard: { label: "Generating", color: "bg-primary/40 text-primary" },
-      storyboard_created: { label: "Storyboard", color: "bg-primary/50 text-primary" },
-      video_generated: { label: "Complete", color: "bg-primary text-primary-foreground" },
+  const getPhaseBadge = (lastActivePhase: string | undefined) => {
+    const phaseConfig = {
+      prompt: { label: "Input", color: "bg-muted text-muted-foreground" },
+      storyboard: { label: "Storyboard", color: "bg-primary/30 text-primary" },
+      video: { label: "Video", color: "bg-primary/60 text-primary" },
+      editor: { label: "Editor", color: "bg-primary text-primary-foreground" },
     };
 
-    const config = statusConfig[status as keyof typeof statusConfig] || {
-      label: status,
+    const config = phaseConfig[lastActivePhase as keyof typeof phaseConfig] || {
+      label: "Draft",
       color: "bg-muted text-muted-foreground",
     };
 
@@ -49,7 +47,9 @@ const ProjectsPage = () => {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold text-foreground">All Projects</h1>
+          <h1 className="text-3xl font-semibold text-foreground">
+            All Projects
+          </h1>
         </div>
 
         {/* Empty State */}
@@ -70,7 +70,7 @@ const ProjectsPage = () => {
                 onClick={() => router.push(`/${project._id}/prompt`)}
                 className="flex items-center gap-4 w-full p-4 bg-card hover:bg-accent rounded-lg transition-colors text-left cursor-pointer border border-border"
               >
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 flex-shrink-0">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 shrink-0">
                   <Video className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -78,7 +78,7 @@ const ProjectsPage = () => {
                     <span className="text-foreground font-medium truncate">
                       {getProjectTitle(project.prompt)}
                     </span>
-                    {getStatusBadge(project.status)}
+                    {getPhaseBadge(project.lastActivePhase)}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {formatDate(project.createdAt)}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Replicate from "replicate";
+import { IMAGE_MODELS } from "@/lib/image-models";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -7,7 +8,7 @@ const replicate = new Replicate({
 
 export async function POST(req: Request) {
   try {
-    const { visualPrompt } = await req.json();
+    const { visualPrompt, responses, style } = await req.json();
 
     if (!visualPrompt || typeof visualPrompt !== "string") {
       return NextResponse.json(
@@ -16,56 +17,70 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate new image using Replicate nano-banana
-    const output = await replicate.run("google/nano-banana", {
-      input: {
-        prompt: visualPrompt,
-      },
-    });
+    const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
 
-    // Get the image URL from Replicate
-    let imageUrl: string;
+    // Select style based on responses or use provided style
+    let phoenixStyle = style || "cinematic";
 
-    // Handle FileOutput object (has .url() method)
-    if (
-      output &&
-      typeof output === "object" &&
-      "url" in output &&
-      typeof (output as any).url === "function"
-    ) {
-      imageUrl = (output as any).url();
-    }
-    // Handle array of FileOutput objects
-    else if (Array.isArray(output) && output.length > 0) {
-      const firstOutput = output[0];
+    if (!style && responses && responses["visual-style"]) {
+      const visualStyle = responses["visual-style"].toLowerCase();
       if (
-        typeof firstOutput === "object" &&
-        "url" in firstOutput &&
-        typeof firstOutput.url === "function"
+        visualStyle.includes("documentary") ||
+        visualStyle.includes("black and white")
       ) {
-        imageUrl = firstOutput.url();
-      } else if (typeof firstOutput === "string") {
-        imageUrl = firstOutput;
-      } else {
-        throw new Error(
-          `Unexpected array item format: ${JSON.stringify(firstOutput)}`,
-        );
+        phoenixStyle = "pro_bw_photography";
+      } else if (
+        visualStyle.includes("cinematic") ||
+        visualStyle.includes("film")
+      ) {
+        phoenixStyle = "cinematic";
+      } else if (
+        visualStyle.includes("photo") ||
+        visualStyle.includes("realistic")
+      ) {
+        phoenixStyle = "pro_color_photography";
+      } else if (
+        visualStyle.includes("animated") ||
+        visualStyle.includes("cartoon")
+      ) {
+        phoenixStyle = "illustration";
+      } else if (
+        visualStyle.includes("vintage") ||
+        visualStyle.includes("retro")
+      ) {
+        phoenixStyle = "pro_film_photography";
       }
     }
-    // Handle plain string
-    else if (typeof output === "string") {
+
+    console.log(
+      `Regenerating scene with ${modelConfig.name} (style: ${phoenixStyle})`,
+    );
+
+    const output = await replicate.run(
+      modelConfig.id as `${string}/${string}`,
+      {
+        input: {
+          prompt: visualPrompt,
+          aspect_ratio: "16:9",
+          generation_mode: "quality",
+          contrast: "medium",
+          num_images: 1,
+          prompt_enhance: false,
+          style: phoenixStyle,
+        },
+      },
+    );
+
+    // Extract image URL from output
+    let imageUrl: string;
+    if (Array.isArray(output) && output.length > 0) {
+      imageUrl =
+        typeof output[0] === "string"
+          ? output[0]
+          : (output[0] as any).url?.() || output[0];
+    } else if (typeof output === "string") {
       imageUrl = output;
-    }
-    // Handle object with url property (not a function)
-    else if (
-      output &&
-      typeof output === "object" &&
-      "url" in output &&
-      typeof (output as any).url === "string"
-    ) {
-      imageUrl = (output as any).url;
     } else {
-      console.error("Unexpected output:", output);
       throw new Error(`Unexpected output format: ${typeof output}`);
     }
 

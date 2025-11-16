@@ -1,9 +1,12 @@
-import type { Sequence } from "../types";
-import type {
-  EncodeWorkerMessage,
-  EncodeRequestMessage,
-  EncodeCancelMessage,
-} from "../workers/messages";
+import type { Sequence, MediaAssetMeta } from "../types";
+import { FrameRenderer } from "./frame-renderer";
+import {
+  Output,
+  CanvasSource,
+  Mp4OutputFormat,
+  BufferTarget,
+  QUALITY_HIGH,
+} from "mediabunny";
 
 export type ExportOptions = {
   resolution: string;
@@ -14,66 +17,111 @@ export type ExportOptions = {
 export type ExportProgressHandler = (progress: number, status: string) => void;
 
 export class ExportPipeline {
-  private worker: Worker;
-  private pending = new Map<
-    string,
-    { resolve: (blob: Blob) => void; reject: (error: Error) => void; onProgress?: ExportProgressHandler }
-  >();
+  private abortController: AbortController | null = null;
 
-  constructor() {
-    this.worker = new Worker(new URL("../workers/encode-worker.ts", import.meta.url), {
-      type: "module",
-    });
-    this.worker.onmessage = (event: MessageEvent<EncodeWorkerMessage>) => {
-      const message = event.data;
-      if (message.type === "ENCODE_PROGRESS") {
-        const pending = this.pending.get(message.requestId);
-        pending?.onProgress?.(message.progress, message.status);
-        return;
-      }
-      if (message.type === "ENCODE_RESULT") {
-        const pending = this.pending.get(message.requestId);
-        if (!pending) return;
-        this.pending.delete(message.requestId);
-        pending.resolve(message.blob);
-        return;
-      }
-      if (message.type === "ENCODE_ERROR") {
-        const pending = this.pending.get(message.requestId);
-        if (!pending) return;
-        this.pending.delete(message.requestId);
-        pending.reject(new Error(message.error));
-      }
-    };
-  }
+  async exportSequence(
+    sequence: Sequence,
+    assets: Record<string, MediaAssetMeta>,
+    options: ExportOptions,
+    onProgress?: ExportProgressHandler,
+  ): Promise<Blob> {
+    this.abortController = new AbortController();
 
-  exportSequence(sequence: Sequence, options: ExportOptions, onProgress?: ExportProgressHandler) {
-    const requestId = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
-    const payload: EncodeRequestMessage = {
-      type: "ENCODE_REQUEST",
-      requestId,
-      sequenceId: sequence.id,
-      settings: options,
-    };
-    return new Promise<Blob>((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject, onProgress });
-      this.worker.postMessage(payload);
-    });
-  }
+    try {
+      // Parse resolution (e.g., "1920x1080")
+      const [widthStr, heightStr] = options.resolution.split("x");
+      const width = parseInt(widthStr) || 1280;
+      const height = parseInt(heightStr) || 720;
+      const fps = 30;
 
-  cancel(requestId: string) {
-    const cancelPayload: EncodeCancelMessage = { type: "ENCODE_CANCEL", requestId };
-    this.worker.postMessage(cancelPayload);
-    const pending = this.pending.get(requestId);
-    if (pending) {
-      this.pending.delete(requestId);
-      pending.reject(new Error("cancelled"));
+      onProgress?.(0, "Initializing encoder...");
+
+      // Create frame renderer
+      const frameRenderer = new FrameRenderer(width, height);
+      const canvas = frameRenderer.getCanvas();
+
+      // Create MediaBunny output
+      const output = new Output({
+        format: new Mp4OutputFormat(),
+        target: new BufferTarget(),
+      });
+
+      // Create canvas source for video encoding
+      const canvasSource = new CanvasSource(canvas, {
+        codec: "avc",
+        bitrate: QUALITY_HIGH,
+      });
+
+      // Add video track and start output
+      output.addVideoTrack(canvasSource, { frameRate: fps });
+      await output.start();
+
+      onProgress?.(5, "Rendering and encoding...");
+
+      let frameCount = 0;
+      const totalFrames = Math.ceil(sequence.duration * fps);
+      const frameDuration = 1 / fps;
+
+      await frameRenderer.renderSequence(
+        sequence,
+        assets,
+        fps,
+        async (frameData, timestamp) => {
+          if (this.abortController?.signal.aborted) {
+            throw new Error("Export cancelled");
+          }
+
+          // Add the canvas frame (timestamp and duration in seconds)
+          await canvasSource.add(timestamp, frameDuration);
+          frameCount++;
+
+          const progress = 5 + (frameCount / totalFrames) * 90;
+          onProgress?.(
+            progress,
+            `Encoding frame ${frameCount}/${totalFrames}...`,
+          );
+        },
+        (progress) => {
+          // Frame render progress (not used since we report in the frame callback)
+        },
+      );
+
+      // Finalize encoding
+      canvasSource.close();
+      await output.finalize();
+
+      onProgress?.(95, "Finalizing...");
+
+      // Get the encoded buffer
+      const buffer = (output.target as BufferTarget).buffer;
+      if (!buffer) {
+        throw new Error("Export failed: No buffer generated");
+      }
+      const blob = new Blob([buffer], { type: `video/${options.format}` });
+
+      onProgress?.(100, "Complete!");
+
+      return blob;
+    } catch (error) {
+      if (error instanceof Error && error.message === "Export cancelled") {
+        throw error;
+      }
+      throw new Error(
+        `Export failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      this.abortController = null;
     }
+  }
+
+  cancel() {
+    this.abortController?.abort();
   }
 }
 
 let pipelineSingleton: ExportPipeline | null = null;
-const canUseWorkers = typeof window !== "undefined" && typeof window.Worker !== "undefined";
+const canUseWorkers =
+  typeof window !== "undefined" && typeof window.Worker !== "undefined";
 
 export const getExportPipeline = (): ExportPipeline => {
   if (!canUseWorkers) {

@@ -34,12 +34,20 @@ export type ExportConfig = {
   aspectRatio: string;
 };
 
-export const ExportModal = ({ open, onOpenChange, duration, onExport, status }: ExportModalProps) => {
+export const ExportModal = ({
+  open,
+  onOpenChange,
+  duration,
+  onExport,
+  status,
+}: ExportModalProps) => {
   const [resolution, setResolution] = useState("1080p");
   const [quality, setQuality] = useState("high");
   const [format, setFormat] = useState("mp4");
   const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [state, setState] = useState<"config" | "exporting" | "complete">("config");
+  const [state, setState] = useState<"config" | "exporting" | "complete">(
+    "config",
+  );
 
   useEffect(() => {
     if (!open) {
@@ -65,7 +73,9 @@ export const ExportModal = ({ open, onOpenChange, duration, onExport, status }: 
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">Export Video</DialogTitle>
-          <DialogDescription>Configure your export settings and download your video</DialogDescription>
+          <DialogDescription>
+            Configure your export settings and download your video
+          </DialogDescription>
         </DialogHeader>
 
         {state === "config" && (
@@ -88,7 +98,9 @@ export const ExportModal = ({ open, onOpenChange, duration, onExport, status }: 
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <div className="text-center">
               <p className="text-lg font-semibold">Encoding video…</p>
-              <p className="text-muted-foreground">{status?.status ?? "Preparing frames"}</p>
+              <p className="text-muted-foreground">
+                {status?.status ?? "Preparing frames"}
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {status ? Math.round(status.progress) : 0}%
               </p>
@@ -103,7 +115,9 @@ export const ExportModal = ({ open, onOpenChange, duration, onExport, status }: 
             </div>
             <div className="text-center">
               <p className="text-lg font-semibold">Export Complete</p>
-              <p className="text-muted-foreground">Your file has been saved locally.</p>
+              <p className="text-muted-foreground">
+                Your file has been saved locally.
+              </p>
             </div>
             <Button onClick={() => onOpenChange(false)} className="gap-2">
               <Download className="h-4 w-4" /> Close
@@ -162,37 +176,60 @@ const ExportConfigurator = ({
       high: 1.5,
     };
     const size =
-      durationMinutes * 50 * (resMultipliers[resolution] ?? 1) * (qualityMultipliers[quality] ?? 1);
+      durationMinutes *
+      50 *
+      (resMultipliers[resolution] ?? 1) *
+      (qualityMultipliers[quality] ?? 1);
     return Math.round(size);
   };
 
-  const getResolutionOutput = () => ({
-    "720p": "1280x720",
-    "1080p": "1920x1080",
-    "1440p": "2560x1440",
-    "4k": "3840x2160",
-  })[resolution];
+  const getResolutionOutput = () =>
+    ({
+      "720p": "1280x720",
+      "1080p": "1920x1080",
+      "1440p": "2560x1440",
+      "4k": "3840x2160",
+    })[resolution];
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4">
-        <SelectCard label="Resolution" value={resolution} onChange={onResolutionChange}>
+        <SelectCard
+          label="Resolution"
+          value={resolution}
+          onChange={onResolutionChange}
+        >
           <SelectItem value="720p">720p (HD)</SelectItem>
           <SelectItem value="1080p">1080p (Full HD)</SelectItem>
           <SelectItem value="1440p">1440p (2K)</SelectItem>
           <SelectItem value="4k">4K (Ultra HD)</SelectItem>
         </SelectCard>
-        <SelectCard label="Quality" value={quality} onChange={onQualityChange}>
+        <SelectCard
+          label="Quality"
+          value={quality}
+          onChange={onQualityChange}
+          disabled
+        >
           <SelectItem value="low">Low (Fast)</SelectItem>
           <SelectItem value="medium">Medium</SelectItem>
           <SelectItem value="high">High (Best)</SelectItem>
         </SelectCard>
-        <SelectCard label="Format" value={format} onChange={onFormatChange}>
+        <SelectCard
+          label="Format"
+          value={format}
+          onChange={onFormatChange}
+          disabled
+        >
           <SelectItem value="mp4">MP4 (H.264)</SelectItem>
           <SelectItem value="webm">WebM (VP9)</SelectItem>
           <SelectItem value="mov">MOV (ProRes)</SelectItem>
         </SelectCard>
-        <SelectCard label="Aspect Ratio" value={aspectRatio} onChange={onAspectRatioChange}>
+        <SelectCard
+          label="Aspect Ratio"
+          value={aspectRatio}
+          onChange={onAspectRatioChange}
+          disabled
+        >
           <SelectItem value="16:9">16:9 (Landscape)</SelectItem>
           <SelectItem value="9:16">9:16 (Vertical)</SelectItem>
           <SelectItem value="1:1">1:1 (Square)</SelectItem>
@@ -230,15 +267,17 @@ const SelectCard = ({
   value,
   onChange,
   children,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   children: ReactNode;
+  disabled?: boolean;
 }) => (
   <div>
     <label className="text-sm font-medium mb-2 block">{label}</label>
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger>
         <SelectValue />
       </SelectTrigger>

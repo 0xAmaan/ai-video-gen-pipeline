@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Play, Pause, Undo2, Redo2, Download } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -23,7 +24,7 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs}`;
 };
 
-export const TopBar = ({
+const TopBarComponent = ({
   title,
   isPlaying,
   currentTime,
@@ -34,23 +35,44 @@ export const TopBar = ({
   onExport,
 }: TopBarProps) => {
   return (
-    <div className="flex items-center justify-between border-b border-border bg-card/80 px-6 py-3">
-      <div>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
-        <h1 className="text-lg font-semibold">{title}</h1>
+    <div className="flex items-center justify-between border-b border-border bg-card/80 px-4 py-2">
+      <div className="flex items-center gap-2">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+          Project
+        </p>
+        <h1 className="text-sm font-semibold truncate max-w-md">{title}</h1>
       </div>
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <span>
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
-        <Button variant="outline" size="icon" onClick={onUndo} aria-label="Undo">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onUndo}
+          aria-label="Undo"
+        >
           <Undo2 className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="icon" onClick={onRedo} aria-label="Redo">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onRedo}
+          aria-label="Redo"
+        >
           <Redo2 className="h-4 w-4" />
         </Button>
-        <Button variant="secondary" size="icon" onClick={onTogglePlayback} aria-label="Toggle playback">
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={onTogglePlayback}
+          aria-label="Toggle playback"
+        >
+          {isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
         </Button>
         <Button onClick={onExport} className="gap-2">
           <Download className="h-4 w-4" /> Export
@@ -59,3 +81,17 @@ export const TopBar = ({
     </div>
   );
 };
+
+// Memoize to prevent re-renders when only currentTime changes
+export const TopBar = memo(TopBarComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.title === nextProps.title &&
+    prevProps.isPlaying === nextProps.isPlaying &&
+    prevProps.duration === nextProps.duration &&
+    prevProps.onTogglePlayback === nextProps.onTogglePlayback &&
+    prevProps.onUndo === nextProps.onUndo &&
+    prevProps.onRedo === nextProps.onRedo &&
+    prevProps.onExport === nextProps.onExport
+    // Note: currentTime intentionally excluded to reduce re-renders
+  );
+});

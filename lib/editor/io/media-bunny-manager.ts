@@ -10,20 +10,37 @@ import type {
 
 export class MediaBunnyManager {
   private worker: Worker;
-  private inflight = new Map<string, { resolve: (asset: MediaAssetMeta) => void; reject: (error: Error) => void; objectUrl: string }>();
-  private thumbnailRequests = new Map<string, { resolve: (thumbnails: string[]) => void; reject: (error: Error) => void }>();
+  private inflight = new Map<
+    string,
+    {
+      resolve: (asset: MediaAssetMeta) => void;
+      reject: (error: Error) => void;
+      objectUrl: string;
+    }
+  >();
+  private thumbnailRequests = new Map<
+    string,
+    { resolve: (thumbnails: string[]) => void; reject: (error: Error) => void }
+  >();
 
   constructor() {
-    this.worker = new Worker(new URL("../workers/demux-worker.ts", import.meta.url), {
-      type: "module",
-    });
+    this.worker = new Worker(
+      new URL("../workers/demux-worker.ts", import.meta.url),
+      {
+        type: "module",
+      },
+    );
     this.worker.onmessage = (event: MessageEvent<DemuxWorkerMessage>) => {
       const message = event.data;
       if (message.type === "DEMUX_RESULT") {
         const pending = this.inflight.get(message.requestId);
         if (!pending) return;
         this.inflight.delete(message.requestId);
-        const asset = { ...message.asset, id: message.assetId, url: pending.objectUrl };
+        const asset = {
+          ...message.asset,
+          id: message.assetId,
+          url: pending.objectUrl,
+        };
         if (message.waveform) {
           asset.waveform = message.waveform;
         }
@@ -39,14 +56,12 @@ export class MediaBunnyManager {
       }
       if (message.type === "THUMBNAIL_PROGRESS") {
         // Handle progress updates (for future progress UI)
-        console.log(`[MediaBunny] Thumbnail progress: ${message.current}/${message.total} (${Math.round(message.progress * 100)}%)`);
         return;
       }
       if (message.type === "THUMBNAIL_RESULT") {
         const pending = this.thumbnailRequests.get(message.requestId);
         if (!pending) return;
         this.thumbnailRequests.delete(message.requestId);
-        console.log(`[MediaBunny] Generated ${message.thumbnails.length} thumbnails for asset ${message.assetId}`);
         pending.resolve(message.thumbnails);
         return;
       }
@@ -57,13 +72,12 @@ export class MediaBunnyManager {
         pending.reject(new Error(message.error));
         return;
       }
-      // Log unhandled message types for debugging
-      console.warn(`[MediaBunny] Unhandled worker message type:`, message);
     };
   }
 
   importFile(file: File): Promise<MediaAssetMeta> {
-    const requestId = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+    const requestId =
+      crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     const assetId = `asset-${requestId}`;
     const objectUrl = URL.createObjectURL(file);
     return new Promise<MediaAssetMeta>((resolve, reject) => {
@@ -78,8 +92,14 @@ export class MediaBunnyManager {
     });
   }
 
-  generateThumbnails(assetId: string, mediaUrl: string, duration: number, count: number = 15): Promise<string[]> {
-    const requestId = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  generateThumbnails(
+    assetId: string,
+    mediaUrl: string,
+    duration: number,
+    count: number = 15,
+  ): Promise<string[]> {
+    const requestId =
+      crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     return new Promise<string[]>((resolve, reject) => {
       this.thumbnailRequests.set(requestId, { resolve, reject });
       const message: ThumbnailRequestMessage = {
@@ -110,7 +130,8 @@ export class MediaBunnyManager {
 
 let singleton: MediaBunnyManager | null = null;
 
-const canUseWorkers = typeof window !== "undefined" && typeof window.Worker !== "undefined";
+const canUseWorkers =
+  typeof window !== "undefined" && typeof window.Worker !== "undefined";
 
 export const getMediaBunnyManager = (): MediaBunnyManager => {
   if (!canUseWorkers) {

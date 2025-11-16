@@ -15,8 +15,13 @@ interface InputPhaseWrapperProps {
   existingProjectId?: Id<"videoProjects">;
 }
 
-export const InputPhaseWrapper = ({ onComplete, existingProjectId }: InputPhaseWrapperProps) => {
-  const [projectId, setProjectId] = useState<Id<"videoProjects"> | null>(existingProjectId || null);
+export const InputPhaseWrapper = ({
+  onComplete,
+  existingProjectId,
+}: InputPhaseWrapperProps) => {
+  const [projectId, setProjectId] = useState<Id<"videoProjects"> | null>(
+    existingProjectId || null,
+  );
   const createProject = useMutation(api.video.createProject);
   const saveQuestions = useMutation(api.video.saveQuestions);
 
@@ -52,7 +57,7 @@ export const InputPhaseWrapper = ({ onComplete, existingProjectId }: InputPhaseW
         return null;
       }
     },
-    [projectId, existingProjectId, createProject, saveQuestions]
+    [projectId, existingProjectId, createProject, saveQuestions],
   );
 
   const handleComplete = (data: {

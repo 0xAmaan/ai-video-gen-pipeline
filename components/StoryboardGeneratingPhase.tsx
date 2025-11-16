@@ -4,7 +4,14 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Sparkles, Image as ImageIcon } from "lucide-react";
+import {
+  Loader2,
+  Check,
+  Sparkles,
+  Image as ImageIcon,
+  Zap,
+  Wand2,
+} from "lucide-react";
 
 interface Scene {
   sceneNumber: number;
@@ -18,6 +25,9 @@ interface StoryboardGeneratingPhaseProps {
   totalScenes: number;
   currentStage: "generating_descriptions" | "generating_images" | "complete";
   currentSceneNumber?: number;
+  modelName?: string;
+  estimatedCostPerImage?: number;
+  modelReason?: string;
 }
 
 export const StoryboardGeneratingPhase = ({
@@ -25,6 +35,9 @@ export const StoryboardGeneratingPhase = ({
   totalScenes,
   currentStage,
   currentSceneNumber = 0,
+  modelName = "FLUX.1 Schnell",
+  estimatedCostPerImage = 0.003,
+  modelReason = "Default selection for fast, cost-effective generation",
 }: StoryboardGeneratingPhaseProps) => {
   const getProgress = () => {
     if (currentStage === "generating_descriptions") return 20;
@@ -56,6 +69,46 @@ export const StoryboardGeneratingPhase = ({
           </p>
         </div>
 
+        {/* Model Selection Info */}
+        <Card className="p-5 mb-4 bg-linear-to-r from-primary/10 via-primary/5 to-transparent border-primary/30">
+          <div className="flex items-start gap-4">
+            <div className="shrink-0">
+              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                <Wand2 className="w-5 h-5 text-primary" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <h3 className="text-sm font-semibold text-foreground">
+                  AI Image Model
+                </h3>
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-primary" />
+                  <Badge
+                    variant="default"
+                    className="text-xs font-medium px-2 py-0.5"
+                  >
+                    {modelName}
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {modelReason}
+              </p>
+              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <span className="font-medium text-foreground">
+                    ${(totalScenes * estimatedCostPerImage).toFixed(3)}
+                  </span>
+                  <span>total cost</span>
+                </span>
+                <span className="text-muted-foreground/50">•</span>
+                <span>${estimatedCostPerImage.toFixed(3)} per image</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* Overall Progress */}
         <Card className="p-8 mb-6">
           <div className="mb-6">
@@ -68,13 +121,10 @@ export const StoryboardGeneratingPhase = ({
             <Progress value={progress} className="h-3" />
           </div>
 
-          <div className="flex items-center justify-between text-sm flex-wrap gap-2">
-            <span className="text-muted-foreground">
-              {currentStage === "complete"
-                ? "All scenes generated successfully!"
-                : `Estimated time remaining: ${Math.ceil((totalScenes - imagesGenerated) * 10)}s`}
-            </span>
-            <Badge variant="secondary">Using Google Nano Banana</Badge>
+          <div className="text-sm text-muted-foreground">
+            {currentStage === "complete"
+              ? "All scenes generated successfully!"
+              : `Estimated time remaining: ${Math.ceil((totalScenes - imagesGenerated) * 10)}s`}
           </div>
         </Card>
 
@@ -177,7 +227,7 @@ export const StoryboardGeneratingPhase = ({
           <p className="text-sm text-muted-foreground">
             Estimated cost:{" "}
             <span className="font-medium text-foreground">
-              ${(totalScenes * 0.04).toFixed(2)}
+              ${(totalScenes * estimatedCostPerImage).toFixed(2)}
             </span>
           </p>
         </div>

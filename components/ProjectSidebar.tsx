@@ -26,7 +26,9 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
   // Check if clips are currently generating for active project
   const isGenerating = useQuery(
     api.video.areClipsGenerating,
-    activeProjectId ? { projectId: activeProjectId as Id<"videoProjects"> } : "skip"
+    activeProjectId
+      ? { projectId: activeProjectId as Id<"videoProjects"> }
+      : "skip",
   );
 
   // Hydration-safe localStorage
@@ -82,7 +84,9 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
       }`}
     >
       {/* Header */}
-      <div className={`px-4 py-5 border-b border-border flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+      <div
+        className={`px-4 py-5 border-b border-border flex items-center ${isCollapsed ? "justify-center" : "justify-between"}`}
+      >
         {!isCollapsed && (
           <button
             onClick={() => router.push("/")}
@@ -93,7 +97,7 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
         )}
         <button
           onClick={handleToggleCollapse}
-          className="p-2 rounded-lg hover:bg-accent transition-colors flex-shrink-0 cursor-pointer"
+          className="p-2 rounded-lg hover:bg-accent transition-colors shrink-0 cursor-pointer"
           title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {isCollapsed ? (
@@ -118,13 +122,14 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
           className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors mb-6 ${
             isGenerating
               ? "opacity-50 cursor-not-allowed"
-              : "cursor-pointer " + (pathname === "/projects"
+              : "cursor-pointer " +
+                (pathname === "/projects"
                   ? "bg-accent text-foreground"
                   : "text-foreground hover:bg-accent")
           }`}
           title={isCollapsed ? "All Projects" : undefined}
         >
-          <FolderOpen className="w-5 h-5 flex-shrink-0" />
+          <FolderOpen className="w-5 h-5 shrink-0" />
           {!isCollapsed && (
             <span className="text-sm font-medium">Projects</span>
           )}
@@ -147,7 +152,8 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
                   className={`flex flex-col gap-1 w-full px-3 py-2.5 rounded-lg transition-all text-left ${
                     isGenerating
                       ? "opacity-50 cursor-not-allowed"
-                      : "cursor-pointer " + (isProjectActive(project._id)
+                      : "cursor-pointer " +
+                        (isProjectActive(project._id)
                           ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
                           : "text-foreground/80 hover:bg-accent hover:text-foreground")
                   }`}
@@ -158,9 +164,9 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {new Date(project.updatedAt).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric'
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
                     })}
                   </span>
                 </button>
@@ -171,7 +177,9 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
       </div>
 
       {/* User Button - Fixed at bottom */}
-      <div className={`p-4 border-t border-border ${isCollapsed ? 'flex justify-center' : ''}`}>
+      <div
+        className={`p-4 border-t border-border ${isCollapsed ? "flex justify-center" : ""}`}
+      >
         <UserButton afterSignOutUrl="/" />
       </div>
     </div>

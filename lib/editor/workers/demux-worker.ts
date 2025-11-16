@@ -1,6 +1,13 @@
 /// <reference lib="webworker" />
 
-import { Input, BlobSource, ALL_FORMATS, AudioBufferSink, CanvasSink } from "mediabunny";
+import {
+  Input,
+  BlobSource,
+  UrlSource,
+  ALL_FORMATS,
+  AudioBufferSink,
+  CanvasSink,
+} from "mediabunny";
 import type {
   DemuxRequestMessage,
   DemuxResponseMessage,
@@ -11,16 +18,18 @@ import type {
 import type { MediaAssetMeta } from "../types";
 
 const ctx: DedicatedWorkerGlobalScope = self as DedicatedWorkerGlobalScope;
-const canBuildWaveform = typeof (globalThis as unknown as { AudioBuffer?: unknown }).AudioBuffer === "function";
+const canBuildWaveform =
+  typeof (globalThis as unknown as { AudioBuffer?: unknown }).AudioBuffer ===
+  "function";
 
 ctx.onmessage = async (event: MessageEvent<DemuxWorkerMessage>) => {
   const message = event.data;
-  
+
   if (message.type === "THUMBNAIL_REQUEST") {
     await handleThumbnailRequest(message);
     return;
   }
-  
+
   if (message.type !== "DEMUX_REQUEST") {
     return;
   }
@@ -28,12 +37,19 @@ ctx.onmessage = async (event: MessageEvent<DemuxWorkerMessage>) => {
   const { file, requestId, assetId } = message;
 
   try {
-    const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+    const input = new Input({
+      source: new BlobSource(file),
+      formats: ALL_FORMATS,
+    });
     const duration = await input.computeDuration();
     const videoTrack = await input.getPrimaryVideoTrack();
     const audioTrack = await input.getPrimaryAudioTrack();
-    const packetStats = videoTrack ? await videoTrack.computePacketStats(240) : null;
-    const waveform = audioTrack ? await safeBuildWaveform(audioTrack, duration) : undefined;
+    const packetStats = videoTrack
+      ? await videoTrack.computePacketStats(240)
+      : null;
+    const waveform = audioTrack
+      ? await safeBuildWaveform(audioTrack, duration)
+      : undefined;
 
     const asset: MediaAssetMeta = {
       id: assetId,
@@ -70,19 +86,24 @@ ctx.onmessage = async (event: MessageEvent<DemuxWorkerMessage>) => {
   }
 };
 
-async function safeBuildWaveform(audioTrack: any, duration: number): Promise<Float32Array | undefined> {
+async function safeBuildWaveform(
+  audioTrack: any,
+  duration: number,
+): Promise<Float32Array | undefined> {
   if (!canBuildWaveform) {
     return undefined;
   }
   try {
     return await buildWaveform(audioTrack, duration);
   } catch (error) {
-    console.warn?.("Waveform generation skipped:", error);
     return undefined;
   }
 }
 
-async function buildWaveform(audioTrack: any, duration: number): Promise<Float32Array> {
+async function buildWaveform(
+  audioTrack: any,
+  duration: number,
+): Promise<Float32Array> {
   const sink = new AudioBufferSink(audioTrack);
   const bucketCount = Math.min(512, Math.max(64, Math.ceil(duration * 10)));
   const buckets = new Float32Array(bucketCount);
@@ -104,7 +125,9 @@ async function buildWaveform(audioTrack: any, duration: number): Promise<Float32
   return buckets;
 }
 
-async function handleThumbnailRequest(message: ThumbnailRequestMessage): Promise<void> {
+async function handleThumbnailRequest(
+  message: ThumbnailRequestMessage,
+): Promise<void> {
   const { requestId, assetId, mediaUrl, duration, count } = message;
 
   try {
@@ -167,6 +190,7 @@ async function handleThumbnailRequest(message: ThumbnailRequestMessage): Promise
     // Generate equally-spaced timestamps
     const startTimestamp = await videoTrack.getFirstTimestamp();
     const endTimestamp = await videoTrack.computeDuration();
+
     const timestamps: number[] = [];
 
     if (count === 1) {
@@ -185,14 +209,20 @@ async function handleThumbnailRequest(message: ThumbnailRequestMessage): Promise
     let current = 0;
 
     for await (const result of sink.canvasesAtTimestamps(timestamps)) {
+      if (!result) {
+        continue;
+      }
       // Convert canvas to data URL
       const canvas = result.canvas as OffscreenCanvas;
-      const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.7 });
+      const blob = await canvas.convertToBlob({
+        type: "image/jpeg",
+        quality: 0.7,
+      });
       const dataUrl = await blobToDataUrl(blob);
       thumbnails.push(dataUrl);
-      
+
       current++;
-      
+
       // Send progress update
       ctx.postMessage({
         type: "THUMBNAIL_PROGRESS",
