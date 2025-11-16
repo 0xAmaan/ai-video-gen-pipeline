@@ -5,7 +5,7 @@ export type TimeUpdateHandler = (time: number) => void;
 
 export class PreviewRenderer {
   private canvas?: HTMLCanvasElement;
-  private ctx?: CanvasRenderingContext2D;
+  private ctx?: CanvasRenderingContext2D | null;
   private videoEl?: HTMLVideoElement;
   private currentClip?: Clip;
   private raf?: number;

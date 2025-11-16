@@ -94,6 +94,9 @@ export class ExportPipeline {
 
       // Get the encoded buffer
       const buffer = (output.target as BufferTarget).buffer;
+      if (!buffer) {
+        throw new Error("Export failed: No buffer generated");
+      }
       const blob = new Blob([buffer], { type: `video/${options.format}` });
 
       onProgress?.(100, "Complete!");
