@@ -167,6 +167,7 @@ async function handleThumbnailRequest(
     let current = 0;
 
     for await (const result of sink.canvasesAtTimestamps(timestamps)) {
+      if (!result) continue;
       // Convert canvas to data URL
       const canvas = result.canvas as OffscreenCanvas;
       const blob = await canvas.convertToBlob({
