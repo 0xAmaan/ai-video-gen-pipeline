@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, action } from "./_generated/server";
 
 // Save or update editor project (optimized - no history in document)
 export const saveProject = mutation({
@@ -194,7 +194,8 @@ export const loadProject = query({
 });
 
 // Load project history separately (paginated)
-export const loadProjectHistory = query({
+// Note: This is a mutation (not query) because it needs to be called imperatively
+export const loadProjectHistory = mutation({
   args: {
     projectId: v.string(),
     historyType: v.union(v.literal("past"), v.literal("future")),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useMemo, memo } from "react";
+import React, { useRef, useEffect, useState, useMemo, memo } from "react";
 import { Rect, Text, Group, Image as KonvaImage } from "react-konva";
 import type { Clip, MediaAssetMeta } from "@/lib/editor/types";
 
@@ -205,7 +205,7 @@ const KonvaClipItemComponent = ({
         const tilesNeeded = Math.ceil(clipWidth / tileWidth);
 
         // Generate tiles by repeating/cycling through available thumbnails
-        const tiles: JSX.Element[] = [];
+        const tiles: React.ReactElement[] = [];
         for (let i = 0; i < tilesNeeded; i++) {
           const thumbnailIndex = i % thumbnailImages.length; // Cycle through thumbnails
           const img = thumbnailImages[thumbnailIndex];
