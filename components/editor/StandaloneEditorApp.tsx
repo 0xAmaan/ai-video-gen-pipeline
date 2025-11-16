@@ -25,6 +25,7 @@ export const StandaloneEditorApp = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
+  const thumbnailAttemptsRef = useRef<Set<string>>(new Set());
   const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{
@@ -210,44 +211,66 @@ export const StandaloneEditorApp = ({
   useEffect(() => {
     if (!ready || !project || !mediaManager) return;
 
-    const generateMissingThumbnails = async () => {
-      const assets = Object.values(project.mediaAssets);
-
-      for (const asset of assets) {
-        // Skip if not a video or already has thumbnails
-        if (asset.type !== "video" || asset.thumbnails?.length) continue;
-
-        // Skip if no URL
-        if (!asset.url) {
-          continue;
+    const assetsNeedingThumbnails = Object.values(project.mediaAssets).filter(
+      (asset) => {
+        // Skip if already attempted
+        if (thumbnailAttemptsRef.current.has(asset.id)) {
+          return false;
         }
-
-        try {
-          const thumbnails = await mediaManager.generateThumbnails(
-            asset.id,
-            asset.url,
-            asset.duration,
-            5, // Reduced from 15 to stay under Convex 1MB limit
-          );
-
-          // Update the asset in the store
-          const updatedAsset = {
-            ...asset,
-            thumbnails,
-            thumbnailCount: thumbnails.length,
-          };
-          actions.addMediaAsset(updatedAsset);
-        } catch (error) {
-          // Silently handle thumbnail generation errors
-        }
+        return asset.type === "video" && asset.url && !asset.thumbnails;
       }
-    };
+    );
 
-    generateMissingThumbnails();
+    if (assetsNeedingThumbnails.length === 0) return;
+
+    console.log(`[Editor] Generating thumbnails for ${assetsNeedingThumbnails.length} video asset(s)`);
+
+    // Generate thumbnails for all video assets in parallel
+    const thumbnailPromises = assetsNeedingThumbnails.map(async (asset) => {
+      // Mark as attempted
+      thumbnailAttemptsRef.current.add(asset.id);
+
+      try {
+        console.log(`[Editor] Starting thumbnail generation for asset ${asset.id}`);
+        const thumbnails = await mediaManager.generateThumbnails(
+          asset.id,
+          asset.url,
+          asset.duration,
+          1 // Generate only first frame (CapCut style)
+        );
+        // Update asset with thumbnails
+        actions.addMediaAsset({
+          ...asset,
+          thumbnails,
+          thumbnailCount: thumbnails.length,
+        });
+        console.log(`[Editor] Successfully updated asset ${asset.id} with ${thumbnails.length} thumbnails`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[Editor] Failed to generate thumbnails for ${asset.id}:`, {
+          error: errorMessage,
+          assetUrl: asset.url,
+          assetType: asset.type,
+        });
+
+        // Mark asset with empty thumbnail array to prevent retry loop
+        actions.addMediaAsset({
+          ...asset,
+          thumbnails: [],
+          thumbnailCount: 0,
+        });
+      }
+    });
+
+    // Wait for all thumbnails to complete (optional, but good for debugging)
+    Promise.all(thumbnailPromises)
+      .then(() => console.log(`[Editor] All thumbnail generation complete`))
+      .catch((err) => console.error(`[Editor] Thumbnail generation error:`, err));
   }, [ready, project, mediaManager, actions]);
 
   const handleImport = async (files: FileList | null) => {
     if (!files || !mediaManager) return;
+    console.log(`[Editor] Importing ${files.length} file(s)`);
     const imports: Promise<MediaAssetMeta>[] = [];
     Array.from(files).forEach((file) => {
       imports.push(mediaManager.importFile(file));
@@ -255,23 +278,55 @@ export const StandaloneEditorApp = ({
     const results = await Promise.all(imports);
 
     // Generate thumbnails for video assets
-    for (const asset of results) {
-      if (asset.type === "video" && asset.url) {
+    const videoAssets = results.filter((asset) => asset.type === "video" && asset.url);
+    if (videoAssets.length > 0) {
+      console.log(`[Editor] Generating thumbnails for ${videoAssets.length} imported video(s)`);
+      const thumbnailPromises = videoAssets.map(async (asset) => {
+        // Mark as attempted
+        thumbnailAttemptsRef.current.add(asset.id);
+
         try {
+          console.log(`[Editor] Starting thumbnail generation for imported asset ${asset.id}`);
           const thumbnails = await mediaManager.generateThumbnails(
             asset.id,
             asset.url,
             asset.duration,
-            5, // Reduced from 15 to stay under Convex 1MB limit
+            1 // Generate only first frame (CapCut style)
           );
-          asset.thumbnails = thumbnails;
-          asset.thumbnailCount = thumbnails.length;
+          // Update the asset with thumbnails
+          actions.addMediaAsset({
+            ...asset,
+            thumbnails,
+            thumbnailCount: thumbnails.length,
+          });
+          console.log(`[Editor] Successfully updated imported asset ${asset.id} with ${thumbnails.length} thumbnails`);
         } catch (error) {
-          // Silently handle thumbnail generation errors
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[Editor] Failed to generate thumbnails for imported asset ${asset.id}:`, {
+            error: errorMessage,
+            assetUrl: asset.url,
+            assetType: asset.type,
+          });
+
+          // Mark asset with empty thumbnail array to prevent retry loop
+          actions.addMediaAsset({
+            ...asset,
+            thumbnails: [],
+            thumbnailCount: 0,
+          });
         }
-      }
-      actions.addMediaAsset(asset);
+      });
+
+      Promise.all(thumbnailPromises)
+        .then(() => console.log(`[Editor] All import thumbnail generation complete`))
+        .catch((err) => console.error(`[Editor] Import thumbnail generation error:`, err));
     }
+
+    // Add all assets to the store
+    results.forEach((asset) => {
+      console.log(`[Editor] Added media asset: ${asset.id} (${asset.type})`);
+      actions.addMediaAsset(asset);
+    });
   };
 
   const handleExport = async (options: {
