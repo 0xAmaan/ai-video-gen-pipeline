@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { ModelSelector } from "@/components/ui/model-selector";
+import { useTextToTextModel, useModelSelectionEnabled } from "@/lib/stores/modelStore";
 
 interface InputPhaseProps {
   onComplete: (data: {
@@ -35,6 +37,9 @@ export const InputPhase = ({
   initialPrompt,
   initialQuestions,
 }: InputPhaseProps) => {
+  const selectedModel = useTextToTextModel();
+  const modelSelectionEnabled = useModelSelectionEnabled();
+
   const [step, setStep] = useState<Step>(
     initialQuestions ? "questions" : "prompt",
   );
@@ -126,10 +131,28 @@ export const InputPhase = ({
     setError(null);
 
     try {
+      console.log('🔧 Model selection enabled:', modelSelectionEnabled);
+      console.log('🔧 Selected model:', selectedModel);
+
+      const requestBody: { prompt: string; model?: string } = {
+        prompt: prompt.trim(),
+      };
+
+      // Always include model if model selection is enabled and a model is selected
+      if (modelSelectionEnabled && selectedModel) {
+        requestBody.model = selectedModel;
+        console.log('🔧 Sending model in request:', selectedModel);
+      } else {
+        console.log('🔧 Model selection disabled or no model selected, not sending model');
+        console.log('🔧 modelSelectionEnabled:', modelSelectionEnabled, 'selectedModel:', selectedModel);
+      }
+
+      console.log('🔧 Final request body:', JSON.stringify(requestBody, null, 2));
+
       const response = await fetch("/api/generate-questions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim() }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -216,6 +239,15 @@ export const InputPhase = ({
             <p className="text-lg text-muted-foreground">
               Start by describing what you want to create
             </p>
+          </div>
+
+          {/* Model Selection */}
+          <div className="mb-6">
+            <ModelSelector
+              step="text-to-text"
+              title="Question Generation Model"
+              description="Select the AI model that will generate clarifying questions for your video concept"
+            />
           </div>
 
           <div className="bg-card border border-border rounded-xl p-8 shadow-xl shadow-black/40">

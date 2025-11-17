@@ -26,6 +26,8 @@ import {
 } from "@/components/VoiceSelectionDialog";
 import { MINIMAX_VOICES } from "@/lib/voice-selection";
 import type { MiniMaxVoiceId } from "@/lib/voice-selection";
+import { ModelSelector } from "@/components/ui/model-selector";
+import { useModelSelectionEnabled } from "@/lib/stores/modelStore";
 
 interface StoryboardPhaseProps {
   prompt: string;
@@ -49,6 +51,7 @@ export const StoryboardPhase = ({
     Set<string>
   >(new Set());
   const [showVoiceDialog, setShowVoiceDialog] = useState(false);
+  const modelSelectionEnabled = useModelSelectionEnabled();
 
   // Convex mutations
   const updateScene = useMutation(api.video.updateScene);
@@ -74,7 +77,11 @@ export const StoryboardPhase = ({
         image: scene.imageUrl || "",
         description: scene.description,
         visualPrompt: scene.visualPrompt,
-        duration: scene.duration,
+        // Default to 5 seconds if duration is missing or invalid
+        duration:
+          typeof scene.duration === "number" && scene.duration > 0
+            ? scene.duration
+            : 5,
         sceneNumber: scene.sceneNumber,
         narrationUrl: scene.narrationUrl || undefined,
         narrationText: scene.narrationText || "",
@@ -98,9 +105,14 @@ export const StoryboardPhase = ({
     voiceSettings?.voiceReasoning || "AI selected this voice for your prompt.";
 
   const handleDurationChange = async (id: string, duration: number) => {
+    // Clamp duration to 1-10 seconds range for safety
+    const clampedDuration = Math.max(1, Math.min(10, Math.round(duration)));
+
     // Update local state immediately
     setScenes((prev) =>
-      prev.map((scene) => (scene.id === id ? { ...scene, duration } : scene)),
+      prev.map((scene) =>
+        scene.id === id ? { ...scene, duration: clampedDuration } : scene,
+      ),
     );
 
     // Save to Convex
@@ -108,7 +120,7 @@ export const StoryboardPhase = ({
       try {
         await updateScene({
           sceneId: id as Id<"scenes">,
-          duration,
+          duration: clampedDuration,
         });
       } catch (error) {
         console.error("Failed to update scene duration:", error);
@@ -415,6 +427,17 @@ export const StoryboardPhase = ({
         </Card>
       </div>
 
+      {/* Video Generation Model Selection */}
+      {modelSelectionEnabled && (
+        <div className="mb-6">
+          <ModelSelector
+            step="image-to-video"
+            title="Video Generation Model"
+            description="Select the model for converting storyboard images to video clips"
+          />
+        </div>
+      )}
+
       {/* Stats */}
       <div className="flex items-center gap-4 mb-6">
         <Badge variant="secondary" className="text-base px-4 py-2">
@@ -617,13 +640,13 @@ export const StoryboardPhase = ({
                       onValueChange={([value]) =>
                         handleDurationChange(scene.id, value)
                       }
-                      min={5}
+                      min={1}
                       max={10}
-                      step={5}
+                      step={1}
                       className="w-full"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      WAN 2.5 supports 5s or 10s clips
+                      Choose a duration between 1 and 10 seconds. Note: Veo 3.1 and Veo 3.1 Fast only support 4s, 6s, or 8s clips.
                     </p>
                   </div>
                   <Button
