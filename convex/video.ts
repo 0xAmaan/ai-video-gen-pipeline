@@ -119,6 +119,7 @@ export const saveQuestions = mutation({
         ),
       }),
     ),
+    modelId: v.optional(v.string()), // Model used for generation (optional, for tracking)
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -139,11 +140,17 @@ export const saveQuestions = mutation({
       generatedAt: Date.now(),
     });
 
-    // Update project status
-    await ctx.db.patch(args.projectId, {
+    // Update project status (and optionally track which model was used)
+    const patchData: any = {
       status: "questions_generated",
       updatedAt: Date.now(),
-    });
+    };
+
+    if (args.modelId) {
+      patchData.questionGenerationModel = args.modelId;
+    }
+
+    await ctx.db.patch(args.projectId, patchData);
 
     return questionId;
   },

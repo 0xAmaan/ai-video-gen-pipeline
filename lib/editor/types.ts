@@ -5,12 +5,55 @@ export type EffectType =
   | "contrast"
   | "saturation"
   | "blur"
+  | "grain"
+  | "colorGrade"
+  | "vintage"
+  | "vignette"
+  | "filmLook"
   | "custom";
+
+// Filter parameter interfaces (for type safety and documentation)
+// All effects use flat params: Record<string, number> for consistency
+// These interfaces document the expected parameter keys for each filter type
+
+export interface GrainParams {
+  intensity: number; // 0-1, amount of grain
+  size: number; // 1-10, grain particle size
+}
+
+export interface ColorGradeParams {
+  temperature: number; // -1 to 1, warm/cool shift
+  tint: number; // -1 to 1, green/magenta shift
+  shadows: number; // -1 to 1, darken/lighten shadows
+  highlights: number; // -1 to 1, darken/lighten highlights
+  saturation: number; // 0-2, color saturation multiplier
+  contrast: number; // 0-2, contrast multiplier
+}
+
+export interface VintageParams {
+  fade: number; // 0-1, overall fade/wash effect
+  sepia: number; // 0-1, sepia tone intensity
+  vignette: number; // 0-1, vignette intensity
+  grain: number; // 0-1, film grain amount
+}
+
+export interface VignetteParams {
+  intensity: number; // 0-1, darkness of vignette
+  radius: number; // 0-1, size of vignette (0=small, 1=large)
+  softness: number; // 0-1, edge feathering
+}
+
+export interface FilmLookParams {
+  grain: number; // 0-1, film grain intensity
+  halation: number; // 0-1, light bloom effect
+  contrast: number; // 0-2, contrast curve
+  colorShift: number; // -1 to 1, color temperature shift
+}
 
 export interface Effect {
   id: string;
   type: EffectType;
-  params: Record<string, number>;
+  params: Record<string, number>; // Flat structure for all effect types
   enabled: boolean;
 }
 
