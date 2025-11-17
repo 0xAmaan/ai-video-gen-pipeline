@@ -58,6 +58,7 @@ export const saveQuestions = mutation({
         ),
       }),
     ),
+    modelId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -81,6 +82,7 @@ export const saveQuestions = mutation({
     // Update project status
     await ctx.db.patch(args.projectId, {
       status: "questions_generated",
+      textModelId: args.modelId ?? undefined,
       updatedAt: Date.now(),
     });
 
@@ -220,6 +222,7 @@ export const saveScenes = mutation({
         replicateImageId: v.optional(v.string()),
       }),
     ),
+    modelId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -260,6 +263,7 @@ export const saveScenes = mutation({
     // Update project status
     await ctx.db.patch(args.projectId, {
       status: "storyboard_created",
+      imageModelId: args.modelId ?? undefined,
       updatedAt: now,
     });
 
@@ -687,6 +691,162 @@ export const updateProjectStatus = mutation({
 
     await ctx.db.patch(args.projectId, {
       status: args.status,
+      updatedAt: Date.now(),
+    });
+
+    return args.projectId;
+  },
+});
+
+export const updateProjectModelSelection = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    stage: v.union(
+      v.literal("text"),
+      v.literal("image"),
+      v.literal("video"),
+    ),
+    modelId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.stage === "text") {
+      updates.textModelId = args.modelId;
+    } else if (args.stage === "image") {
+      updates.imageModelId = args.modelId;
+    } else if (args.stage === "video") {
+      updates.videoModelId = args.modelId;
+    }
+
+    await ctx.db.patch(args.projectId, updates);
+    return args.projectId;
+  },
+});
+
+export const resetProjectPhase = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    stage: v.union(
+      v.literal("text"),
+      v.literal("image"),
+      v.literal("video"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const deleteVideoArtifacts = async (preserveScenes: boolean) => {
+      const clips = await ctx.db
+        .query("videoClips")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+      await Promise.all(clips.map((clip) => ctx.db.delete(clip._id)));
+
+      const finalVideos = await ctx.db
+        .query("finalVideos")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+      await Promise.all(finalVideos.map((video) => ctx.db.delete(video._id)));
+
+      if (preserveScenes) {
+        const projectScenes = await ctx.db
+          .query("scenes")
+          .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+          .collect();
+        await Promise.all(
+          projectScenes.map((scene) =>
+            ctx.db.patch(scene._id, {
+              lipsyncVideoUrl: undefined,
+              lipsyncStatus: undefined,
+              lipsyncPredictionId: undefined,
+            }),
+          ),
+        );
+      }
+    };
+
+    if (args.stage === "video") {
+      await deleteVideoArtifacts(true);
+      await ctx.db.patch(args.projectId, {
+        status: "storyboard_created",
+        videoModelId: undefined,
+        updatedAt: Date.now(),
+      });
+      return args.projectId;
+    }
+
+    if (args.stage === "image") {
+      await deleteVideoArtifacts(false);
+
+      const scenes = await ctx.db
+        .query("scenes")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+      await Promise.all(scenes.map((scene) => ctx.db.delete(scene._id)));
+
+      const voiceSettings = await ctx.db
+        .query("projectVoiceSettings")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+      await Promise.all(
+        voiceSettings.map((setting) => ctx.db.delete(setting._id)),
+      );
+
+      await ctx.db.patch(args.projectId, {
+        status: "questions_answered",
+        imageModelId: undefined,
+        videoModelId: undefined,
+        updatedAt: Date.now(),
+      });
+      return args.projectId;
+    }
+
+    // Resetting the prompt/text phase clears everything downstream
+    await deleteVideoArtifacts(false);
+
+    const scenes = await ctx.db
+      .query("scenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(scenes.map((scene) => ctx.db.delete(scene._id)));
+
+    const voiceSettings = await ctx.db
+      .query("projectVoiceSettings")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(
+      voiceSettings.map((setting) => ctx.db.delete(setting._id)),
+    );
+
+    const questions = await ctx.db
+      .query("clarifyingQuestions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(questions.map((question) => ctx.db.delete(question._id)));
+
+    await ctx.db.patch(args.projectId, {
+      status: "draft",
+      textModelId: undefined,
+      imageModelId: undefined,
+      videoModelId: undefined,
       updatedAt: Date.now(),
     });
 
