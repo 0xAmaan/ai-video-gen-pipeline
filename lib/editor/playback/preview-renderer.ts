@@ -300,7 +300,19 @@ export class PreviewRenderer {
           const nextAsset = this.getAsset(this.nextClip.mediaId);
           if (nextAsset && this.nextVideoEl && this.nextVideoEl.src !== nextAsset.url) {
             this.nextVideoEl.src = nextAsset.url;
-            this.nextVideoEl.currentTime = this.nextClip.trimStart;
+            // Force preload to ensure video is ready for transitions
+            this.nextVideoEl.preload = 'auto';
+            // Wait for metadata before seeking
+            if (this.nextVideoEl.readyState === 0) {
+              this.nextVideoEl.addEventListener('loadedmetadata', () => {
+                if (this.nextVideoEl && this.nextClip) {
+                  this.nextVideoEl.currentTime = this.nextClip.trimStart;
+                }
+              }, { once: true });
+              this.nextVideoEl.load();
+            } else {
+              this.nextVideoEl.currentTime = this.nextClip.trimStart;
+            }
           }
         } else {
           this.nextClip = undefined;
@@ -358,23 +370,43 @@ export class PreviewRenderer {
 
     if (hasVideo && transitionInfo && this.nextVideoEl) {
       // Render transition between current and next clip
+      // Note: readyState >= 1 (HAVE_METADATA) is sufficient - we just need dimensions
       const hasNextVideo =
-        this.nextVideoEl.readyState >= 2 &&
+        this.nextVideoEl.readyState >= 1 &&
         this.nextVideoEl.videoWidth > 0 &&
         this.nextVideoEl.videoHeight > 0;
 
       if (hasNextVideo) {
         this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-        // Render transition
-        renderTransition(transitionInfo.type as TransitionType, {
-          ctx: this.ctx,
-          width: canvasWidth,
-          height: canvasHeight,
-          fromFrame: video,
-          toFrame: this.nextVideoEl,
-          progress: transitionInfo.progress,
-        });
+        // Create temporary canvases for aspect-ratio-corrected frames
+        const fromCanvas = document.createElement('canvas');
+        fromCanvas.width = canvasWidth;
+        fromCanvas.height = canvasHeight;
+        const fromCtx = fromCanvas.getContext('2d');
+
+        const toCanvas = document.createElement('canvas');
+        toCanvas.width = canvasWidth;
+        toCanvas.height = canvasHeight;
+        const toCtx = toCanvas.getContext('2d');
+
+        if (fromCtx && toCtx) {
+          // Draw current video with proper aspect ratio to fromCanvas
+          this.drawVideoToCanvas(fromCtx, video, canvasWidth, canvasHeight);
+
+          // Draw next video with proper aspect ratio to toCanvas
+          this.drawVideoToCanvas(toCtx, this.nextVideoEl, canvasWidth, canvasHeight);
+
+          // Render transition using aspect-corrected canvases
+          renderTransition(transitionInfo.type as TransitionType, {
+            ctx: this.ctx,
+            width: canvasWidth,
+            height: canvasHeight,
+            fromFrame: fromCanvas,
+            toFrame: toCanvas,
+            progress: transitionInfo.progress,
+          });
+        }
       } else {
         // Next video not ready, just draw current frame
         this.drawSingleFrame(video, canvasWidth, canvasHeight);
@@ -391,17 +423,24 @@ export class PreviewRenderer {
     this.isDrawingFrame = false;
   }
 
-  private drawSingleFrame(
+  /**
+   * Helper method to draw a video to a canvas with proper aspect ratio
+   * This is used both for single frame rendering and transition rendering
+   */
+  private drawVideoToCanvas(
+    ctx: CanvasRenderingContext2D,
     video: HTMLVideoElement,
     canvasWidth: number,
     canvasHeight: number,
   ) {
-    if (!this.ctx) return;
-
     // Safety check for video dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
       return; // Video not ready yet
     }
+
+    // Fill entire canvas with black background first
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     // Calculate aspect ratios
     const videoAspect = video.videoWidth / video.videoHeight;
@@ -418,25 +457,24 @@ export class PreviewRenderer {
       drawWidth = canvasWidth;
       drawHeight = canvasWidth / videoAspect;
       offsetY = (canvasHeight - drawHeight) / 2;
-
-      // Clear letterbox bars ONLY (not entire canvas)
-      this.ctx.fillStyle = "#050505";
-      this.ctx.fillRect(0, 0, canvasWidth, offsetY); // Top bar
-      this.ctx.fillRect(0, offsetY + drawHeight, canvasWidth, offsetY); // Bottom bar
     } else {
       // Video is taller - fit to height, add pillarbox (black bars left/right)
       drawHeight = canvasHeight;
       drawWidth = canvasHeight * videoAspect;
       offsetX = (canvasWidth - drawWidth) / 2;
-
-      // Clear pillarbox bars ONLY (not entire canvas)
-      this.ctx.fillStyle = "#050505";
-      this.ctx.fillRect(0, 0, offsetX, canvasHeight); // Left bar
-      this.ctx.fillRect(offsetX + drawWidth, 0, offsetX, canvasHeight); // Right bar
     }
 
     // Draw video centered with correct aspect ratio
-    this.ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+    ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+  }
+
+  private drawSingleFrame(
+    video: HTMLVideoElement,
+    canvasWidth: number,
+    canvasHeight: number,
+  ) {
+    if (!this.ctx) return;
+    this.drawVideoToCanvas(this.ctx, video, canvasWidth, canvasHeight);
   }
 
   private getActiveTransition(): {
@@ -444,10 +482,6 @@ export class PreviewRenderer {
     progress: number;
   } | null {
     if (!this.currentClip || !this.nextClip) {
-      // Debug: Log when we don't have both clips
-      if (this.currentClip && !this.nextClip) {
-        console.log('[PreviewRenderer] No next clip for transition');
-      }
       return null;
     }
 
@@ -475,8 +509,6 @@ export class PreviewRenderer {
       // Apply easing function (reconstruct from string identifier)
       const easingFn = getEasingFunction(transition.easing);
       const progress = easingFn(rawProgress);
-
-      console.log(`[PreviewRenderer] Active transition: ${transition.type} at ${(progress * 100).toFixed(1)}%`);
 
       return {
         type: transition.type,

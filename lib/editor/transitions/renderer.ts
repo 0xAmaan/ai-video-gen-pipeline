@@ -26,8 +26,9 @@ export function renderTransition(
 ): void {
   const { ctx, width, height, fromFrame, toFrame, progress } = context;
 
-  // Clear canvas
-  ctx.clearRect(0, 0, width, height);
+  // Fill canvas with black background (don't use clearRect as it creates transparency)
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, width, height);
 
   switch (type) {
     case "fade":
