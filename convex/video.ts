@@ -422,8 +422,10 @@ export const updateSceneNarration = mutation({
     }
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
-    if (args.narrationUrl !== undefined) updates.narrationUrl = args.narrationUrl;
-    if (args.narrationText !== undefined) updates.narrationText = args.narrationText;
+    if (args.narrationUrl !== undefined)
+      updates.narrationUrl = args.narrationUrl;
+    if (args.narrationText !== undefined)
+      updates.narrationText = args.narrationText;
     if (args.voiceId !== undefined) updates.voiceId = args.voiceId;
     if (args.voiceName !== undefined) updates.voiceName = args.voiceName;
 
@@ -602,8 +604,8 @@ export const updateProjectAudioTrackSettings = mutation({
       throw new Error("Project not found or unauthorized");
     }
 
-    const currentSettings: AudioTrackSettings =
-      (project.audioTrackSettings ?? {}) as AudioTrackSettings;
+    const currentSettings: AudioTrackSettings = (project.audioTrackSettings ??
+      {}) as AudioTrackSettings;
     const settingsKey = audioTrackKeyMap[args.trackId];
     const existingTrack = currentSettings[settingsKey] ?? {};
     const updatedTrack = {
@@ -1310,98 +1312,6 @@ export const getVideoClips = query({
       .collect();
 
     return clips;
-  },
-});
-
-// Create final video record
-export const createFinalVideo = mutation({
-  args: {
-    projectId: v.id("videoProjects"),
-    duration: v.number(),
-    resolution: v.string(),
-    clipCount: v.number(),
-    includesNarration: v.optional(v.boolean()),
-    narrationVoiceId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    // Verify project ownership
-    const project = await ctx.db.get(args.projectId);
-    if (!project || project.userId !== identity.subject) {
-      throw new Error("Project not found or unauthorized");
-    }
-
-    const now = Date.now();
-    const videoId = await ctx.db.insert("finalVideos", {
-      projectId: args.projectId,
-      duration: args.duration,
-      resolution: args.resolution,
-      clipCount: args.clipCount,
-      includesNarration: args.includesNarration,
-      narrationVoiceId: args.narrationVoiceId,
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return videoId;
-  },
-});
-
-// Update final video
-export const updateFinalVideo = mutation({
-  args: {
-    videoId: v.id("finalVideos"),
-    status: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("processing"),
-        v.literal("complete"),
-        v.literal("failed"),
-      ),
-    ),
-    videoUrl: v.optional(v.string()),
-    totalCost: v.optional(v.number()),
-    includesNarration: v.optional(v.boolean()),
-    narrationVoiceId: v.optional(v.string()),
-    errorMessage: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    // Get the video
-    const video = await ctx.db.get(args.videoId);
-    if (!video) {
-      throw new Error("Video not found");
-    }
-
-    // Verify project ownership
-    const project = await ctx.db.get(video.projectId);
-    if (!project || project.userId !== identity.subject) {
-      throw new Error("Project not found or unauthorized");
-    }
-
-    const updates: any = { updatedAt: Date.now() };
-    if (args.status !== undefined) updates.status = args.status;
-    if (args.videoUrl !== undefined) updates.videoUrl = args.videoUrl;
-    if (args.totalCost !== undefined) updates.totalCost = args.totalCost;
-    if (args.includesNarration !== undefined)
-      updates.includesNarration = args.includesNarration;
-    if (args.narrationVoiceId !== undefined)
-      updates.narrationVoiceId = args.narrationVoiceId;
-    if (args.errorMessage !== undefined)
-      updates.errorMessage = args.errorMessage;
-
-    await ctx.db.patch(args.videoId, updates);
-
-    return args.videoId;
   },
 });
 

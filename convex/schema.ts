@@ -228,24 +228,4 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_scene", ["sceneId"]),
-
-  finalVideos: defineTable({
-    projectId: v.id("videoProjects"),
-    duration: v.number(),
-    resolution: v.string(),
-    clipCount: v.number(),
-    includesNarration: v.optional(v.boolean()),
-    narrationVoiceId: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("processing"),
-      v.literal("complete"),
-      v.literal("failed"),
-    ),
-    videoUrl: v.optional(v.string()),
-    totalCost: v.optional(v.number()),
-    errorMessage: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
 });
