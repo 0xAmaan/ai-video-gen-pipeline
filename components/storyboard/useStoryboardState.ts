@@ -19,11 +19,29 @@ export function useStoryboardState(
   >(new Set());
   const [showVoiceDialog, setShowVoiceDialog] = useState(false);
 
+  // Music state
+  const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(
+    null,
+  );
+  const [backgroundMusicPrompt, setBackgroundMusicPrompt] =
+    useState<string>("");
+  const [audioTrackSettings, setAudioTrackSettings] = useState({
+    narration: { volume: 1.0, muted: false },
+    bgm: { volume: 0.6, muted: false },
+    sfx: { volume: 0.8, muted: false },
+  });
+
   // Convex mutations
   const updateScene = useMutation(api.video.updateScene);
   const updateSceneOrder = useMutation(api.video.updateSceneOrder);
   const deleteSceneMutation = useMutation(api.video.deleteScene);
   const updateVoiceSettings = useMutation(api.video.updateProjectVoiceSettings);
+  const updateProjectBackgroundMusic = useMutation(
+    api.video.updateProjectBackgroundMusic,
+  );
+  const updateProjectAudioTrackSettings = useMutation(
+    api.video.updateProjectAudioTrackSettings,
+  );
 
   // Load scenes from Convex
   const convexScenes = useQuery(
@@ -72,6 +90,50 @@ export function useStoryboardState(
   const currentVoiceReasoning =
     voiceSettings?.voiceReasoning || "AI selected this voice for your prompt.";
 
+  // Music handlers
+  const handleMusicGenerated = async (
+    url: string,
+    prompt: string,
+    source: "generated" | "freesound",
+  ) => {
+    if (!projectId) return;
+
+    setBackgroundMusicUrl(url);
+    setBackgroundMusicPrompt(prompt);
+
+    await updateProjectBackgroundMusic({
+      projectId,
+      backgroundMusicUrl: url,
+      backgroundMusicSource: source,
+      backgroundMusicPrompt: prompt,
+    });
+  };
+
+  const handleAudioTrackUpdate = async (
+    track: "narration" | "bgm" | "sfx",
+    settings: Partial<{ volume: number; muted: boolean }>,
+  ) => {
+    if (!projectId) return;
+
+    const trackIdMap = {
+      narration: "audio-narration" as const,
+      bgm: "audio-bgm" as const,
+      sfx: "audio-sfx" as const,
+    };
+
+    setAudioTrackSettings((prev) => ({
+      ...prev,
+      [track]: { ...prev[track], ...settings },
+    }));
+
+    await updateProjectAudioTrackSettings({
+      projectId,
+      trackId: trackIdMap[track],
+      volume: settings.volume,
+      muted: settings.muted,
+    });
+  };
+
   return {
     scenes,
     setScenes,
@@ -92,5 +154,11 @@ export function useStoryboardState(
     currentVoiceLabel,
     currentVoiceReasoning,
     voiceSettings,
+    // Music state and handlers
+    backgroundMusicUrl,
+    backgroundMusicPrompt,
+    audioTrackSettings,
+    handleMusicGenerated,
+    handleAudioTrackUpdate,
   };
 }
