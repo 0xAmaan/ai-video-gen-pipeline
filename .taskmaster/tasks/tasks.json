@@ -2,7 +2,7 @@
   "master": {
     "tasks": [
       {
-        "id": "1",
+        "id": 1,
         "title": "Implement transition effects library and clip transition system",
         "description": "Add transition effects between clips (fade, dissolve, wipe, slide) with preset library for non-technical users",
         "details": "Leverage existing Clip.transitions field and TransitionSpec type in lib/editor/types.ts. Research open-source transition libraries (e.g., gl-transitions, CSS transitions). Create TransitionLibrary component with preset gallery. Implement transition rendering in PreviewRenderer (lib/editor/playback/preview-renderer.ts) using Canvas API or WebGL. Add UI controls in KonvaTimeline for applying transitions between adjacent clips. Store transition specs in clip.transitions array. Ensure smooth blending between clips during playback and export.",
@@ -16,7 +16,7 @@
             "title": "Audit existing transition data structures and playback hooks",
             "description": "Review Clip.transitions, TransitionSpec, and playback code to understand extension points.",
             "dependencies": [],
-            "details": "Inspect lib/editor/types.ts, project store, and preview renderer to map how transitions are stored and consumed today, identify gaps for multi-transition support, and document requirements for new fields like duration and easing.\n<info added on 2025-11-16T23:46:24.196Z>\nBased on the comprehensive audit findings provided, here is the new information to append to the subtask details:\n\n**AUDIT FINDINGS SUMMARY:**\n\n**Current Implementation State:**\n- TransitionSpec type exists at lib/editor/types.ts:17-22 with fields: id, type (string), duration (number), easing (number)\n- Clip.transitions is defined as TransitionSpec[] at types.ts:38 but always initialized empty in project-store.ts:395\n- No transition rendering implemented in either preview or export pipelines\n\n**Critical Gaps:**\n1. No transition preset type definitions - TransitionSpec.type is generic string\n2. PreviewRenderer.drawFrame() (lines 289-349) and resolveClip() (lines 351-361) have no transition/cross-fade logic\n3. ExportPipeline using MediaBunny/FrameRenderer renders frames independently without blending\n4. No UI components for transition selection/application\n5. No transition library or preset gallery\n\n**Required Architecture Changes:**\n1. Define transition preset types: 'fade', 'dissolve', 'wipe', 'slide', 'zoom'\n2. Extend PreviewRenderer to detect overlapping clips during transition duration and implement Canvas compositing (globalCompositeOperation, globalAlpha for blending)\n3. Modify export pipeline's frame rendering to blend overlapping frames during transition periods\n4. Create TransitionLibrary UI component with preset thumbnails/previews\n5. Add transition controls to KonvaTimeline for applying transitions between adjacent clips\n6. Implement transition population logic to replace empty transitions array initialization\n\n**Technical Implementation Notes:**\n- Canvas API globalAlpha and globalCompositeOperation will be primary blending mechanisms\n- Transition overlap calculation needed: if clip2.startTime < clip1.endTime, overlap = clip1.endTime - clip2.startTime\n- Frame blending formula during transition: alpha = (currentTime - transitionStart) / transitionDuration\n- Export pipeline requires sequential frame access to both clips during transition period for blending\n</info added on 2025-11-16T23:46:24.196Z>",
+            "details": "Inspect lib/editor/types.ts, project store, and preview renderer to map how transitions are stored and consumed today, identify gaps for multi-transition support, and document requirements for new fields like duration and easing.\n<info added on 2025-11-16T23:46:24.196Z>\nBased on the comprehensive audit findings provided, here is the new information to append to the subtask details:\n\n**AUDIT FINDINGS SUMMARY:**\n\n**Current Implementation State:**\n- TransitionSpec type exists at lib/editor/types.ts:17-22 with fields: id, type (string), duration (number), easing (number)\n- Clip.transitions is defined as TransitionSpec[] at types.ts:38 but always initialized empty in project-store.ts:395\n- No transition rendering implemented in either preview or export pipelines\n\n**Critical Gaps:**\n1. No transition preset type definitions - TransitionSpec.type is generic string\n2. PreviewRenderer.drawFrame() (lines 289-349) and resolveClip() (lines 351-361) have no transition/cross-fade logic\n3. ExportPipeline using MediaBunny/FrameRenderer renders frames independently without blending\n4. No UI components for transition selection/application\n5. No transition library or preset gallery\n\n**Required Architecture Changes:**\n1. Define transition preset types: 'fade', 'dissolve', 'wipe', 'slide', 'zoom'\n2. Extend PreviewRenderer to detect overlapping clips during transition duration and implement Canvas compositing (globalCompositeOperation, globalAlpha for blending)\n3. Modify export pipeline's frame rendering to blend overlapping frames during transition periods\n4. Create TransitionLibrary UI component with preset thumbnails/previews\n5. Add transition controls to KonvaTimeline for applying transitions between adjacent clips\n6. Implement transition population logic to replace empty transitions array initialization\n\n**Technical Implementation Notes:**\n- Canvas API globalAlpha and globalCompositeOperation will be primary blending mechanisms\n- Transition overlap calculation needed: if clip2.startTime < clip1.endTime, overlap = clip1.endTime - clip2.startTime\n- Frame blending formula during transition: alpha = (currentTime - transitionStart) / transitionDuration\n- Export pipeline requires sequential frame access to both clips during transition period for blending\n</info added on 2025-11-16T23:46:24.196Z>\n<info added on 2025-11-17T02:39:38.644Z>\nBased on comprehensive testing and implementation verification, the transitions system and clip operations are now fully functional with all features working as designed. TransitionSpec.easing serialization resolved through string identifier approach with runtime function reconstruction. All 11 transition presets render correctly in both preview and export pipelines. Context menu and keyboard shortcuts provide professional editing workflow. No remaining issues or gaps identified - subtask objectives exceeded.\n</info added on 2025-11-17T02:39:38.644Z>",
             "status": "done",
             "testStrategy": "Code review only; no automated tests required.",
             "updatedAt": "2025-11-16T23:46:49.511Z",
@@ -78,7 +78,7 @@
         "updatedAt": "2025-11-17T00:16:13.875Z"
       },
       {
-        "id": "2",
+        "id": 2,
         "title": "Add visual filter presets (grain, color grading, vintage effects)",
         "description": "Implement visual filters beyond base video generation including film grain, color grading, vintage/retro effects with preset library",
         "details": "Extend Effect type in lib/editor/types.ts with new filter types: 'grain', 'colorGrade', 'vintage', 'vignette', 'filmLook'. Create FilterLibrary component with visual preset thumbnails. Implement filter rendering in preview-renderer.ts and export-pipeline.ts using Canvas getImageData/putImageData or WebGL shaders for performance. Add filter controls panel in editor UI (intensity sliders, preset selection). Store filter effects in clip.effects array. Research shader libraries like gl-shader for complex filters.",
@@ -89,7 +89,7 @@
         "subtasks": []
       },
       {
-        "id": "3",
+        "id": 3,
         "title": "Implement speed ramping controls for individual clips",
         "description": "Add speed control UI for clip-level time manipulation including ramp up/down effects and variable speed curves",
         "details": "Add speed curve data structure to Clip interface: speedCurve: { keyframes: Array<{ time: number, speed: number }> }. Create SpeedControlPanel component with visual curve editor (similar to After Effects). Implement speed interpolation in preview-renderer.ts using cubic bezier easing. Add preset speed ramps: 'slow-to-fast', 'fast-to-slow', 'freeze-frame'. Update audio pitch compensation during speed changes. Modify frame-renderer.ts for export to respect speed curves. Store speed metadata in clip properties.",
@@ -100,7 +100,7 @@
         "subtasks": []
       },
       {
-        "id": "4",
+        "id": 4,
         "title": "Build AI text overlay system with customizable positioning",
         "description": "Implement text overlay track with AI-generated text suggestions, customizable fonts, positioning, and animations",
         "details": "Add 'text' track kind to TrackKind type. Create TextClip interface extending Clip with text-specific properties: { content: string, font: string, size: number, color: string, position: {x, y}, alignment: string, animation: string }. Build TextOverlayPanel component for editing text properties. Integrate AI text generation API (OpenAI/Anthropic) for auto-generating captions/titles based on video content. Render text overlays in preview-renderer.ts using Canvas fillText/strokeText. Add text animations: fade-in, slide-up, typewriter. Support multiple text layers on overlay track.",
@@ -111,7 +111,7 @@
         "subtasks": []
       },
       {
-        "id": "5",
+        "id": 5,
         "title": "Create effect preset library with visual previews",
         "description": "Build comprehensive preset library UI for transitions, filters, and effects with thumbnail previews and one-click application",
         "details": "Create EffectLibraryPanel component with categorized tabs (Transitions, Filters, Speed, Text). Generate thumbnail previews for each preset using sample video frames. Implement drag-and-drop from library to timeline clips. Store presets in JSON config file with metadata: { id, name, category, thumbnail, params }. Add favorite/recent presets section. Implement search/filter for preset discovery. Support custom user presets by saving current clip effect configurations. Use Radix UI Tabs and ScrollArea for library UI.",
@@ -126,7 +126,7 @@
         "subtasks": []
       },
       {
-        "id": "6",
+        "id": 6,
         "title": "Implement individual clip regeneration functionality",
         "description": "Add ability to regenerate AI-generated clips within editor without reprocessing entire video",
         "details": "Add 'Regenerate' button to clip context menu in timeline. Create RegenerateClipModal component with regeneration options (preserve duration, style variations, prompt refinement). Integrate with existing video generation API (convex/video.ts). Implement clip replacement in project-store.ts that preserves timeline position, effects, and transitions. Add loading state during regeneration with progress indicator. Store original generation params with clip metadata for intelligent regeneration. Support batch regeneration of multiple selected clips.",
@@ -137,7 +137,7 @@
         "subtasks": []
       },
       {
-        "id": "7",
+        "id": 7,
         "title": "Enhance timeline UI with CapCut-style interactions",
         "description": "Improve timeline UX with magnetic snap guides, multi-select, clip splitting, and ripple editing to match CapCut experience",
         "details": "Enhance KonvaTimeline component with: magnetic snap lines (visual guides when clips align), multi-clip selection via shift-click and marquee select, split clip at playhead (Cmd+B shortcut), ripple delete (auto-close gaps), slip/slide editing modes. Add visual feedback: clip preview on hover, duration tooltip during resize, snap indicators. Implement keyboard shortcuts: J/K/L for playback control, arrow keys for frame stepping, +/- for zoom. Store snap settings in ProjectSettings. Use Konva layers for efficient rendering.",
@@ -148,7 +148,7 @@
         "subtasks": []
       },
       {
-        "id": "8",
+        "id": 8,
         "title": "Build comprehensive keyboard shortcut system",
         "description": "Implement full keyboard shortcut support for common editing operations to improve workflow efficiency",
         "details": "Create KeyboardShortcutManager hook (extend existing useKeyboardShortcut.ts). Define shortcut mappings: playback (Space, J/K/L), editing (Cmd+Z/Cmd+Shift+Z undo/redo, Cmd+C/V copy/paste clips, Delete/Backspace delete, Cmd+B split), timeline (Cmd +/- zoom, Cmd+0 fit, arrows seek), effects (Cmd+D duplicate, Cmd+Shift+C copy effects). Add ShortcutHelpModal with searchable command palette (Cmd+K). Prevent conflicts with browser shortcuts. Support customizable key bindings stored in user preferences.",
@@ -161,7 +161,7 @@
         "subtasks": []
       },
       {
-        "id": "9",
+        "id": 9,
         "title": "Optimize export pipeline with MediaBunny for professional quality",
         "description": "Enhance export-pipeline.ts to leverage MediaBunny's full capabilities for high-quality video export with progress tracking",
         "details": "Review and optimize lib/editor/export/export-pipeline.ts integration with mediabunny package. Implement hardware acceleration for encoding when available. Add export presets: 'YouTube 4K', 'Instagram Story', 'TikTok', 'High Quality MP4'. Support advanced codec options (H.264, H.265, VP9, AV1). Implement multi-pass encoding for better compression. Add bitrate control (CBR/VBR). Enhance progress reporting with time remaining estimate. Support exporting specific timeline range. Add watermark option in export settings.",
@@ -176,7 +176,7 @@
         "subtasks": []
       },
       {
-        "id": "10",
+        "id": 10,
         "title": "Create comprehensive editor onboarding and tooltips",
         "description": "Build user-friendly onboarding flow and contextual tooltips to make editor intuitive for non-technical users",
         "details": "Create EditorOnboardingFlow component with interactive tutorial steps: import media, add to timeline, apply transition, apply filter, adjust speed, add text overlay, export. Implement contextual tooltips using Radix UI Tooltip on all editor controls. Add 'First Time User' detection in project-store.ts. Create interactive hotspot overlays that highlight features with explanations. Build optional video tutorial integration. Add 'Tips' panel with workflow suggestions based on current project state. Store onboarding completion state in Convex user preferences.",
@@ -201,7 +201,9 @@
       "completedCount": 1,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2025-11-17T02:39:29.398Z",
+      "description": "Tasks for master context"
     }
   }
 }

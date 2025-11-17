@@ -577,8 +577,12 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           const snapshot = deepClone(state.project);
           const sequence = getSequence(snapshot);
           const clip = findClip(sequence, clipId);
-          if (!clip) return state;
+          if (!clip) {
+            console.warn(`[ProjectStore] Clip ${clipId} not found, cannot add transition`);
+            return state;
+          }
           clip.transitions.push(transition);
+          console.log(`[ProjectStore] Added ${transition.type} transition (${transition.duration}s) to clip ${clipId}`, clip);
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
           persist(snapshot);
