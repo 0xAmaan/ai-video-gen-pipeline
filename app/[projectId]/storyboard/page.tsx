@@ -6,6 +6,8 @@ import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
 import { StoryboardPhase } from "@/components/StoryboardPhase";
 import { StoryboardGeneratingPhase } from "@/components/StoryboardGeneratingPhase";
+import { ModelSelector } from "@/components/ui/model-selector";
+import { useTextToImageModel, useModelSelectionEnabled } from "@/lib/stores/modelStore";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -25,6 +27,8 @@ const StoryboardPage = () => {
   const router = useRouter();
   const params = useParams();
   const projectId = params?.projectId as string;
+  const selectedImageModel = useTextToImageModel();
+  const modelSelectionEnabled = useModelSelectionEnabled();
 
   const {
     project,
@@ -47,10 +51,12 @@ const StoryboardPage = () => {
     reason: "Analyzing your preferences to choose the best image model",
   });
   const [generatingScenes, setGeneratingScenes] = useState<any[]>([]);
+  const [isResettingStoryboardModel, setIsResettingStoryboardModel] = useState(false);
 
   const saveScenes = useMutation(api.video.saveScenes);
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
   const updateLastActivePhase = useMutation(api.video.updateLastActivePhase);
+  const resetPhaseMutation = useMutation(api.video.resetProjectPhase);
 
   // Ref to track if generation has been initiated (prevents duplicate calls)
   const hasInitiatedGeneration = useRef(false);
@@ -70,6 +76,55 @@ const StoryboardPage = () => {
       generateStoryboard();
     }
   }, [project, questions?.answers, convexScenes.length, isGenerating]);
+
+  const shouldResetStoryboardPhase =
+    Boolean(projectId) &&
+    modelSelectionEnabled &&
+    Boolean(selectedImageModel) &&
+    Boolean(project?.imageModelId) &&
+    project?.imageModelId !== selectedImageModel &&
+    convexScenes.length > 0;
+
+  useEffect(() => {
+    if (!shouldResetStoryboardPhase || isResettingStoryboardModel) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resetStoryboardPhase = async () => {
+      try {
+        setIsResettingStoryboardModel(true);
+        await resetPhaseMutation({
+          projectId: projectId as Id<"videoProjects">,
+          stage: "image",
+        });
+        setIsGenerating(false);
+        setGeneratingScenes([]);
+        setStoryboardStatus({
+          stage: "parsing_prompt",
+          currentScene: 0,
+        });
+      } catch (error) {
+        console.error("Failed to reset storyboard phase:", error);
+      } finally {
+        if (!cancelled) {
+          setIsResettingStoryboardModel(false);
+        }
+      }
+    };
+
+    resetStoryboardPhase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    shouldResetStoryboardPhase,
+    isResettingStoryboardModel,
+    resetPhaseMutation,
+    projectId,
+  ]);
 
   const generateStoryboard = async () => {
     if (!project || !questions?.answers) return;
@@ -121,6 +176,7 @@ const StoryboardPage = () => {
           projectId: projectId,
           prompt: questions.answers.prompt,
           responses: questions.answers.responses,
+          imageModel: selectedImageModel,
         }),
       });
 
@@ -182,6 +238,10 @@ const StoryboardPage = () => {
       await saveScenes({
         projectId: projectId as Id<"videoProjects">,
         scenes: result.scenes,
+        modelId:
+          modelSelectionEnabled && selectedImageModel
+            ? selectedImageModel
+            : undefined,
       });
 
       setStoryboardStatus({
@@ -222,7 +282,11 @@ const StoryboardPage = () => {
         image: scene.imageUrl || "",
         description: scene.description,
         visualPrompt: scene.visualPrompt,
-        duration: scene.duration,
+        // Default to 5 seconds if duration is missing or invalid
+        duration:
+          typeof scene.duration === "number" && scene.duration > 0
+            ? scene.duration
+            : 5,
         sceneNumber: scene.sceneNumber,
         narrationUrl: scene.narrationUrl,
         narrationText: scene.narrationText,
@@ -234,7 +298,11 @@ const StoryboardPage = () => {
         image: scene.imageUrl || "",
         description: scene.description,
         visualPrompt: scene.visualPrompt,
-        duration: scene.duration,
+        // Default to 5 seconds if duration is missing or invalid
+        duration:
+          typeof scene.duration === "number" && scene.duration > 0
+            ? scene.duration
+            : 5,
         sceneNumber: scene.sceneNumber,
         narrationUrl: scene.narrationUrl || undefined,
         narrationText: scene.narrationText || undefined,
@@ -243,26 +311,29 @@ const StoryboardPage = () => {
       }));
 
   return (
-    <PhaseGuard requiredPhase="storyboard">
-      {isGenerating ? (
-        <StoryboardGeneratingPhase
-          scenes={scenesForComponent}
-          totalScenes={5}
-          currentStage={storyboardStatus.stage}
-          currentSceneNumber={storyboardStatus.currentScene}
-          modelName={modelInfo.modelName}
-          estimatedCostPerImage={modelInfo.estimatedCost}
-          modelReason={modelInfo.reason}
-        />
-      ) : (
-        <StoryboardPhase
-          prompt={questions?.answers?.prompt || project?.prompt || ""}
-          scenes={scenesForComponent}
-          onGenerateVideo={handleGenerateVideo}
-          projectId={projectId as Id<"videoProjects">}
-        />
-      )}
-    </PhaseGuard>
+    <div className="container mx-auto px-4 py-8 space-y-6">
+
+      <PhaseGuard requiredPhase="storyboard">
+        {isGenerating ? (
+          <StoryboardGeneratingPhase
+            scenes={scenesForComponent}
+            totalScenes={5}
+            currentStage={storyboardStatus.stage}
+            currentSceneNumber={storyboardStatus.currentScene}
+            modelName={modelInfo.modelName}
+            estimatedCostPerImage={modelInfo.estimatedCost}
+            modelReason={modelInfo.reason}
+          />
+        ) : (
+          <StoryboardPhase
+            prompt={questions?.answers?.prompt || project?.prompt || ""}
+            scenes={scenesForComponent}
+            onGenerateVideo={handleGenerateVideo}
+            projectId={projectId as Id<"videoProjects">}
+          />
+        )}
+      </PhaseGuard>
+    </div>
   );
 };
 

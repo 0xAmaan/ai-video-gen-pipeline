@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
@@ -9,6 +9,10 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { apiFetchJSON } from "@/lib/api-fetch";
+import {
+  useModelSelectionEnabled,
+  useTextToTextModel,
+} from "@/lib/stores/modelStore";
 
 const PromptPage = () => {
   const router = useRouter();
@@ -19,14 +23,64 @@ const PromptPage = () => {
     projectId as Id<"videoProjects">,
   );
 
+  const selectedModel = useTextToTextModel();
+  const modelSelectionEnabled = useModelSelectionEnabled();
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [hasGeneratedQuestions, setHasGeneratedQuestions] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isResettingPromptModel, setIsResettingPromptModel] = useState(false);
 
   const saveQuestions = useMutation(api.video.saveQuestions);
   const saveAnswers = useMutation(api.video.saveAnswers);
   const updateLastActivePhase = useMutation(api.video.updateLastActivePhase);
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
+  const resetPhaseMutation = useMutation(api.video.resetProjectPhase);
+
+  const generateQuestions = useCallback(async () => {
+    if (!project) return;
+
+    try {
+      setIsGeneratingQuestions(true);
+
+      const requestBody: { prompt: string; model?: string } = {
+        prompt: project.prompt,
+      };
+
+      if (modelSelectionEnabled && selectedModel) {
+        requestBody.model = selectedModel;
+      }
+
+      // Call API to generate questions
+      const data = await apiFetchJSON("/api/generate-questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      // Save questions to Convex
+      await saveQuestions({
+        projectId: projectId as Id<"videoProjects">,
+        questions: data.questions,
+        modelId:
+          modelSelectionEnabled && selectedModel ? selectedModel : undefined,
+      });
+
+      setHasGeneratedQuestions(true);
+      setError(null);
+    } catch (error) {
+      console.error("Error generating questions:", error);
+      setError("Failed to generate questions. Please try again.");
+      setHasGeneratedQuestions(false);
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  }, [
+    modelSelectionEnabled,
+    selectedModel,
+    project,
+    projectId,
+    saveQuestions,
+  ]);
 
   // Generate questions if they don't exist yet
   useEffect(() => {
@@ -45,43 +99,60 @@ const PromptPage = () => {
     questions,
     isGeneratingQuestions,
     hasGeneratedQuestions,
+    generateQuestions,
   ]);
-
-  const generateQuestions = async () => {
-    if (!project) return;
-
-    try {
-      setIsGeneratingQuestions(true);
-
-      // Call API - automatically handles demo mode headers and flow event import
-      const data = await apiFetchJSON("/api/generate-questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: project.prompt }),
-      });
-
-      // Save questions to Convex
-      await saveQuestions({
-        projectId: projectId as Id<"videoProjects">,
-        questions: data.questions,
-      });
-
-      setHasGeneratedQuestions(true);
-      setError(null);
-    } catch (error) {
-      console.error("Error generating questions:", error);
-      setError("Failed to generate questions. Please try again.");
-      setHasGeneratedQuestions(false);
-    } finally {
-      setIsGeneratingQuestions(false);
-    }
-  };
 
   const retryGenerateQuestions = () => {
     setError(null);
     setHasGeneratedQuestions(false);
     generateQuestions();
   };
+
+  const shouldResetPromptPhase =
+    Boolean(projectId) &&
+    modelSelectionEnabled &&
+    Boolean(selectedModel) &&
+    Boolean(project?.textModelId) &&
+    project?.textModelId !== selectedModel &&
+    Boolean(questions);
+
+  useEffect(() => {
+    if (!shouldResetPromptPhase || isResettingPromptModel) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resetPhase = async () => {
+      try {
+        setIsResettingPromptModel(true);
+        await resetPhaseMutation({
+          projectId: projectId as Id<"videoProjects">,
+          stage: "text",
+        });
+        setHasGeneratedQuestions(false);
+        setIsGeneratingQuestions(false);
+        setError(null);
+      } catch (error) {
+        console.error("Failed to reset prompt phase:", error);
+      } finally {
+        if (!cancelled) {
+          setIsResettingPromptModel(false);
+        }
+      }
+    };
+
+    resetPhase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    shouldResetPromptPhase,
+    isResettingPromptModel,
+    resetPhaseMutation,
+    projectId,
+  ]);
 
   const handleInputComplete = async (data: {
     prompt: string;

@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
 import { VideoGeneratingPhase } from "@/components/VideoGeneratingPhase";
+import { ModelSelector } from "@/components/ui/model-selector";
+import { useImageToVideoModel, useModelSelectionEnabled } from "@/lib/stores/modelStore";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -15,13 +17,16 @@ const VideoPage = () => {
   const router = useRouter();
   const params = useParams();
   const projectId = params?.projectId as string;
+  const selectedVideoModel = useImageToVideoModel();
+  const modelSelectionEnabled = useModelSelectionEnabled();
 
-  const { scenes: convexScenes, clips } = useProjectData(
+  const { project, scenes: convexScenes, clips } = useProjectData(
     projectId as Id<"videoProjects">,
   );
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [enableLipsync, setEnableLipsync] = useState(true);
+  const [isResettingVideoModel, setIsResettingVideoModel] = useState(false);
   const hasStartedGeneration = useRef(false);
   const enableLipsyncRef = useRef(enableLipsync);
   const scenesRef = useRef(convexScenes);
@@ -36,6 +41,10 @@ const VideoPage = () => {
   const updateVideoClipLipsync = useMutation(
     api.video.updateVideoClipLipsync,
   );
+  const updateProjectModelSelection = useMutation(
+    api.video.updateProjectModelSelection,
+  );
+  const resetPhaseMutation = useMutation(api.video.resetProjectPhase);
 
   useEffect(() => {
     enableLipsyncRef.current = enableLipsync;
@@ -44,6 +53,54 @@ const VideoPage = () => {
   useEffect(() => {
     scenesRef.current = convexScenes;
   }, [convexScenes]);
+
+  const shouldResetVideoPhase =
+    Boolean(projectId) &&
+    modelSelectionEnabled &&
+    Boolean(selectedVideoModel) &&
+    Boolean(project?.videoModelId) &&
+    project?.videoModelId !== selectedVideoModel &&
+    clips.length > 0;
+
+  useEffect(() => {
+    if (!shouldResetVideoPhase || isResettingVideoModel) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resetVideoPhase = async () => {
+      try {
+        setIsResettingVideoModel(true);
+        activeVideoPolls.current.clear();
+        activeLipsyncPolls.current.clear();
+        queuedLipsyncScenes.current.clear();
+        hasStartedGeneration.current = false;
+        await resetPhaseMutation({
+          projectId: projectId as Id<"videoProjects">,
+          stage: "video",
+        });
+        setIsGenerating(false);
+      } catch (error) {
+        console.error("Failed to reset video phase:", error);
+      } finally {
+        if (!cancelled) {
+          setIsResettingVideoModel(false);
+        }
+      }
+    };
+
+    resetVideoPhase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    shouldResetVideoPhase,
+    isResettingVideoModel,
+    resetPhaseMutation,
+    projectId,
+  ]);
 
   const applyLocalLipsyncResult = async ({
     sceneId,
@@ -372,6 +429,24 @@ const VideoPage = () => {
 
   const generateVideoClips = async () => {
     try {
+      console.log(
+        "Starting video clip generation for",
+        convexScenes.length,
+        "scenes",
+      );
+
+      if (modelSelectionEnabled && selectedVideoModel) {
+        try {
+          await updateProjectModelSelection({
+            projectId: projectId as Id<"videoProjects">,
+            stage: "video",
+            modelId: selectedVideoModel,
+          });
+        } catch (error) {
+          console.error("Failed to record video model selection:", error);
+        }
+      }
+
       // Prepare scenes data for API
       const scenesData = convexScenes.map((scene, index) => ({
         id: scene._id,
@@ -384,10 +459,11 @@ const VideoPage = () => {
       // Call API to create Replicate predictions
       const response = await apiFetch("/api/generate-all-clips", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ scenes: scenesData }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenes: scenesData,
+          videoModel: selectedVideoModel,
+        }),
       });
 
       if (!response.ok) {
@@ -458,15 +534,26 @@ const VideoPage = () => {
   }));
 
   return (
-    <PhaseGuard requiredPhase="video">
-      <VideoGeneratingPhase
-        scenes={scenesForComponent}
-        projectId={projectId as Id<"videoProjects">}
-        onComplete={handleVideoGenerationComplete}
-        enableLipsync={enableLipsync}
-        onToggleLipsync={setEnableLipsync}
-      />
-    </PhaseGuard>
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      {/* Model Selection */}
+      {modelSelectionEnabled && (
+        <ModelSelector
+          step="image-to-video"
+          title="Video Generation Model"
+          description="Select the model for converting storyboard images to video clips"
+        />
+      )}
+
+      <PhaseGuard requiredPhase="video">
+        <VideoGeneratingPhase
+          scenes={scenesForComponent}
+          projectId={projectId as Id<"videoProjects">}
+          onComplete={handleVideoGenerationComplete}
+          enableLipsync={enableLipsync}
+          onToggleLipsync={setEnableLipsync}
+        />
+      </PhaseGuard>
+    </div>
   );
 };
 

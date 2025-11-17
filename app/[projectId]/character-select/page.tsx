@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Check } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
+import { ModelSelector } from "@/components/ui/model-selector";
+import { useModelSelectionEnabled } from "@/lib/stores/modelStore";
 
 interface CharacterVariation {
   model: string;
@@ -29,6 +31,7 @@ export default function CharacterSelectPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const modelSelectionEnabled = useModelSelectionEnabled();
 
   // Get project data including questionnaire responses
   const projectData = useQuery(api.video.getProjectWithAllData, {
@@ -143,6 +146,17 @@ export default function CharacterSelectPage() {
             reference for all scenes.
           </p>
         </div>
+
+        {/* Storyboard Model Selection */}
+        {modelSelectionEnabled && (
+          <div className="mb-8">
+            <ModelSelector
+              step="text-to-image"
+              title="Storyboard Image Generation"
+              description="Select the model for generating storyboard images"
+            />
+          </div>
+        )}
 
         {/* Error State */}
         {error && !isLoading && (

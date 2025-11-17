@@ -5,6 +5,10 @@ import { InputPhase } from "./InputPhase";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  useModelSelectionEnabled,
+  useTextToTextModel,
+} from "@/lib/stores/modelStore";
 
 interface InputPhaseWrapperProps {
   onComplete: (data: {
@@ -24,6 +28,8 @@ export const InputPhaseWrapper = ({
   );
   const createProject = useMutation(api.video.createProject);
   const saveQuestions = useMutation(api.video.saveQuestions);
+  const selectedModel = useTextToTextModel();
+  const modelSelectionEnabled = useModelSelectionEnabled();
 
   // Create project and save questions when they're generated
   const handleQuestionsGenerated = useCallback(
@@ -40,6 +46,8 @@ export const InputPhaseWrapper = ({
           await saveQuestions({
             projectId: newProjectId,
             questions,
+            modelId:
+              modelSelectionEnabled && selectedModel ? selectedModel : undefined,
           });
 
           return newProjectId;
@@ -49,6 +57,8 @@ export const InputPhaseWrapper = ({
         await saveQuestions({
           projectId: useProjectId,
           questions,
+          modelId:
+            modelSelectionEnabled && selectedModel ? selectedModel : undefined,
         });
 
         return useProjectId;
@@ -57,7 +67,14 @@ export const InputPhaseWrapper = ({
         return null;
       }
     },
-    [projectId, existingProjectId, createProject, saveQuestions],
+    [
+      projectId,
+      existingProjectId,
+      createProject,
+      saveQuestions,
+      modelSelectionEnabled,
+      selectedModel,
+    ],
   );
 
   const handleComplete = (data: {

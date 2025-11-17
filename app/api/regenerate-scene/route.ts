@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const demoMode = getDemoModeFromHeaders(req.headers);
 
   try {
-    const { visualPrompt, responses, style } = await req.json();
+    const { visualPrompt, responses, style, imageModel } = await req.json();
 
     flowTracker.trackAPICall("POST", "/api/regenerate-scene", {
       visualPrompt: visualPrompt?.slice(0, 50),
@@ -41,12 +41,20 @@ export async function POST(req: Request) {
       });
     }
 
-    const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
+    // Use provided model or default to leonardo-phoenix
+    const modelKey = imageModel || "leonardo-phoenix";
+    const modelConfig =
+      IMAGE_MODELS[modelKey] || IMAGE_MODELS["leonardo-phoenix"];
 
-    // Select style based on responses or use provided style
+    console.log(
+      `Regenerating scene with model: ${modelConfig.name} (${modelKey})`,
+    );
+
+    // Select style based on responses or use provided style (only applies to Leonardo Phoenix)
     let phoenixStyle = style || "cinematic";
+    const isLeonardoPhoenix = modelKey === "leonardo-phoenix";
 
-    if (!style && responses && responses["visual-style"]) {
+    if (isLeonardoPhoenix && !style && responses && responses["visual-style"]) {
       const visualStyle = responses["visual-style"].toLowerCase();
       if (
         visualStyle.includes("documentary") ||
@@ -76,18 +84,56 @@ export async function POST(req: Request) {
       }
     }
 
+    console.log(
+      `Regenerating scene with ${modelConfig.name} (${modelKey})${isLeonardoPhoenix ? ` (style: ${phoenixStyle})` : ""}`,
+    );
+
+    flowTracker.trackDecision(
+      "Image model selection",
+      modelConfig.name,
+      `Using ${modelConfig.name} for scene regeneration`,
+    );
+
+    // Prepare input parameters based on model
+    const input: any = {
+      prompt: visualPrompt,
+      aspect_ratio: "16:9",
+      num_images: 1,
+    };
+
+    // Add Leonardo Phoenix specific parameters
+    if (isLeonardoPhoenix) {
+      input.generation_mode = "quality";
+      input.contrast = "medium";
+      input.prompt_enhance = false;
+      input.style = phoenixStyle;
+    }
+
+    // Add FLUX specific parameters
+    if (modelConfig.id.includes("flux")) {
+      input.num_outputs = 1;
+      if (modelConfig.id.includes("schnell")) {
+        input.num_inference_steps = 4;
+      }
+    }
+
+    // Add SDXL specific parameters
+    if (modelConfig.id.includes("sdxl")) {
+      input.num_inference_steps = 25;
+      input.guidance_scale = 7.5;
+    }
+
+    // Add consistent-character specific parameters
+    if (modelConfig.id.includes("consistent-character")) {
+      input.guidance_scale = 7.5;
+      input.num_inference_steps = 50;
+      input.seed = -1;
+    }
+
     const output = await replicate.run(
       modelConfig.id as `${string}/${string}`,
       {
-        input: {
-          prompt: visualPrompt,
-          aspect_ratio: "16:9",
-          generation_mode: "quality",
-          contrast: "medium",
-          num_images: 1,
-          prompt_enhance: false,
-          style: phoenixStyle,
-        },
+        input,
       },
     );
 

@@ -38,7 +38,11 @@ export async function POST(req: Request) {
   const startTime = Date.now();
 
   try {
-    const { prompt } = await req.json();
+    const body = await req.json();
+    console.log("📥 Full request body:", JSON.stringify(body, null, 2));
+
+    const { prompt, model } = body;
+    console.log("📥 Extracted - prompt:", prompt, "model:", model);
 
     // Get demo mode from headers
     const demoMode = getDemoModeFromHeaders(req.headers);
@@ -47,11 +51,17 @@ export async function POST(req: Request) {
     // Track API call
     flowTracker.trackAPICall("POST", "/api/generate-questions", {
       prompt,
+      model,
       demoMode,
     });
 
     if (!prompt || typeof prompt !== "string") {
       return apiError("Invalid prompt provided", 400);
+    }
+
+    // Validate model parameter if provided
+    if (model && typeof model !== "string") {
+      return apiError("Invalid model provided", 400);
     }
 
     // If no-cost mode, return instant mock data
@@ -82,8 +92,14 @@ export async function POST(req: Request) {
       return keyValidationError;
     }
 
-    // Create LLM provider with automatic fallback
-    const { provider } = createLLMProvider();
+    // Create LLM provider with optional model selection
+    const { provider, providerName } = createLLMProvider(model);
+
+    flowTracker.trackDecision(
+      "Select model provider",
+      providerName,
+      `Using ${providerName} for question generation`,
+    );
 
     // Generate clarifying questions
     const result = await generateObject({

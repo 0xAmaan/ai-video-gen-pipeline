@@ -8,8 +8,10 @@ import { NextResponse } from "next/server";
 /**
  * Create an LLM provider with automatic fallback logic.
  * Prefers Groq for speed, falls back to OpenAI if Groq unavailable.
+ *
+ * @param modelId - Optional model ID to use (e.g., "openai/gpt-oss-20b", "gpt-4o-mini")
  */
-export function createLLMProvider(): {
+export function createLLMProvider(modelId?: string): {
   provider: LanguageModel;
   providerName: string;
 } {
@@ -20,6 +22,34 @@ export function createLLMProvider(): {
     throw new Error("No API keys configured");
   }
 
+  // If a specific model is requested, use it
+  if (modelId) {
+    // Check if it's a Groq model
+    if (modelId === "openai/gpt-oss-20b") {
+      if (!hasGroqKey) {
+        throw new Error("Groq API key not configured");
+      }
+      return {
+        provider: groq(modelId),
+        providerName: `Groq (${modelId})`,
+      };
+    }
+
+    // Check if it's an OpenAI model
+    if (modelId.startsWith("gpt-")) {
+      if (!hasOpenAIKey) {
+        throw new Error("OpenAI API key not configured");
+      }
+      return {
+        provider: openai(modelId),
+        providerName: `OpenAI (${modelId})`,
+      };
+    }
+
+    console.warn(`Unknown model specified: ${modelId}, using default`);
+  }
+
+  // Default behavior: prefer Groq for speed
   if (hasGroqKey) {
     return {
       provider: groq("openai/gpt-oss-20b"),
@@ -51,4 +81,3 @@ export function validateAPIKeys(): NextResponse | null {
 
   return null;
 }
-

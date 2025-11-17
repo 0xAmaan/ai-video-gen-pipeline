@@ -26,18 +26,51 @@ const replicate = new Replicate({
 async function generateSceneImage(
   scene: GeneratedScene,
   modelConfig: ImageModelConfig,
-  style: string,
+  style?: string,
 ) {
+  console.log(`🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`);
+  console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
+
+  // Prepare input parameters based on model
+  const input: any = {
+    prompt: scene.visualPrompt,
+    aspect_ratio: "16:9",
+    num_images: 1,
+  };
+
+  // Add Leonardo Phoenix specific parameters
+  if (modelConfig.id === "leonardoai/phoenix-1.0") {
+    input.generation_mode = "quality";
+    input.contrast = "medium";
+    input.prompt_enhance = false;
+    if (style) {
+      input.style = style;
+    }
+  }
+
+  // Add FLUX specific parameters
+  if (modelConfig.id.includes("flux")) {
+    input.num_outputs = 1;
+    if (modelConfig.id.includes("schnell")) {
+      input.num_inference_steps = 4;
+    }
+  }
+
+  // Add SDXL specific parameters
+  if (modelConfig.id.includes("sdxl")) {
+    input.num_inference_steps = 25;
+    input.guidance_scale = 7.5;
+  }
+
+  // Add consistent-character specific parameters
+  if (modelConfig.id.includes("consistent-character")) {
+    input.guidance_scale = 7.5;
+    input.num_inference_steps = 50;
+    input.seed = -1;
+  }
+
   const output = await replicate.run(modelConfig.id as `${string}/${string}`, {
-    input: {
-      prompt: scene.visualPrompt,
-      aspect_ratio: "16:9",
-      generation_mode: "quality",
-      contrast: "medium",
-      num_images: 1,
-      prompt_enhance: false,
-      style,
-    },
+    input,
   });
 
   const imageUrl = extractReplicateUrl(
@@ -72,7 +105,8 @@ export async function POST(req: Request) {
   const startTime = Date.now();
 
   try {
-    const { projectId, prompt, responses } = await req.json();
+    const { projectId, prompt, responses, imageModel, textModel } =
+      await req.json();
 
     // Get demo mode from headers
     const demoMode = getDemoModeFromHeaders(req.headers);
@@ -81,6 +115,8 @@ export async function POST(req: Request) {
     // Track API call
     flowTracker.trackAPICall("POST", "/api/generate-storyboard", {
       projectId,
+      textModel,
+      imageModel,
       demoMode,
     });
 
@@ -135,8 +171,14 @@ export async function POST(req: Request) {
       return keyValidationError;
     }
 
-    // Generate scene descriptions using LLM provider
-    const { provider } = createLLMProvider();
+    // Generate scene descriptions using LLM provider (with optional model selection)
+    const { provider, providerName } = createLLMProvider(textModel);
+
+    flowTracker.trackDecision(
+      "Select text model",
+      providerName,
+      `Using ${providerName} for scene generation`,
+    );
 
     const { object: sceneData } = await generateObject({
       model: provider,
@@ -164,16 +206,27 @@ export async function POST(req: Request) {
       console.warn("Unable to persist voice selection to Convex:", error);
     }
 
-    // Select image model based on demo mode
+    // Step 3: Select image model
     let modelConfig;
     let phoenixStyle = "cinematic"; // Default style for Phoenix
     let selectedModelKey;
 
+    // If imageModel is explicitly provided, use it
+    if (imageModel) {
+      selectedModelKey = imageModel;
+      modelConfig =
+        IMAGE_MODELS[imageModel] || IMAGE_MODELS["leonardo-phoenix"];
+
+      flowTracker.trackDecision(
+        "Image model selection",
+        "user-specified",
+        `Using user-selected model: ${modelConfig.name}`,
+      );
+    }
     // Check if we're in cheap mode - use FLUX Schnell for speed/cost
-    if (demoMode === "cheap") {
-      modelConfig = IMAGE_MODELS["flux-schnell"];
+    else if (demoMode === "cheap") {
       selectedModelKey = "flux-schnell";
-      phoenixStyle = ""; // FLUX doesn't use style parameter
+      modelConfig = IMAGE_MODELS["flux-schnell"];
 
       flowTracker.trackDecision(
         "Image model selection",
@@ -193,52 +246,59 @@ export async function POST(req: Request) {
         modelConfig.estimatedCost,
         explanation.reason,
       );
+    }
 
-      // Apply Phoenix-specific style if Leonardo Phoenix was selected
+    // Apply Phoenix-specific style if Leonardo Phoenix was selected
+    const isLeonardoPhoenix = selectedModelKey === "leonardo-phoenix";
+    if (isLeonardoPhoenix && responses && responses["visual-style"]) {
+      const visualStyle = responses["visual-style"].toLowerCase();
       if (
-        selectedModelKey === "leonardo-phoenix" &&
-        responses &&
-        responses["visual-style"]
+        visualStyle.includes("documentary") ||
+        visualStyle.includes("black and white")
       ) {
-        const visualStyle = responses["visual-style"].toLowerCase();
-        if (
-          visualStyle.includes("documentary") ||
-          visualStyle.includes("black and white")
-        ) {
-          phoenixStyle = "pro_bw_photography";
-        } else if (
-          visualStyle.includes("cinematic") ||
-          visualStyle.includes("film")
-        ) {
-          phoenixStyle = "cinematic";
-        } else if (
-          visualStyle.includes("photo") ||
-          visualStyle.includes("realistic")
-        ) {
-          phoenixStyle = "pro_color_photography";
-        } else if (
-          visualStyle.includes("animated") ||
-          visualStyle.includes("cartoon")
-        ) {
-          phoenixStyle = "illustration";
-        } else if (
-          visualStyle.includes("vintage") ||
-          visualStyle.includes("retro")
-        ) {
-          phoenixStyle = "pro_film_photography";
-        } else if (visualStyle.includes("portrait")) {
-          phoenixStyle = "portrait";
-        }
+        phoenixStyle = "pro_bw_photography";
+      } else if (
+        visualStyle.includes("cinematic") ||
+        visualStyle.includes("film")
+      ) {
+        phoenixStyle = "cinematic";
+      } else if (
+        visualStyle.includes("photo") ||
+        visualStyle.includes("realistic")
+      ) {
+        phoenixStyle = "pro_color_photography";
+      } else if (
+        visualStyle.includes("animated") ||
+        visualStyle.includes("cartoon")
+      ) {
+        phoenixStyle = "illustration";
+      } else if (
+        visualStyle.includes("vintage") ||
+        visualStyle.includes("retro")
+      ) {
+        phoenixStyle = "pro_film_photography";
+      } else if (visualStyle.includes("portrait")) {
+        phoenixStyle = "portrait";
       }
     }
 
-    // Step 3 & 4: Generate images and narration in parallel for each scene
+    console.log(`\n${"=".repeat(80)}`);
+    console.log("🔍 IMAGE GENERATION MODEL SELECTION");
+    console.log("=".repeat(80));
+    console.log(`   Model: ${modelConfig.name}`);
+    if (isLeonardoPhoenix) {
+      console.log(`   Style: ${phoenixStyle}`);
+    }
+    console.log(`   Cost: ~$${modelConfig.estimatedCost}/image`);
+    console.log(`${"=".repeat(80)}\n`);
+
+    // Step 4 & 5: Generate images and narration in parallel for each scene
     const scenesWithMedia = await Promise.all(
       sceneData.scenes.map(async (scene) => {
         const imagePromise = generateSceneImage(
           scene,
           modelConfig,
-          phoenixStyle,
+          isLeonardoPhoenix ? phoenixStyle : undefined,
         ).catch((error) => {
           console.error(
             `Error generating image for scene ${scene.sceneNumber}:`,
@@ -294,8 +354,9 @@ export async function POST(req: Request) {
         modelName: modelConfig.name,
         style: phoenixStyle,
         estimatedCost: modelConfig.estimatedCost,
-        reason:
-          demoMode === "cheap"
+        reason: imageModel
+          ? `Using user-selected ${modelConfig.name}`
+          : demoMode === "cheap"
             ? `Using FLUX Schnell for fast/cheap development mode`
             : `Selected ${modelConfig.name}${phoenixStyle ? ` (${phoenixStyle})` : ""} based on project preferences.`,
       },
