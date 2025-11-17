@@ -1,7 +1,10 @@
-import type { Clip, MediaAssetMeta, Sequence } from "../types";
+import type { Clip, MediaAssetMeta, Sequence, Track } from "../types";
 import { FrameCache } from "./frame-cache";
 
 export type TimeUpdateHandler = (time: number) => void;
+
+const NARRATION_TRACK_ID = "audio-narration";
+const BGM_TRACK_ID = "audio-bgm";
 
 export class PreviewRenderer {
   private canvas?: HTMLCanvasElement;
@@ -378,21 +381,37 @@ export class PreviewRenderer {
     if (!this.audioContext) return;
     const sequence = this.getSequence();
     if (!sequence) return;
-    const audioTrack = sequence.tracks.find((track) => track.kind === "audio");
-    if (!audioTrack || audioTrack.clips.length === 0) {
+
+    const audioTracks = sequence.tracks.filter((track) => track.kind === "audio");
+    if (audioTracks.length === 0) {
       this.stopAllAudioSources();
       return;
     }
 
-    const activeClips = audioTrack.clips.filter(
-      (clip) =>
-        this.currentTime >= clip.start &&
-        this.currentTime < clip.start + clip.duration,
+    const narrationTrack = audioTracks.find(
+      (track) => track.id === NARRATION_TRACK_ID,
     );
+    const narrationActive =
+      narrationTrack?.clips.some(
+        (clip) =>
+          this.currentTime >= clip.start &&
+          this.currentTime < clip.start + clip.duration,
+      ) ?? false;
 
-    // Stop clips that are no longer active
+    const activeEntries: Array<{ track: Track; clip: Clip }> = [];
+    for (const track of audioTracks) {
+      for (const clip of track.clips) {
+        if (
+          this.currentTime >= clip.start &&
+          this.currentTime < clip.start + clip.duration
+        ) {
+          activeEntries.push({ track, clip });
+        }
+      }
+    }
+
     for (const [clipId, source] of this.audioSources.entries()) {
-      const stillActive = activeClips.some((clip) => clip.id === clipId);
+      const stillActive = activeEntries.some(({ clip }) => clip.id === clipId);
       if (!stillActive) {
         try {
           source.stop();
@@ -404,8 +423,8 @@ export class PreviewRenderer {
       }
     }
 
-    // Start new clips
-    for (const clip of activeClips) {
+    for (const entry of activeEntries) {
+      const { track, clip } = entry;
       if (this.audioSources.has(clip.id)) {
         continue;
       }
@@ -419,7 +438,13 @@ export class PreviewRenderer {
 
       const gainNode = this.audioContext.createGain();
       const clipVolume = clip.volume ?? 1;
-      gainNode.gain.value = audioTrack.muted ? 0 : clipVolume;
+      const trackVolume = track.volume ?? 1;
+      const baseVolume = track.muted ? 0 : clipVolume * trackVolume;
+      const isBgmTrack =
+        track.id === BGM_TRACK_ID || /bgm/i.test(track.id ?? "");
+      const finalVolume =
+        isBgmTrack && narrationActive ? baseVolume * 0.5 : baseVolume;
+      gainNode.gain.value = finalVolume;
 
       const destination = this.audioGainNode ?? this.audioContext.destination;
       source.connect(gainNode).connect(destination);

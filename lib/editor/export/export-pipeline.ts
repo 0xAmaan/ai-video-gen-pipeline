@@ -9,6 +9,9 @@ import {
   QUALITY_HIGH,
 } from "mediabunny";
 
+const NARRATION_TRACK_ID = "audio-narration";
+const BGM_TRACK_ID = "audio-bgm";
+
 export type ExportOptions = {
   resolution: string;
   quality: string;
@@ -152,8 +155,8 @@ export class ExportPipeline {
       return null;
     }
 
-    const audioTrack = sequence.tracks.find((track) => track.kind === "audio");
-    if (!audioTrack || audioTrack.clips.length === 0) {
+    const audioTracks = sequence.tracks.filter((track) => track.kind === "audio");
+    if (audioTracks.length === 0) {
       return null;
     }
 
@@ -164,42 +167,66 @@ export class ExportPipeline {
       sampleRate,
     );
 
-    for (const clip of audioTrack.clips) {
-      const asset = assets[clip.mediaId];
-      if (!asset || asset.type !== "audio" || !asset.url) continue;
+    const narrationTrack = audioTracks.find(
+      (track) => track.id === NARRATION_TRACK_ID,
+    );
+    const narrationRegions =
+      narrationTrack?.clips.map((clip) => ({
+        start: clip.start,
+        end: clip.start + clip.duration,
+      })) ?? [];
 
-      try {
-        const response = await fetch(asset.url, {
-          mode: "cors",
-          credentials: "omit",
-        });
-        const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
+    const overlapsNarration = (start: number, end: number) =>
+      narrationRegions.some(
+        (region) => start < region.end && end > region.start,
+      );
 
-        const source = offlineContext.createBufferSource();
-        source.buffer = audioBuffer;
+    for (const track of audioTracks) {
+      for (const clip of track.clips) {
+        const asset = assets[clip.mediaId];
+        if (!asset || asset.type !== "audio" || !asset.url) continue;
 
-        const gainNode = offlineContext.createGain();
-        const clipVolume = clip.volume ?? 1;
-        gainNode.gain.value = audioTrack.muted ? 0 : clipVolume;
-        source.connect(gainNode).connect(offlineContext.destination);
+        try {
+          const response = await fetch(asset.url, {
+            mode: "cors",
+            credentials: "omit",
+          });
+          const arrayBuffer = await response.arrayBuffer();
+          const audioBuffer = await offlineContext.decodeAudioData(arrayBuffer);
 
-        const trimStart = clip.trimStart ?? 0;
-        const trimEnd = clip.trimEnd ?? 0;
-        const clipDuration = Math.max(
-          0,
-          Math.min(clip.duration, audioBuffer.duration - trimStart),
-        );
-        const playbackDuration = Math.max(0, clipDuration - trimEnd);
-        if (playbackDuration <= 0) continue;
+          const source = offlineContext.createBufferSource();
+          source.buffer = audioBuffer;
 
-        source.start(
-          clip.start,
-          trimStart,
-          Math.min(playbackDuration, audioBuffer.duration - trimStart),
-        );
-      } catch (error) {
-        console.error(`Failed to load audio for export: ${clip.mediaId}`, error);
+          const gainNode = offlineContext.createGain();
+          const clipVolume = clip.volume ?? 1;
+          const trackVolume = track.volume ?? 1;
+          const baseVolume = track.muted ? 0 : clipVolume * trackVolume;
+          const clipStart = clip.start;
+          const trimStart = clip.trimStart ?? 0;
+          const trimEnd = clip.trimEnd ?? 0;
+          const clipDuration = Math.max(
+            0,
+            Math.min(clip.duration, audioBuffer.duration - trimStart),
+          );
+          const playbackDuration = Math.max(0, clipDuration - trimEnd);
+          if (playbackDuration <= 0) continue;
+
+          const clipEnd = clipStart + playbackDuration;
+          const isBgmTrack =
+            track.id === BGM_TRACK_ID || /bgm/i.test(track.id ?? "");
+          const shouldDuck = isBgmTrack && overlapsNarration(clipStart, clipEnd);
+          const finalVolume = shouldDuck ? baseVolume * 0.5 : baseVolume;
+          gainNode.gain.value = finalVolume;
+          source.connect(gainNode).connect(offlineContext.destination);
+
+          source.start(
+            clip.start,
+            trimStart,
+            Math.min(playbackDuration, audioBuffer.duration - trimStart),
+          );
+        } catch (error) {
+          console.error(`Failed to load audio for export: ${clip.mediaId}`, error);
+        }
       }
     }
 
