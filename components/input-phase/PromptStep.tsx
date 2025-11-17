@@ -1,5 +1,10 @@
+"use client";
+
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { VoiceDictationButton } from "@/components/ui/voice-dictation-button";
+import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import { ArrowRight } from "lucide-react";
 
 interface PromptStepProps {
@@ -15,6 +20,29 @@ export const PromptStep = ({
   onSubmit,
   error,
 }: PromptStepProps) => {
+  // Voice dictation
+  const {
+    isListening,
+    isSupported,
+    transcript,
+    toggleListening,
+    resetTranscript,
+  } = useVoiceDictation();
+
+  // Update prompt with voice transcript
+  useEffect(() => {
+    if (transcript) {
+      setPrompt(transcript);
+    }
+  }, [transcript, setPrompt]);
+
+  // Reset transcript when prompt is manually cleared
+  useEffect(() => {
+    if (!prompt && transcript) {
+      resetTranscript();
+    }
+  }, [prompt, transcript, resetTranscript]);
+
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
       <div className="w-full max-w-3xl px-4">
@@ -32,23 +60,39 @@ export const PromptStep = ({
           >
             What video would you like to create?
           </label>
-          <Textarea
-            id="prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Example: A product demo video showcasing our new mobile app's key features like real-time collaboration and smart notifications..."
-            className="min-h-[160px] text-base resize-none bg-input border-border/60 p-4"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && e.metaKey && prompt.trim()) {
-                onSubmit();
-              }
-            }}
-          />
+          <div className="relative">
+            <Textarea
+              id="prompt"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Example: A product demo video showcasing our new mobile app's key features like real-time collaboration and smart notifications..."
+              className="min-h-[160px] text-base resize-none bg-input border-border/60 p-4 pr-16"
+              autoFocus
+              disabled={isListening}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.metaKey && prompt.trim()) {
+                  onSubmit();
+                }
+              }}
+            />
+            <div className="absolute top-4 right-4">
+              <VoiceDictationButton
+                isListening={isListening}
+                isSupported={isSupported}
+                onToggle={toggleListening}
+                size="default"
+              />
+            </div>
+          </div>
           <div className="flex items-center justify-between mt-4">
             <p className="text-sm text-muted-foreground">
-              Be specific about key points, features, or messages you want to
-              convey
+              {isListening ? (
+                <span className="text-red-500 font-medium">
+                  🔴 Recording... Click the mic to stop
+                </span>
+              ) : (
+                "Be specific about key points, features, or messages you want to convey"
+              )}
             </p>
             <Button
               onClick={onSubmit}
@@ -68,7 +112,9 @@ export const PromptStep = ({
         </div>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
-          Press ⌘+Enter to continue
+          {isListening
+            ? "Recording in progress..."
+            : "Press ⌘+Enter to continue"}
         </p>
       </div>
     </div>
