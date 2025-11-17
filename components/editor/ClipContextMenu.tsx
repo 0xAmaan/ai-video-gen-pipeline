@@ -36,8 +36,9 @@ export function ClipContextMenu({
   onSplit,
   onDelete,
 }: ClipContextMenuProps) {
-  // Check if playhead is over this clip for split operation
-  const canSplit = playheadTime > clipStart && playheadTime < clipEnd;
+  // Always allow split if clips are selected (matches industry standard behavior)
+  // The split handler will validate if playhead is actually over clips
+  const canSplit = selectedClipIds.length > 0;
 
   // Determine if operating on multiple clips
   const isMultiSelect = selectedClipIds.length > 1;

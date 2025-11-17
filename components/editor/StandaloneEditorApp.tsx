@@ -289,7 +289,7 @@ export const StandaloneEditorApp = ({
         return;
       }
 
-      const { selection, actions: storeActions, project, clipboard } = useProjectStore.getState();
+      const { selection, actions: storeActions, project, clipboard, currentTime } = useProjectStore.getState();
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdKey = isMac ? event.metaKey : event.ctrlKey;
 
@@ -326,7 +326,7 @@ export const StandaloneEditorApp = ({
         const sequence = project.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
         if (!sequence) return;
 
-        const currentTime = storeActions.currentTime ?? 0;
+        let splitCount = 0;
 
         // Split each selected clip if playhead is over it
         selection.clipIds.forEach((clipId) => {
@@ -334,10 +334,21 @@ export const StandaloneEditorApp = ({
             .flatMap((track) => track.clips)
             .find((c) => c.id === clipId);
 
-          if (clip && currentTime > clip.start && currentTime < clip.start + clip.duration) {
+          if (!clip) return;
+
+          const clipEnd = clip.start + clip.duration;
+
+          // Validate playhead is within clip bounds before splitting
+          if (currentTime > clip.start && currentTime < clipEnd) {
             storeActions.splitClipAtTime(clipId, currentTime);
+            splitCount++;
           }
         });
+
+        // Optional: Log if no clips were split (for debugging)
+        if (splitCount === 0 && selection.clipIds.length > 0) {
+          console.warn('Split at playhead: Playhead is not positioned over any selected clips');
+        }
         return;
       }
 
@@ -369,7 +380,6 @@ export const StandaloneEditorApp = ({
         const videoTrack = sequence.tracks.find((t) => t.kind === "video");
         if (!videoTrack) return;
 
-        const currentTime = storeActions.currentTime ?? 0;
         storeActions.pasteClipsFromClipboard(videoTrack.id, currentTime);
         return;
       }
@@ -880,8 +890,13 @@ export const StandaloneEditorApp = ({
     selection.clipIds.forEach((clipId) => actions.duplicateClip(clipId));
   }, [selection.clipIds, actions]);
 
+  // TODO: Split-at-playhead needs refinement - should work more intuitively like Premiere/CapCut
+  // Current behavior: Only splits if playhead is positioned over the selected clip
+  // Desired behavior: Could split at playhead regardless, or add "Split Here" for click position
   const handleContextMenuSplit = useCallback(() => {
     if (!selection.clipIds.length || !sequence) return;
+
+    let splitCount = 0;
 
     // Split each selected clip if playhead is over it
     selection.clipIds.forEach((clipId) => {
@@ -889,10 +904,21 @@ export const StandaloneEditorApp = ({
         .flatMap((track) => track.clips)
         .find((c) => c.id === clipId);
 
-      if (clip && currentTime > clip.start && currentTime < clip.start + clip.duration) {
+      if (!clip) return;
+
+      const clipEnd = clip.start + clip.duration;
+
+      // Validate playhead is within clip bounds before splitting
+      if (currentTime > clip.start && currentTime < clipEnd) {
         actions.splitClipAtTime(clipId, currentTime);
+        splitCount++;
       }
     });
+
+    // Optional: Log if no clips were split (for debugging)
+    if (splitCount === 0 && selection.clipIds.length > 0) {
+      console.warn('Split at playhead: Playhead is not positioned over any selected clips');
+    }
   }, [selection.clipIds, sequence, currentTime, actions]);
 
   const handleContextMenuDelete = useCallback(() => {
@@ -1075,7 +1101,7 @@ export const StandaloneEditorApp = ({
       {/* 2-row layout: Top row (media/transitions + preview) and bottom row (timeline) */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top row: Left Panel (1/3) + Preview (2/3) */}
-        <div className="grid grid-cols-[1fr_2fr] flex-1 overflow-hidden">
+        <div className="grid grid-cols-[1fr_2fr] flex-1 overflow-hidden min-h-0">
           {/* Left Panel: Tabbed Media + Transitions */}
           <Tabs value={leftPanelTab} onValueChange={(v) => setLeftPanelTab(v as typeof leftPanelTab)} className="flex flex-col h-full">
             <div className="border-r border-border bg-muted/20 px-2 pt-2">

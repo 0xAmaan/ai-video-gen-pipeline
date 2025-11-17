@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useCallback } from "react";
+import { memo, useEffect, useRef, useCallback, useState } from "react";
 import { Play, Pause } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -35,6 +35,7 @@ const PreviewPanelComponent = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeTimeoutRef = useRef<number | null>(null);
   const lastSizeRef = useRef({ width: 0, height: 0 });
+  const [displaySize, setDisplaySize] = useState({ width: 1280, height: 720 });
 
   // Debounced resize handler
   const handleResize = useCallback(
@@ -43,15 +44,15 @@ const PreviewPanelComponent = ({
       if (!entry || !onCanvasResize) return;
 
       const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) return;
 
       // Clear previous timeout
       if (resizeTimeoutRef.current !== null) {
         window.clearTimeout(resizeTimeoutRef.current);
       }
 
-      // Debounce resize events (150ms)
+      // Debounce resize events (16ms ~= 60fps for smooth resizing)
       resizeTimeoutRef.current = window.setTimeout(() => {
-        // Calculate canvas dimensions maintaining 16:9 aspect ratio
         const aspectRatio = 16 / 9;
         const containerAspect = width / height;
 
@@ -59,32 +60,28 @@ const PreviewPanelComponent = ({
         let canvasHeight: number;
 
         if (containerAspect > aspectRatio) {
-          // Container wider than 16:9 - fit to height
+          // Container wider than 16:9 – fit height
           canvasHeight = Math.floor(height);
           canvasWidth = Math.floor(height * aspectRatio);
         } else {
-          // Container taller than 16:9 - fit to width
+          // Container taller – fit width
           canvasWidth = Math.floor(width);
           canvasHeight = Math.floor(width / aspectRatio);
         }
 
-        // Only resize if change is significant (>10% or >50px)
-        const widthDelta = Math.abs(canvasWidth - lastSizeRef.current.width);
-        const heightDelta = Math.abs(canvasHeight - lastSizeRef.current.height);
-        const widthPercentChange = widthDelta / lastSizeRef.current.width;
-        const heightPercentChange = heightDelta / lastSizeRef.current.height;
+        canvasWidth = Math.max(1, canvasWidth);
+        canvasHeight = Math.max(1, canvasHeight);
 
+        // Only resize if dimensions actually changed
         if (
-          lastSizeRef.current.width === 0 ||
-          widthDelta > 50 ||
-          heightDelta > 50 ||
-          widthPercentChange > 0.1 ||
-          heightPercentChange > 0.1
+          lastSizeRef.current.width !== canvasWidth ||
+          lastSizeRef.current.height !== canvasHeight
         ) {
           lastSizeRef.current = { width: canvasWidth, height: canvasHeight };
+          setDisplaySize({ width: canvasWidth, height: canvasHeight });
           onCanvasResize(canvasWidth, canvasHeight);
         }
-      }, 150);
+      }, 16);
     },
     [onCanvasResize],
   );
@@ -106,17 +103,23 @@ const PreviewPanelComponent = ({
 
   return (
     <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
-      {/* Aspect ratio wrapper to maintain 16:9 and prevent distortion */}
+      {/* Canvas container - maintain centered 16:9 viewport similar to CapCut */}
       <div
         ref={containerRef}
-        className="flex flex-1 items-center justify-center overflow-hidden"
+        className="flex flex-1 items-center justify-center overflow-hidden bg-black"
       >
         <canvas
           ref={canvasRef}
-          className="w-full h-full object-contain rounded-md bg-black"
+          className="rounded-md"
           width={1280}
           height={720}
-          style={{ maxWidth: "100%", maxHeight: "100%" }}
+          style={{
+            width: `${displaySize.width}px`,
+            height: `${displaySize.height}px`,
+            maxWidth: "100%",
+            maxHeight: "100%",
+            display: "block",
+          }}
         />
       </div>
       <div className="flex items-center gap-3">

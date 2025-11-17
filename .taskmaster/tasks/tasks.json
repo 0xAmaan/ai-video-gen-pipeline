@@ -546,9 +546,10 @@
               2
             ],
             "details": "Create splitClipAtPlayhead function in project-store.ts that: identifies clip(s) intersecting playhead position, calculates split point in clip's local timeline, creates two new clip objects with updated startTime/duration/sourceStart, preserves all effects and transitions on both resulting clips. Add keyboard shortcut handler for Cmd+B in KonvaTimeline. If multiple clips selected, split all at playhead. Handle edge cases: playhead at clip start/end (no-op), playhead outside clip bounds. Add visual feedback during split (brief flash/highlight). Support undo/redo for split operations.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Position playhead mid-clip, press Cmd+B, verify two clips created at exact playhead position. Verify both clips retain original effects/transitions. Test splitting clip with transition, verify transition preserved on appropriate clip. Select multiple clips and split all with single Cmd+B. Test undo/redo for split operations. Verify split at clip edges produces no change.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-17T17:00:46.110Z"
           },
           {
             "id": 4,
@@ -614,7 +615,7 @@
         "complexity": 8,
         "recommendedSubtasks": 8,
         "expansionPrompt": "Break down timeline UX enhancements into: (1) implementing magnetic snap guides with visual indicators in Konva, (2) adding multi-select via shift-click and marquee selection, (3) implementing split-at-playhead with Cmd+B shortcut, (4) adding ripple delete with gap closure logic, (5) implementing slip/slide editing modes, (6) adding visual feedback (hover previews, duration tooltips, snap indicators), (7) creating comprehensive keyboard shortcut system (J/K/L, arrows, zoom), (8) optimizing Konva rendering performance for complex timelines",
-        "updatedAt": "2025-11-17T07:40:29.856Z"
+        "updatedAt": "2025-11-17T17:00:46.110Z"
       },
       {
         "id": "8",
@@ -1677,7 +1678,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2025-11-17T07:40:29.857Z",
+      "lastModified": "2025-11-17T17:00:46.111Z",
       "taskCount": 20,
       "completedCount": 3,
       "tags": [

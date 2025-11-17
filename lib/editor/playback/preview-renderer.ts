@@ -80,7 +80,7 @@ export class PreviewRenderer {
     this.ctx = this.canvas.getContext("2d");
 
     // Re-render current frame at new dimensions
-    this.drawCurrentFrame();
+    this.drawFrame();
 
     // Resume playback if it was playing
     if (wasPlaying) {
