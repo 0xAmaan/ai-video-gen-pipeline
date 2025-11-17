@@ -258,6 +258,7 @@ const StoryboardPage = () => {
           scenes={scenesForComponent}
           onGenerateVideo={handleGenerateVideo}
           projectId={projectId as Id<"videoProjects">}
+          project={project}
         />
       )}
     </PhaseGuard>

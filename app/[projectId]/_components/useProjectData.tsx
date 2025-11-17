@@ -18,6 +18,7 @@ export const useProjectData = (projectId: Id<"videoProjects"> | null) => {
     questions: data?.questions ?? null,
     scenes: data?.scenes ?? [],
     clips: data?.clips ?? [],
+    audioAssets: data?.audioAssets ?? [],
     currentPhase: currentPhase ?? null,
     isLoading: data === undefined || currentPhase === undefined,
   };

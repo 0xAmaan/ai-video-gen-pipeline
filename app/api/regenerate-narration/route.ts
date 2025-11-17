@@ -1,8 +1,24 @@
+"use server";
+
 import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  AUDIO_MODELS,
+  type AudioVendor,
+} from "@/lib/audio-models";
+import { sanitizeNarrationText } from "@/lib/narration";
+import { getVoiceAdapter } from "@/lib/audio-provider-factory";
 import { getConvexClient } from "@/lib/server/convex";
-import { synthesizeNarrationAudio } from "@/lib/narration";
+
+const isAudioVendor = (value: unknown): value is AudioVendor =>
+  typeof value === "string" &&
+  ["replicate", "elevenlabs", "freesound", "local"].includes(value);
+
+const isAudioModelKey = (
+  value: unknown,
+): value is keyof typeof AUDIO_MODELS =>
+  typeof value === "string" && value in AUDIO_MODELS;
 
 export async function POST(req: Request) {
   try {
@@ -13,6 +29,8 @@ export async function POST(req: Request) {
       newSpeed,
       newPitch,
       customText,
+      voiceProvider,
+      voiceModelKey,
     } = await req.json();
 
     if (!sceneId || typeof sceneId !== "string") {
@@ -50,6 +68,11 @@ export async function POST(req: Request) {
       },
     );
 
+    const resolvedProvider =
+      (isAudioVendor(voiceProvider) ? voiceProvider : undefined) ??
+      (projectVoiceSettings?.voiceProvider as AudioVendor | undefined) ??
+      "replicate";
+
     const voiceId =
       newVoiceId ||
       scene.voiceId ||
@@ -71,14 +94,17 @@ export async function POST(req: Request) {
         ? newPitch
         : projectVoiceSettings?.pitch ?? 0;
 
-    const {
-      audioUrl,
-      sanitizedText,
-      truncated,
-      voiceId: normalizedVoiceId,
-      voiceName,
-    } = await synthesizeNarrationAudio({
-      text: baseText,
+    const adapter = getVoiceAdapter({
+      vendor: resolvedProvider,
+      modelKey: isAudioModelKey(voiceModelKey)
+        ? voiceModelKey
+        : projectVoiceSettings?.voiceModelKey,
+    });
+
+    const { text: sanitizedText, truncated } = sanitizeNarrationText(baseText);
+
+    const voiceResult = await adapter.synthesizeVoice({
+      text: sanitizedText,
       voiceId,
       emotion,
       speed,
@@ -87,19 +113,21 @@ export async function POST(req: Request) {
 
     await convex.mutation(api.video.updateSceneNarration, {
       sceneId: sceneId as Id<"scenes">,
-      narrationUrl: audioUrl,
+      narrationUrl: voiceResult.audioUrl,
       narrationText: sanitizedText,
-      voiceId: normalizedVoiceId,
-      voiceName,
+      voiceId: voiceResult.voiceId,
+      voiceName: voiceResult.voiceName,
     });
 
     return NextResponse.json({
       success: true,
-      audioUrl,
+      audioUrl: voiceResult.audioUrl,
       truncated,
-      voiceId: normalizedVoiceId,
-      voiceName,
+      voiceId: voiceResult.voiceId,
+      voiceName: voiceResult.voiceName,
       narrationText: sanitizedText,
+      provider: resolvedProvider,
+      format: voiceResult.format,
     });
   } catch (error) {
     console.error("Failed to regenerate narration:", error);

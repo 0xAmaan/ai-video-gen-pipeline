@@ -6,9 +6,15 @@ import { NextResponse } from "next/server";
 import Replicate from "replicate";
 import { STORYBOARD_SYSTEM_PROMPT, buildStoryboardPrompt } from "@/lib/prompts";
 import { IMAGE_MODELS } from "@/lib/image-models";
+import {
+  AUDIO_MODELS,
+  DEFAULT_VOICE_MODEL,
+  type AudioVendor,
+} from "@/lib/audio-models";
 import { extractReplicateUrl } from "@/lib/replicate";
-import { synthesizeNarrationAudio } from "@/lib/narration";
+import { sanitizeNarrationText } from "@/lib/narration";
 import { generateVoiceSelection } from "@/lib/server/voice-selection";
+import { getVoiceAdapter } from "@/lib/audio-provider-factory";
 import { getConvexClient } from "@/lib/server/convex";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -16,6 +22,25 @@ import type { Id } from "@/convex/_generated/dataModel";
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
+
+type VoiceVendor = Extract<AudioVendor, "replicate" | "elevenlabs">;
+
+const VOICE_VENDORS: VoiceVendor[] = ["replicate", "elevenlabs"];
+
+const isVoiceVendor = (value: unknown): value is VoiceVendor =>
+  typeof value === "string" &&
+  (VOICE_VENDORS as string[]).includes(value);
+
+const isAudioModelKey = (
+  value: unknown,
+): value is keyof typeof AUDIO_MODELS =>
+  typeof value === "string" && value in AUDIO_MODELS;
+
+const DEFAULT_REPLICATE_VOICE_MODEL =
+  "replicate-minimax-tts" as keyof typeof AUDIO_MODELS;
+
+const DEFAULT_ELEVENLABS_VOICE_MODEL = (DEFAULT_VOICE_MODEL ??
+  "elevenlabs-multilingual-v2") as keyof typeof AUDIO_MODELS;
 
 async function generateSceneImage(
   scene: GeneratedScene,
@@ -87,6 +112,7 @@ export async function POST(req: Request) {
     }
 
     const projectConvexId = projectId as Id<"videoProjects">;
+    const convex = await getConvexClient();
 
     // Step 1: Generate scene descriptions using Groq
     const hasGroqKey = !!process.env.GROQ_API_KEY;
@@ -122,23 +148,105 @@ export async function POST(req: Request) {
       maxRetries: 3,
     });
 
-    // Step 2: Select voice for narration
-    const voiceSelection = await generateVoiceSelection(prompt, responses);
-
-    try {
-      const convex = await getConvexClient();
-      await convex.mutation(api.video.saveProjectVoiceSettings, {
+    const existingVoiceSettings = await convex
+      .query(api.video.getProjectVoiceSettings, {
         projectId: projectConvexId,
-        selectedVoiceId: voiceSelection.voiceId,
-        selectedVoiceName: voiceSelection.voiceName,
-        voiceReasoning: voiceSelection.reasoning,
-        emotion: voiceSelection.emotion,
-        speed: voiceSelection.speed,
-        pitch: voiceSelection.pitch,
+      })
+      .catch((error) => {
+        console.warn("Unable to load project voice settings:", error);
+        return null;
       });
-    } catch (error) {
-      console.warn("Unable to persist voice selection to Convex:", error);
+
+    const resolvedProvider: VoiceVendor = existingVoiceSettings &&
+      isVoiceVendor(existingVoiceSettings.voiceProvider)
+        ? existingVoiceSettings.voiceProvider
+        : "replicate";
+
+    const modelKeyHint =
+      existingVoiceSettings?.voiceModelKey &&
+      isAudioModelKey(existingVoiceSettings.voiceModelKey)
+        ? existingVoiceSettings.voiceModelKey
+        : resolvedProvider === "elevenlabs"
+          ? DEFAULT_ELEVENLABS_VOICE_MODEL
+          : DEFAULT_REPLICATE_VOICE_MODEL;
+
+    const voiceAdapter = getVoiceAdapter({
+      vendor: resolvedProvider,
+      modelKey: modelKeyHint,
+    });
+
+    const resolvedVoiceSelection = existingVoiceSettings
+      ? {
+          voiceId: existingVoiceSettings.selectedVoiceId,
+          voiceName: existingVoiceSettings.selectedVoiceName,
+          emotion: existingVoiceSettings.emotion ?? "auto",
+          speed: existingVoiceSettings.speed ?? 1,
+          pitch: existingVoiceSettings.pitch ?? 0,
+          reasoning:
+            existingVoiceSettings.voiceReasoning ??
+            "Voice previously selected for this project.",
+          providerVoiceId: existingVoiceSettings.providerVoiceId ?? undefined,
+        }
+      : {
+          ...(await generateVoiceSelection(prompt, responses)),
+          providerVoiceId: undefined,
+        };
+
+    if (!existingVoiceSettings) {
+      try {
+        await convex.mutation(api.video.saveProjectVoiceSettings, {
+          projectId: projectConvexId,
+          selectedVoiceId: resolvedVoiceSelection.voiceId,
+          selectedVoiceName: resolvedVoiceSelection.voiceName,
+          voiceReasoning: resolvedVoiceSelection.reasoning,
+          emotion: resolvedVoiceSelection.emotion,
+          speed: resolvedVoiceSelection.speed,
+          pitch: resolvedVoiceSelection.pitch,
+          voiceProvider: resolvedProvider,
+          voiceModelKey: voiceAdapter.providerKey,
+        });
+      } catch (error) {
+        console.warn("Unable to persist voice selection to Convex:", error);
+      }
+    } else if (
+      !existingVoiceSettings.voiceProvider ||
+      !existingVoiceSettings.voiceModelKey
+    ) {
+      try {
+        await convex.mutation(api.video.updateProjectVoiceSettings, {
+          projectId: projectConvexId,
+          selectedVoiceId: resolvedVoiceSelection.voiceId,
+          selectedVoiceName: resolvedVoiceSelection.voiceName,
+          voiceReasoning: resolvedVoiceSelection.reasoning,
+          emotion: resolvedVoiceSelection.emotion,
+          speed: resolvedVoiceSelection.speed,
+          pitch: resolvedVoiceSelection.pitch,
+          voiceProvider: resolvedProvider,
+          voiceModelKey: voiceAdapter.providerKey,
+          providerVoiceId: existingVoiceSettings.providerVoiceId,
+        });
+      } catch (error) {
+        console.warn("Unable to synchronize voice provider metadata:", error);
+      }
     }
+
+    const baseVoiceRequest = {
+      voiceId:
+        resolvedVoiceSelection.providerVoiceId ??
+        resolvedVoiceSelection.voiceId,
+      emotion: resolvedVoiceSelection.emotion,
+      speed: resolvedVoiceSelection.speed,
+      pitch: resolvedVoiceSelection.pitch,
+    };
+
+    const responseVoiceSelection = {
+      voiceId: resolvedVoiceSelection.voiceId,
+      voiceName: resolvedVoiceSelection.voiceName,
+      emotion: resolvedVoiceSelection.emotion,
+      speed: resolvedVoiceSelection.speed,
+      pitch: resolvedVoiceSelection.pitch,
+      reasoning: resolvedVoiceSelection.reasoning,
+    };
 
     // Step 2: Select style for Leonardo Phoenix
     console.log("\n" + "=".repeat(80));
@@ -200,36 +308,50 @@ export async function POST(req: Request) {
           return undefined;
         });
 
-        const narrationPromise = synthesizeNarrationAudio({
-          text: scene.narrationText,
-          voiceId: voiceSelection.voiceId,
-          emotion: voiceSelection.emotion,
-          speed: voiceSelection.speed,
-          pitch: voiceSelection.pitch,
-        }).catch((error) => {
-          console.error(
-            `Error generating narration for scene ${scene.sceneNumber}:`,
-            error,
-          );
-          return null;
-        });
+        const sanitizedNarration = sanitizeNarrationText(scene.narrationText);
+        const shouldGenerateNarration =
+          Boolean(sanitizedNarration.text) && Boolean(baseVoiceRequest.voiceId);
+
+        const narrationPromise = shouldGenerateNarration
+          ? voiceAdapter
+              .synthesizeVoice({
+                text: sanitizedNarration.text,
+                voiceId: baseVoiceRequest.voiceId,
+                emotion: baseVoiceRequest.emotion,
+                speed: baseVoiceRequest.speed,
+                pitch: baseVoiceRequest.pitch,
+              })
+              .catch((error) => {
+                console.error(
+                  `Error generating narration for scene ${scene.sceneNumber}:`,
+                  error,
+                );
+                return null;
+              })
+          : Promise.resolve(null);
 
         const [imageUrl, narrationResult] = await Promise.all([
           imagePromise,
           narrationPromise,
         ]);
 
+        const narrationText =
+          sanitizedNarration.text && sanitizedNarration.text.length > 0
+            ? sanitizedNarration.text
+            : scene.narrationText;
+
         return {
           sceneNumber: scene.sceneNumber,
           description: scene.description,
           visualPrompt: scene.visualPrompt,
-          narrationText:
-            narrationResult?.sanitizedText ?? scene.narrationText,
+          narrationText,
           narrationUrl: narrationResult?.audioUrl,
           imageUrl,
           duration: scene.duration,
-          voiceId: narrationResult?.voiceId ?? voiceSelection.voiceId,
-          voiceName: narrationResult?.voiceName ?? voiceSelection.voiceName,
+          voiceId:
+            narrationResult?.voiceId ?? resolvedVoiceSelection.voiceId,
+          voiceName:
+            narrationResult?.voiceName ?? resolvedVoiceSelection.voiceName,
         };
       }),
     );
@@ -244,7 +366,7 @@ export async function POST(req: Request) {
         estimatedCost: modelConfig.estimatedCost,
         reason: `Selected ${modelConfig.name} (${phoenixStyle}) based on project preferences.`,
       },
-      voiceSelection,
+      voiceSelection: responseVoiceSelection,
     });
   } catch (error) {
     console.error("Error generating storyboard:", error);

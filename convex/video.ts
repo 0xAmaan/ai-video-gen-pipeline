@@ -1,6 +1,43 @@
 import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 // Schema update: Added visualPrompt support for detailed scene descriptions
+
+const backgroundMusicSourceValidator = v.union(
+  v.literal("generated"),
+  v.literal("freesound"),
+  v.literal("uploaded"),
+);
+
+const audioAssetTypeValidator = v.union(
+  v.literal("bgm"),
+  v.literal("sfx"),
+  v.literal("narration"),
+  v.literal("voiceover"),
+);
+
+const audioAssetSourceValidator = v.union(
+  v.literal("generated"),
+  v.literal("freesound"),
+  v.literal("uploaded"),
+  v.literal("external"),
+);
+
+const voiceProviderValidator = v.union(
+  v.literal("replicate"),
+  v.literal("elevenlabs"),
+);
+
+const beatMarkerValidator = v.object({
+  time: v.number(),
+  strength: v.optional(v.number()),
+});
+
+const audioTrackIdValidator = v.union(
+  v.literal("audio-narration"),
+  v.literal("audio-bgm"),
+  v.literal("audio-sfx"),
+);
 
 const voiceSettingsPayload = {
   selectedVoiceId: v.string(),
@@ -9,6 +46,9 @@ const voiceSettingsPayload = {
   emotion: v.optional(v.string()),
   speed: v.optional(v.number()),
   pitch: v.optional(v.number()),
+  voiceProvider: v.optional(voiceProviderValidator),
+  voiceModelKey: v.optional(v.string()),
+  providerVoiceId: v.optional(v.string()),
 } as const;
 
 const lipsyncStatusValidator = v.union(
@@ -17,6 +57,27 @@ const lipsyncStatusValidator = v.union(
   v.literal("complete"),
   v.literal("failed"),
 );
+
+type AudioTrackId = "audio-narration" | "audio-bgm" | "audio-sfx";
+type AudioTrackSettings = {
+  audioNarration?: {
+    volume?: number;
+    muted?: boolean;
+  };
+  audioBgm?: {
+    volume?: number;
+    muted?: boolean;
+  };
+  audioSfx?: {
+    volume?: number;
+    muted?: boolean;
+  };
+};
+const audioTrackKeyMap: Record<AudioTrackId, keyof AudioTrackSettings> = {
+  "audio-narration": "audioNarration",
+  "audio-bgm": "audioBgm",
+  "audio-sfx": "audioSfx",
+};
 
 // Create a new video project
 export const createProject = mutation({
@@ -218,6 +279,10 @@ export const saveScenes = mutation({
         voiceName: v.optional(v.string()),
         duration: v.number(),
         replicateImageId: v.optional(v.string()),
+        backgroundMusicUrl: v.optional(v.string()),
+        backgroundMusicSource: v.optional(backgroundMusicSourceValidator),
+        backgroundMusicPrompt: v.optional(v.string()),
+        backgroundMusicMood: v.optional(v.string()),
       }),
     ),
   },
@@ -251,6 +316,10 @@ export const saveScenes = mutation({
         voiceName: scene.voiceName,
         duration: scene.duration,
         replicateImageId: scene.replicateImageId,
+        backgroundMusicUrl: scene.backgroundMusicUrl,
+        backgroundMusicSource: scene.backgroundMusicSource,
+        backgroundMusicPrompt: scene.backgroundMusicPrompt,
+        backgroundMusicMood: scene.backgroundMusicMood,
         createdAt: now,
         updatedAt: now,
       });
@@ -297,6 +366,15 @@ export const saveProjectVoiceSettings = mutation({
         emotion: args.emotion,
         speed: args.speed,
         pitch: args.pitch,
+        ...(args.voiceProvider !== undefined && {
+          voiceProvider: args.voiceProvider,
+        }),
+        ...(args.voiceModelKey !== undefined && {
+          voiceModelKey: args.voiceModelKey,
+        }),
+        ...(args.providerVoiceId !== undefined && {
+          providerVoiceId: args.providerVoiceId,
+        }),
         updatedAt: now,
       });
       return existingSettings._id;
@@ -310,6 +388,9 @@ export const saveProjectVoiceSettings = mutation({
       emotion: args.emotion,
       speed: args.speed,
       pitch: args.pitch,
+      voiceProvider: args.voiceProvider,
+      voiceModelKey: args.voiceModelKey,
+      providerVoiceId: args.providerVoiceId,
       createdAt: now,
       updatedAt: now,
     });
@@ -471,6 +552,15 @@ export const updateProjectVoiceSettings = mutation({
         emotion: args.emotion,
         speed: args.speed,
         pitch: args.pitch,
+        ...(args.voiceProvider !== undefined && {
+          voiceProvider: args.voiceProvider,
+        }),
+        ...(args.voiceModelKey !== undefined && {
+          voiceModelKey: args.voiceModelKey,
+        }),
+        ...(args.providerVoiceId !== undefined && {
+          providerVoiceId: args.providerVoiceId,
+        }),
         updatedAt: now,
       });
     } else {
@@ -482,12 +572,57 @@ export const updateProjectVoiceSettings = mutation({
         emotion: args.emotion,
         speed: args.speed,
         pitch: args.pitch,
+        voiceProvider: args.voiceProvider,
+        voiceModelKey: args.voiceModelKey,
+        providerVoiceId: args.providerVoiceId,
         createdAt: now,
         updatedAt: now,
       });
     }
 
     return args.projectId;
+  },
+});
+
+export const updateProjectAudioTrackSettings = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    trackId: audioTrackIdValidator,
+    volume: v.optional(v.number()),
+    muted: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const currentSettings: AudioTrackSettings =
+      (project.audioTrackSettings ?? {}) as AudioTrackSettings;
+    const settingsKey = audioTrackKeyMap[args.trackId];
+    const existingTrack = currentSettings[settingsKey] ?? {};
+    const updatedTrack = {
+      ...existingTrack,
+      ...(args.volume !== undefined ? { volume: args.volume } : {}),
+      ...(args.muted !== undefined ? { muted: args.muted } : {}),
+    };
+
+    const nextSettings: AudioTrackSettings = {
+      ...currentSettings,
+      [settingsKey]: updatedTrack,
+    };
+
+    await ctx.db.patch(args.projectId, {
+      audioTrackSettings: nextSettings,
+      updatedAt: Date.now(),
+    });
+
+    return nextSettings;
   },
 });
 
@@ -588,6 +723,10 @@ export const updateScene = mutation({
     voiceName: v.optional(v.string()),
     duration: v.optional(v.number()),
     replicateImageId: v.optional(v.string()),
+    backgroundMusicUrl: v.optional(v.string()),
+    backgroundMusicSource: v.optional(backgroundMusicSourceValidator),
+    backgroundMusicPrompt: v.optional(v.string()),
+    backgroundMusicMood: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -624,6 +763,14 @@ export const updateScene = mutation({
     if (args.duration !== undefined) updates.duration = args.duration;
     if (args.replicateImageId !== undefined)
       updates.replicateImageId = args.replicateImageId;
+    if (args.backgroundMusicUrl !== undefined)
+      updates.backgroundMusicUrl = args.backgroundMusicUrl;
+    if (args.backgroundMusicSource !== undefined)
+      updates.backgroundMusicSource = args.backgroundMusicSource;
+    if (args.backgroundMusicPrompt !== undefined)
+      updates.backgroundMusicPrompt = args.backgroundMusicPrompt;
+    if (args.backgroundMusicMood !== undefined)
+      updates.backgroundMusicMood = args.backgroundMusicMood;
 
     await ctx.db.patch(args.sceneId, updates);
 
@@ -662,6 +809,276 @@ export const updateProjectStatus = mutation({
     });
 
     return args.projectId;
+  },
+});
+
+export const updateProjectBackgroundMusic = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    backgroundMusicUrl: v.optional(v.string()),
+    backgroundMusicSource: v.optional(backgroundMusicSourceValidator),
+    backgroundMusicPrompt: v.optional(v.string()),
+    backgroundMusicMood: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
+    if (args.backgroundMusicUrl !== undefined) {
+      updates.backgroundMusicUrl = args.backgroundMusicUrl;
+    }
+    if (args.backgroundMusicSource !== undefined) {
+      updates.backgroundMusicSource = args.backgroundMusicSource;
+    }
+    if (args.backgroundMusicPrompt !== undefined) {
+      updates.backgroundMusicPrompt = args.backgroundMusicPrompt;
+    }
+    if (args.backgroundMusicMood !== undefined) {
+      updates.backgroundMusicMood = args.backgroundMusicMood;
+    }
+
+    await ctx.db.patch(args.projectId, updates);
+    return args.projectId;
+  },
+});
+
+export const updateSceneBackgroundMusic = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    backgroundMusicUrl: v.optional(v.string()),
+    backgroundMusicSource: v.optional(backgroundMusicSourceValidator),
+    backgroundMusicPrompt: v.optional(v.string()),
+    backgroundMusicMood: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+    const project = await ctx.db.get(scene.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
+    if (args.backgroundMusicUrl !== undefined) {
+      updates.backgroundMusicUrl = args.backgroundMusicUrl;
+    }
+    if (args.backgroundMusicSource !== undefined) {
+      updates.backgroundMusicSource = args.backgroundMusicSource;
+    }
+    if (args.backgroundMusicPrompt !== undefined) {
+      updates.backgroundMusicPrompt = args.backgroundMusicPrompt;
+    }
+    if (args.backgroundMusicMood !== undefined) {
+      updates.backgroundMusicMood = args.backgroundMusicMood;
+    }
+
+    await ctx.db.patch(args.sceneId, updates);
+    return args.sceneId;
+  },
+});
+
+export const createAudioAsset = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    sceneId: v.optional(v.id("scenes")),
+    type: audioAssetTypeValidator,
+    source: audioAssetSourceValidator,
+    url: v.string(),
+    duration: v.optional(v.number()),
+    prompt: v.optional(v.string()),
+    mood: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    modelKey: v.optional(v.string()),
+    timelineStart: v.optional(v.number()),
+    timelineEnd: v.optional(v.number()),
+    beatMarkers: v.optional(v.array(beatMarkerValidator)),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    let sceneId: Id<"scenes"> | undefined;
+    if (args.sceneId) {
+      const scene = await ctx.db.get(args.sceneId);
+      if (!scene || scene.projectId !== args.projectId) {
+        throw new Error("Scene not found or does not belong to project");
+      }
+      sceneId = args.sceneId as Id<"scenes">;
+    }
+
+    const now = Date.now();
+    return await ctx.db.insert("audioAssets", {
+      projectId: args.projectId,
+      sceneId,
+      type: args.type,
+      source: args.source,
+      url: args.url,
+      duration: args.duration,
+      prompt: args.prompt,
+      mood: args.mood,
+      provider: args.provider,
+      modelKey: args.modelKey,
+      timelineStart: args.timelineStart,
+      timelineEnd: args.timelineEnd,
+      beatMarkers: args.beatMarkers,
+      metadata: args.metadata,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const updateAudioAsset = mutation({
+  args: {
+    assetId: v.id("audioAssets"),
+    type: v.optional(audioAssetTypeValidator),
+    source: v.optional(audioAssetSourceValidator),
+    url: v.optional(v.string()),
+    duration: v.optional(v.number()),
+    prompt: v.optional(v.string()),
+    mood: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    modelKey: v.optional(v.string()),
+    timelineStart: v.optional(v.number()),
+    timelineEnd: v.optional(v.number()),
+    beatMarkers: v.optional(v.array(beatMarkerValidator)),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const asset = await ctx.db.get(args.assetId);
+    if (!asset) {
+      throw new Error("Audio asset not found");
+    }
+
+    const project = await ctx.db.get(asset.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
+    if (args.type !== undefined) updates.type = args.type;
+    if (args.source !== undefined) updates.source = args.source;
+    if (args.url !== undefined) updates.url = args.url;
+    if (args.duration !== undefined) updates.duration = args.duration;
+    if (args.prompt !== undefined) updates.prompt = args.prompt;
+    if (args.mood !== undefined) updates.mood = args.mood;
+    if (args.provider !== undefined) updates.provider = args.provider;
+    if (args.modelKey !== undefined) updates.modelKey = args.modelKey;
+    if (args.timelineStart !== undefined)
+      updates.timelineStart = args.timelineStart;
+    if (args.timelineEnd !== undefined) updates.timelineEnd = args.timelineEnd;
+    if (args.beatMarkers !== undefined) updates.beatMarkers = args.beatMarkers;
+    if (args.metadata !== undefined) updates.metadata = args.metadata;
+
+    await ctx.db.patch(args.assetId, updates);
+    return args.assetId;
+  },
+});
+
+export const deleteAudioAsset = mutation({
+  args: {
+    assetId: v.id("audioAssets"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const asset = await ctx.db.get(args.assetId);
+    if (!asset) {
+      throw new Error("Audio asset not found");
+    }
+
+    const project = await ctx.db.get(asset.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    await ctx.db.delete(args.assetId);
+    return true;
+  },
+});
+
+export const getAudioAssets = query({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    return await ctx.db
+      .query("audioAssets")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+  },
+});
+
+export const getAudioAssetsByScene = query({
+  args: {
+    sceneId: v.id("scenes"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+    const project = await ctx.db.get(scene.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    return await ctx.db
+      .query("audioAssets")
+      .withIndex("by_scene", (q) => q.eq("sceneId", args.sceneId))
+      .collect();
   },
 });
 
@@ -1083,11 +1500,17 @@ export const getProjectWithAllData = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
+    const audioAssets = await ctx.db
+      .query("audioAssets")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
     return {
       project,
       questions,
       scenes: scenes.sort((a, b) => a.sceneNumber - b.sceneNumber),
       clips,
+      audioAssets,
     };
   },
 });

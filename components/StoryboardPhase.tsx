@@ -5,7 +5,25 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ArrowRight,
   GripVertical,
@@ -15,8 +33,10 @@ import {
   Loader2,
   RefreshCw,
   Volume2,
+  Music2,
+  Search,
 } from "lucide-react";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Scene } from "@/types/scene";
@@ -26,12 +46,41 @@ import {
 } from "@/components/VoiceSelectionDialog";
 import { MINIMAX_VOICES } from "@/lib/voice-selection";
 import type { MiniMaxVoiceId } from "@/lib/voice-selection";
+import { AudioPlayer } from "@/components/audio/AudioPlayer";
+
+type VoiceProvider = "replicate" | "elevenlabs";
+
+type AudioSearchResult = {
+  id: string;
+  title: string;
+  url: string;
+  durationSeconds: number;
+  tags: string[];
+  previewUrl?: string;
+  streamUrl?: string;
+  downloadUrl?: string;
+  attribution?: string;
+};
+
+const resolveFreesoundAudioSrc = (result: AudioSearchResult) => {
+  const fallbackUrl =
+    result.previewUrl || result.streamUrl || result.downloadUrl || result.url;
+  console.log("[StoryboardPhase] Freesound audio preview source", {
+    freesoundId: result.id,
+    previewUrl: result.previewUrl,
+    streamUrl: result.streamUrl,
+    downloadUrl: result.downloadUrl,
+    fallbackUrl,
+  });
+  return fallbackUrl;
+};
 
 interface StoryboardPhaseProps {
   prompt: string;
   scenes: Scene[];
   onGenerateVideo: (scenes: Scene[]) => void;
   projectId: Id<"videoProjects"> | null;
+  project: Doc<"videoProjects"> | null;
 }
 
 export const StoryboardPhase = ({
@@ -39,6 +88,7 @@ export const StoryboardPhase = ({
   scenes: initialScenes,
   onGenerateVideo,
   projectId,
+  project,
 }: StoryboardPhaseProps) => {
   const [scenes, setScenes] = useState<Scene[]>(initialScenes);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -49,12 +99,65 @@ export const StoryboardPhase = ({
     Set<string>
   >(new Set());
   const [showVoiceDialog, setShowVoiceDialog] = useState(false);
+  const [musicPrompt, setMusicPrompt] = useState(
+    project?.backgroundMusicPrompt || "",
+  );
+  const [isGeneratingMusic, setIsGeneratingMusic] = useState(false);
+  const [musicGenerationError, setMusicGenerationError] = useState<
+    string | null
+  >(null);
+  const [bgmPreviewUrl, setBgmPreviewUrl] = useState<string | null>(
+    project?.backgroundMusicUrl ?? null,
+  );
+  const [bgmSource, setBgmSource] = useState<string | null>(
+    project?.backgroundMusicSource ?? null,
+  );
+  const [bgmPrompt, setBgmPrompt] = useState<string>(
+    project?.backgroundMusicPrompt ?? "",
+  );
+  const [freesoundQuery, setFreesoundQuery] = useState("uplifting cinematic");
+  const [freesoundMood, setFreesoundMood] = useState("");
+  const [freesoundCategory, setFreesoundCategory] = useState("");
+  const [freesoundDuration, setFreesoundDuration] = useState<[number, number]>([
+    0,
+    120,
+  ]);
+  const [isSearchingFreesound, setIsSearchingFreesound] = useState(false);
+  const [freesoundError, setFreesoundError] = useState<string | null>(null);
+  const [freesoundResults, setFreesoundResults] = useState<AudioSearchResult[]>(
+    [],
+  );
+  const [bgmAttribution, setBgmAttribution] = useState<string | null>(null);
+  const [sfxDialogOpen, setSfxDialogOpen] = useState(false);
+  const [sfxDialogSceneId, setSfxDialogSceneId] = useState<string | null>(null);
+  const [sfxDialogUrl, setSfxDialogUrl] = useState("");
+  const [sfxDialogDuration, setSfxDialogDuration] = useState<number>(3);
+  const [sfxDialogOffset, setSfxDialogOffset] = useState<number>(0);
+  const [sfxDialogMood, setSfxDialogMood] = useState("");
+  const [sfxDialogAttribution, setSfxDialogAttribution] = useState("");
+  const [sfxDialogSource, setSfxDialogSource] =
+    useState<"freesound" | "generated" | "uploaded">("freesound");
+  const [sfxDialogLoading, setSfxDialogLoading] = useState(false);
+  const [sfxDialogError, setSfxDialogError] = useState<string | null>(null);
+  const [sfxDialogTags, setSfxDialogTags] = useState<string[]>([]);
+  const [sfxDialogFreesoundId, setSfxDialogFreesoundId] = useState<string | null>(
+    null,
+  );
+  const [deletingAudioAssetIds, setDeletingAudioAssetIds] = useState<
+    Set<string>
+  >(new Set());
 
   // Convex mutations
   const updateScene = useMutation(api.video.updateScene);
   const updateSceneOrder = useMutation(api.video.updateSceneOrder);
   const deleteSceneMutation = useMutation(api.video.deleteScene);
   const updateVoiceSettings = useMutation(api.video.updateProjectVoiceSettings);
+  const updateProjectBackgroundMusic = useMutation(
+    api.video.updateProjectBackgroundMusic,
+  );
+  const createAudioAsset = useMutation(api.video.createAudioAsset);
+  const updateAudioAsset = useMutation(api.video.updateAudioAsset);
+  const deleteAudioAssetMutation = useMutation(api.video.deleteAudioAsset);
 
   // Load scenes from Convex
   const convexScenes = useQuery(
@@ -63,6 +166,10 @@ export const StoryboardPhase = ({
   );
   const voiceSettings = useQuery(
     api.video.getProjectVoiceSettings,
+    projectId ? { projectId } : "skip",
+  );
+  const audioAssets = useQuery(
+    api.video.getAudioAssets,
     projectId ? { projectId } : "skip",
   );
 
@@ -85,17 +192,91 @@ export const StoryboardPhase = ({
     }
   }, [convexScenes]);
 
+  const projectAudioAssets = audioAssets ?? [];
+  const projectBgmAsset = useMemo(
+    () =>
+      projectAudioAssets.find(
+        (asset) => asset.type === "bgm" && !asset.sceneId,
+      ) ?? null,
+    [projectAudioAssets],
+  );
+  const sceneAudioAssets = useMemo(() => {
+    const map = new Map<string, Doc<"audioAssets">[]>();
+    projectAudioAssets.forEach((asset) => {
+      if (asset.sceneId) {
+        const key = asset.sceneId as string;
+        const bucket = map.get(key) ?? [];
+        bucket.push(asset);
+        map.set(key, bucket);
+      }
+    });
+    return map;
+  }, [projectAudioAssets]);
+  const sceneStartTimes = useMemo(() => {
+    let cursor = 0;
+    const map = new Map<string, number>();
+    scenes
+      .slice()
+      .sort((a, b) => a.sceneNumber - b.sceneNumber)
+      .forEach((scene) => {
+        map.set(scene.id, cursor);
+        cursor += scene.duration;
+    });
+    return map;
+  }, [scenes]);
+
+  useEffect(() => {
+    const nextUrl = projectBgmAsset?.url ?? project?.backgroundMusicUrl ?? null;
+    const nextSource =
+      projectBgmAsset?.source ?? project?.backgroundMusicSource ?? null;
+    const nextPrompt =
+      projectBgmAsset?.prompt ?? project?.backgroundMusicPrompt ?? "";
+    const attribution =
+      projectBgmAsset &&
+      typeof projectBgmAsset.metadata === "object" &&
+      projectBgmAsset.metadata !== null
+        ? (projectBgmAsset.metadata as { attribution?: string }).attribution ??
+          null
+        : null;
+    setBgmPreviewUrl(nextUrl);
+    setBgmSource(nextSource);
+    setBgmPrompt(nextPrompt);
+    setBgmAttribution(attribution);
+  }, [
+    project?.backgroundMusicUrl,
+    project?.backgroundMusicSource,
+    project?.backgroundMusicPrompt,
+    projectBgmAsset,
+  ]);
+
   const totalDuration = scenes.reduce((sum, scene) => sum + scene.duration, 0);
   const sampleAudioUrl = useMemo(
     () => scenes.find((scene) => scene.narrationUrl)?.narrationUrl,
     [scenes],
   );
+  const formatDuration = (seconds: number) => {
+    if (!Number.isFinite(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60)
+      .toString()
+      .padStart(2, "0");
+    return `${mins}:${secs}`;
+  };
   const currentVoiceLabel =
     voiceSettings?.selectedVoiceName ||
     scenes[0]?.voiceName ||
     MINIMAX_VOICES["Wise_Woman"].name;
+  const currentVoiceProvider =
+    (voiceSettings?.voiceProvider as VoiceProvider) ?? "replicate";
+  const currentVoiceProviderLabel =
+    currentVoiceProvider === "elevenlabs"
+      ? "ElevenLabs"
+      : "Replicate (MiniMax)";
   const currentVoiceReasoning =
-    voiceSettings?.voiceReasoning || "AI selected this voice for your prompt.";
+    voiceSettings?.voiceReasoning ||
+    (currentVoiceProvider === "elevenlabs"
+      ? "Premium ElevenLabs narration."
+      : "AI selected this voice for your prompt.");
 
   const handleDurationChange = async (id: string, duration: number) => {
     // Update local state immediately
@@ -158,21 +339,404 @@ export const StoryboardPhase = ({
     }
   };
 
-  const handleDeleteScene = async (id: string) => {
-    if (scenes.length > 1) {
-      // Update local state immediately
-      setScenes((prev) => prev.filter((scene) => scene.id !== id));
-
-      // Delete from Convex
-      if (projectId) {
-        try {
-          await deleteSceneMutation({
-            sceneId: id as Id<"scenes">,
-          });
-        } catch (error) {
-          console.error("Failed to delete scene:", error);
-        }
+  const handleApplyBackgroundMusic = async ({
+    url,
+    source,
+    mood,
+    promptSummary,
+    durationSeconds,
+    attribution,
+    provider,
+    modelKey,
+    freesoundId,
+    tags,
+  }: {
+    url: string;
+    source: "generated" | "freesound" | "uploaded";
+    mood?: string;
+    promptSummary?: string;
+    durationSeconds?: number;
+    attribution?: string;
+    provider?: string;
+    modelKey?: string;
+    freesoundId?: string;
+    tags?: string[];
+  }) => {
+    if (!projectId || !url) return;
+    try {
+      await updateProjectBackgroundMusic({
+        projectId,
+        backgroundMusicUrl: url,
+        backgroundMusicSource: source,
+        backgroundMusicPrompt: promptSummary,
+        backgroundMusicMood: mood,
+      });
+      const safeDuration =
+        typeof durationSeconds === "number" && durationSeconds > 0
+          ? durationSeconds
+          : totalDuration > 0
+            ? totalDuration
+            : 30;
+      const metadata: Record<string, unknown> = {
+        role: "project-bgm",
+        ...(attribution ? { attribution } : {}),
+        ...(freesoundId ? { freesoundId } : {}),
+        ...(Array.isArray(tags) && tags.length > 0 ? { tags } : {}),
+      };
+      if (projectBgmAsset) {
+        await updateAudioAsset({
+          assetId: projectBgmAsset._id,
+          url,
+          source,
+          duration: safeDuration,
+          prompt: promptSummary,
+          mood,
+          provider,
+          modelKey,
+          timelineStart: 0,
+          timelineEnd: safeDuration,
+          metadata: {
+            ...(projectBgmAsset.metadata ?? {}),
+            ...metadata,
+          },
+        });
+      } else {
+        await createAudioAsset({
+          projectId,
+          type: "bgm",
+          source,
+          url,
+          duration: safeDuration,
+          prompt: promptSummary,
+          mood,
+          provider,
+          modelKey,
+          timelineStart: 0,
+          timelineEnd: safeDuration,
+          metadata,
+        });
       }
+      console.log("[StoryboardPhase] Background music applied", {
+        url,
+        source,
+        provider,
+        modelKey,
+        attribution,
+        freesoundId,
+      });
+      setBgmPreviewUrl(url);
+      setBgmSource(source);
+      setBgmPrompt(promptSummary ?? "");
+      setBgmAttribution(attribution ?? null);
+    } catch (error) {
+      console.error("Failed to save background music:", error);
+    }
+  };
+
+  const handleGenerateBackgroundMusic = async () => {
+    if (!projectId) return;
+    const trimmedPrompt =
+      musicPrompt.trim() || "cinematic uplifting background music";
+    const durationHint = Math.min(Math.max(totalDuration, 15), 90);
+    setIsGeneratingMusic(true);
+    setMusicGenerationError(null);
+    try {
+      const response = await fetch("/api/generate-music", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: trimmedPrompt,
+          durationSeconds: durationHint,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.track?.audioUrl) {
+        throw new Error(
+          data.error || "Failed to generate music. Please try again.",
+        );
+      }
+      const trackDuration =
+        typeof data.track.durationSeconds === "number"
+          ? data.track.durationSeconds
+          : Number(data.track.durationSeconds) || durationHint;
+      await handleApplyBackgroundMusic({
+        url: data.track.audioUrl,
+        source: "generated",
+        promptSummary: trimmedPrompt,
+        durationSeconds: trackDuration,
+        provider: "replicate",
+        modelKey: typeof data.modelKey === "string" ? data.modelKey : undefined,
+      });
+    } catch (error) {
+      setMusicGenerationError(
+        error instanceof Error ? error.message : "Unable to generate music.",
+      );
+    } finally {
+      setIsGeneratingMusic(false);
+    }
+  };
+
+  const handleFreesoundSearch = async () => {
+    if (!projectId) return;
+    if (!freesoundQuery.trim()) {
+      setFreesoundError("Enter a few keywords to search for music.");
+      return;
+    }
+    setIsSearchingFreesound(true);
+    setFreesoundError(null);
+    const payload = {
+      query: freesoundQuery.trim(),
+      mood: freesoundMood.trim() || undefined,
+      category: freesoundCategory.trim() || undefined,
+      durationRange: freesoundDuration,
+    };
+    console.log("[StoryboardPhase] Submitting Freesound search", payload);
+    try {
+      const response = await fetch("/api/search-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Freesound search failed");
+      }
+      console.log("[StoryboardPhase] Freesound search response", {
+        count: Array.isArray(data.results) ? data.results.length : 0,
+        sampleIds: Array.isArray(data.results)
+          ? data.results.slice(0, 5).map((item: AudioSearchResult) => item.id)
+          : [],
+      });
+      setFreesoundResults(data.results ?? []);
+    } catch (error) {
+      console.error("[StoryboardPhase] Freesound search failed", {
+        error,
+        payload,
+      });
+      setFreesoundError(
+        error instanceof Error ? error.message : "Search failed.",
+      );
+    } finally {
+      setIsSearchingFreesound(false);
+    }
+  };
+
+  const handleSelectFreesoundTrack = async (result: AudioSearchResult) => {
+    const resolvedUrl =
+      result.streamUrl || result.downloadUrl || result.url || null;
+    if (!resolvedUrl) {
+      console.error("[StoryboardPhase] Unable to apply Freesound track", {
+        freesoundId: result.id,
+        result,
+      });
+      setFreesoundError("Unable to load the selected track.");
+      return;
+    }
+    console.log("[StoryboardPhase] Applying Freesound track", {
+      freesoundId: result.id,
+      resolvedUrl,
+      attribution: result.attribution,
+    });
+    await handleApplyBackgroundMusic({
+      url: resolvedUrl,
+      source: "freesound",
+      mood: freesoundMood || result.tags[0],
+      promptSummary:
+        result.tags.slice(0, 4).join(", ") ||
+        `Freesound track ${result.title ?? result.id}`,
+      durationSeconds:
+        typeof result.durationSeconds === "number"
+          ? result.durationSeconds
+          : undefined,
+      attribution: result.attribution,
+      provider: "freesound",
+      modelKey: "freesound-music-library",
+      freesoundId: result.id,
+      tags: result.tags,
+    });
+  };
+
+  const handleClearBackgroundMusic = async () => {
+    if (!projectId) return;
+    try {
+      await updateProjectBackgroundMusic({
+        projectId,
+        backgroundMusicUrl: undefined,
+        backgroundMusicSource: undefined,
+        backgroundMusicPrompt: undefined,
+        backgroundMusicMood: undefined,
+      });
+      if (projectBgmAsset) {
+        await deleteAudioAssetMutation({
+          assetId: projectBgmAsset._id as Id<"audioAssets">,
+        });
+      }
+      setBgmPreviewUrl(null);
+      setBgmSource(null);
+      setBgmPrompt("");
+      setBgmAttribution(null);
+    } catch (error) {
+      console.error("Failed to clear background music:", error);
+    }
+  };
+
+  const resetSfxDialogState = () => {
+    setSfxDialogSceneId(null);
+    setSfxDialogUrl("");
+    setSfxDialogDuration(3);
+    setSfxDialogOffset(0);
+    setSfxDialogMood("");
+    setSfxDialogAttribution("");
+    setSfxDialogSource("freesound");
+    setSfxDialogError(null);
+    setSfxDialogTags([]);
+    setSfxDialogFreesoundId(null);
+  };
+
+  const openSfxDialogForScene = (sceneId: string) => {
+    if (sceneId.startsWith("temp-")) {
+      return;
+    }
+    setSfxDialogSceneId(sceneId);
+    setSfxDialogUrl("");
+    setSfxDialogDuration(3);
+    setSfxDialogOffset(0);
+    setSfxDialogMood("");
+    setSfxDialogAttribution("");
+    setSfxDialogSource("uploaded");
+    setSfxDialogError(null);
+    setSfxDialogTags([]);
+    setSfxDialogFreesoundId(null);
+    setSfxDialogOpen(true);
+  };
+
+  const openSfxDialogFromResult = (result: AudioSearchResult) => {
+    setSfxDialogSceneId(null);
+    setSfxDialogUrl(result.url);
+    setSfxDialogDuration(
+      typeof result.durationSeconds === "number" && result.durationSeconds > 0
+        ? result.durationSeconds
+        : 3,
+    );
+    setSfxDialogOffset(0);
+    setSfxDialogMood(result.tags[0] || "");
+    setSfxDialogAttribution(result.attribution || "");
+    setSfxDialogSource("freesound");
+    setSfxDialogError(null);
+    setSfxDialogTags(result.tags);
+    setSfxDialogFreesoundId(result.id);
+    setSfxDialogOpen(true);
+  };
+
+  const handleConfirmSfxAttachment = async () => {
+    if (!projectId) {
+      setSfxDialogError("Save your project before attaching audio.");
+      return;
+    }
+    const availableSceneId =
+      sfxDialogSceneId ||
+      scenes.find((scene) => !scene.id.startsWith("temp-"))?.id ||
+      null;
+    if (!availableSceneId || availableSceneId.startsWith("temp-")) {
+      setSfxDialogError("Select a scene for this sound effect.");
+      return;
+    }
+    if (!sfxDialogUrl.trim()) {
+      setSfxDialogError("Audio URL is required.");
+      return;
+    }
+    setSfxDialogLoading(true);
+    setSfxDialogError(null);
+    try {
+      const sceneStart = sceneStartTimes.get(availableSceneId) ?? 0;
+      const offset =
+        typeof sfxDialogOffset === "number" ? Number(sfxDialogOffset) : 0;
+      const duration =
+        typeof sfxDialogDuration === "number" && sfxDialogDuration > 0
+          ? sfxDialogDuration
+          : 1;
+      const timelineStart = Math.max(0, sceneStart + offset);
+      await createAudioAsset({
+        projectId,
+        sceneId: availableSceneId as Id<"scenes">,
+        type: "sfx",
+        source: sfxDialogSource,
+        url: sfxDialogUrl.trim(),
+        duration,
+        mood: sfxDialogMood || undefined,
+        timelineStart,
+        timelineEnd: timelineStart + duration,
+        provider: sfxDialogSource === "freesound" ? "freesound" : undefined,
+        metadata: {
+          role: "scene-sfx",
+          ...(sfxDialogAttribution ? { attribution: sfxDialogAttribution } : {}),
+          ...(sfxDialogTags.length ? { tags: sfxDialogTags } : {}),
+          ...(sfxDialogFreesoundId ? { freesoundId: sfxDialogFreesoundId } : {}),
+        },
+      });
+      setSfxDialogOpen(false);
+      resetSfxDialogState();
+    } catch (error) {
+      console.error("Failed to attach sound effect:", error);
+      setSfxDialogError(
+        error instanceof Error
+          ? error.message
+          : "Unable to attach sound effect.",
+      );
+    } finally {
+      setSfxDialogLoading(false);
+    }
+  };
+
+  const handleRemoveAudioAsset = async (assetId: string) => {
+    setDeletingAudioAssetIds((prev) => {
+      const next = new Set(prev);
+      next.add(assetId);
+      return next;
+    });
+    try {
+      await deleteAudioAssetMutation({
+        assetId: assetId as Id<"audioAssets">,
+      });
+    } catch (error) {
+      console.error("Failed to delete audio asset:", error);
+    } finally {
+      setDeletingAudioAssetIds((prev) => {
+        const next = new Set(prev);
+        next.delete(assetId);
+        return next;
+      });
+    }
+  };
+
+  const updateFreesoundDurationRange = (index: 0 | 1, value: number) => {
+    setFreesoundDuration((prev) => {
+      const next: [number, number] = [...prev] as [number, number];
+      next[index] = Math.max(0, value);
+      return next;
+    });
+  };
+
+  const handleDeleteScene = async (id: string) => {
+    if (scenes.length <= 1) {
+      return;
+    }
+
+    const isTempScene = id.startsWith("temp-");
+
+    // Update local state immediately
+    setScenes((prev) => prev.filter((scene) => scene.id !== id));
+
+    if (isTempScene || !projectId) {
+      return;
+    }
+
+    try {
+      await deleteSceneMutation({
+        sceneId: id as Id<"scenes">,
+      });
+    } catch (error) {
+      console.error("Failed to delete scene:", error);
     }
   };
 
@@ -204,6 +768,8 @@ export const StoryboardPhase = ({
       emotion?: string;
       speed?: number;
       pitch?: number;
+      voiceProvider?: VoiceProvider;
+      voiceModelKey?: string;
     },
   ) => {
     if (!projectId || scene.id.startsWith("temp-")) {
@@ -224,6 +790,8 @@ export const StoryboardPhase = ({
           newSpeed: options?.speed,
           newPitch: options?.pitch,
           customText: options?.customText,
+          voiceProvider: options?.voiceProvider,
+          voiceModelKey: options?.voiceModelKey,
         }),
       });
 
@@ -258,29 +826,68 @@ export const StoryboardPhase = ({
   const handleRegenerateNarration = (sceneId: string) => {
     const scene = scenes.find((s) => s.id === sceneId);
     if (!scene) return;
-    regenerateNarration(scene);
+    regenerateNarration(scene, {
+      voiceId:
+        scene.voiceId ||
+        voiceSettings?.selectedVoiceId ||
+        "Wise_Woman",
+      emotion: voiceSettings?.emotion,
+      speed: voiceSettings?.speed,
+      pitch: voiceSettings?.pitch,
+      voiceProvider:
+        (voiceSettings?.voiceProvider as VoiceProvider) ?? "replicate",
+      voiceModelKey: voiceSettings?.voiceModelKey ?? undefined,
+    });
   };
 
   const handleRegenerateNarrationWithText = (sceneId: string) => {
     const scene = scenes.find((s) => s.id === sceneId);
     if (!scene || !scene.narrationText) return;
-    regenerateNarration(scene, { customText: scene.narrationText });
+    regenerateNarration(scene, {
+      customText: scene.narrationText,
+      voiceId:
+        scene.voiceId ||
+        voiceSettings?.selectedVoiceId ||
+        "Wise_Woman",
+      emotion: voiceSettings?.emotion,
+      speed: voiceSettings?.speed,
+      pitch: voiceSettings?.pitch,
+      voiceProvider:
+        (voiceSettings?.voiceProvider as VoiceProvider) ?? "replicate",
+      voiceModelKey: voiceSettings?.voiceModelKey ?? undefined,
+    });
   };
 
   const handleVoiceDialogConfirm = async (
     selection: VoiceSelectionDialogSelection,
   ) => {
     if (!projectId) return;
+    const provider =
+      selection.voiceProvider ??
+      (voiceSettings?.voiceProvider as VoiceProvider) ??
+      "replicate";
+    const resolvedVoiceName =
+      selection.voiceName ||
+      (provider === "elevenlabs"
+        ? "ElevenLabs Voice"
+        : MINIMAX_VOICES[
+            (selection.voiceId as MiniMaxVoiceId) || "Wise_Woman"
+          ]?.name ||
+          "Wise Woman");
     try {
       await updateVoiceSettings({
         projectId,
         selectedVoiceId: selection.voiceId,
-        selectedVoiceName: MINIMAX_VOICES[selection.voiceId].name,
+        selectedVoiceName: resolvedVoiceName,
         voiceReasoning:
           selection.reasoning || "Manual voice selection from storyboard.",
         emotion: selection.emotion,
         speed: selection.speed,
         pitch: selection.pitch,
+        voiceProvider: provider,
+        voiceModelKey: selection.voiceModelKey,
+        providerVoiceId:
+          provider === "elevenlabs" ? selection.voiceId : undefined,
       });
       if (selection.regenerateAll) {
         for (const scene of scenes) {
@@ -290,6 +897,8 @@ export const StoryboardPhase = ({
               emotion: selection.emotion,
               speed: selection.speed,
               pitch: selection.pitch,
+              voiceProvider: provider,
+              voiceModelKey: selection.voiceModelKey,
             });
           }
         }
@@ -433,7 +1042,10 @@ export const StoryboardPhase = ({
               <Volume2 className="w-4 h-4" /> Narration Voice
             </h3>
             <p className="text-sm text-muted-foreground">
-              {currentVoiceLabel} — {currentVoiceReasoning}
+              {currentVoiceLabel} • {currentVoiceProviderLabel}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {currentVoiceReasoning}
             </p>
           </div>
           <Button variant="outline" onClick={() => setShowVoiceDialog(true)}>
@@ -441,10 +1053,15 @@ export const StoryboardPhase = ({
           </Button>
         </div>
         {sampleAudioUrl ? (
-          <audio controls className="w-full mt-3">
-            <source src={sampleAudioUrl} type="audio/wav" />
-            Your browser does not support the audio element.
-          </audio>
+          <AudioPlayer
+            className="w-full mt-3"
+            src={sampleAudioUrl}
+            label="NarrationSample"
+            debugContext={{
+              provider: currentVoiceProviderLabel,
+              projectId,
+            }}
+          />
         ) : (
           <p className="text-sm text-muted-foreground mt-3">
             Generate narration to preview the selected voice.
@@ -452,11 +1069,222 @@ export const StoryboardPhase = ({
         )}
       </Card>
 
+      {/* Background Music */}
+      <Card className="p-4 mb-6 space-y-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="font-medium flex items-center gap-2">
+              <Music2 className="w-4 h-4" /> Background Music
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {bgmPreviewUrl
+                ? `Source: ${bgmSource ?? "unknown"}${
+                    bgmPrompt ? ` • ${bgmPrompt}` : ""
+                  }`
+                : "Generate or search for a soundtrack to accompany your scenes."}
+            </p>
+            {bgmAttribution && (
+              <p className="text-xs text-muted-foreground">
+                Attribution: {bgmAttribution}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 w-full sm:w-auto">
+            {bgmPreviewUrl ? (
+              <>
+                <AudioPlayer
+                  className="w-full sm:w-64"
+                  src={bgmPreviewUrl}
+                  label="ProjectBGM"
+                  debugContext={{
+                    source: bgmSource,
+                    attribution: bgmAttribution ?? undefined,
+                    projectId,
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearBackgroundMusic}
+                >
+                  Remove
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No background music selected
+              </p>
+            )}
+          </div>
+        </div>
+        <Separator />
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Generate with AI
+            </h4>
+            <Textarea
+              value={musicPrompt}
+              onChange={(e) => setMusicPrompt(e.target.value)}
+              placeholder="Describe the mood, instruments, or tempo you want..."
+            />
+            {musicGenerationError && (
+              <p className="text-xs text-destructive">{musicGenerationError}</p>
+            )}
+            <Button
+              onClick={handleGenerateBackgroundMusic}
+              disabled={isGeneratingMusic}
+              className="w-full sm:w-auto"
+            >
+              {isGeneratingMusic ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Generate Background Music
+                </>
+              )}
+            </Button>
+          </div>
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold flex items-center gap-2">
+              <Search className="w-4 h-4" />
+              Freesound Music Library
+            </h4>
+            <Input
+              value={freesoundQuery}
+              onChange={(e) => setFreesoundQuery(e.target.value)}
+              placeholder="Search keywords (e.g., ambient, cinematic, playful)"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                value={freesoundMood}
+                onChange={(e) => setFreesoundMood(e.target.value)}
+                placeholder="Mood (optional)"
+              />
+              <Input
+                value={freesoundCategory}
+                onChange={(e) => setFreesoundCategory(e.target.value)}
+                placeholder="Category (optional)"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="number"
+                min={0}
+                value={freesoundDuration[0]}
+                onChange={(e) =>
+                  updateFreesoundDurationRange(0, Number(e.target.value) || 0)
+                }
+                placeholder="Min seconds"
+              />
+              <Input
+                type="number"
+                min={0}
+                value={freesoundDuration[1]}
+                onChange={(e) =>
+                  updateFreesoundDurationRange(1, Number(e.target.value) || 0)
+                }
+                placeholder="Max seconds"
+              />
+            </div>
+            <Button
+              variant="outline"
+              onClick={handleFreesoundSearch}
+              disabled={isSearchingFreesound}
+              className="w-full sm:w-auto"
+            >
+              {isSearchingFreesound ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4 mr-2" />
+                  Search Freesound
+                </>
+              )}
+            </Button>
+            {freesoundError && (
+              <p className="text-xs text-destructive">{freesoundError}</p>
+            )}
+            <ScrollArea className="h-48 border rounded-md">
+              {isSearchingFreesound ? (
+                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                  Searching Freesound...
+                </div>
+              ) : freesoundResults.length === 0 ? (
+                <div className="p-3 text-sm text-muted-foreground">
+                  No results yet. Try a search above.
+                </div>
+              ) : (
+                freesoundResults.map((result) => (
+                  <div
+                    key={result.id}
+                    className="border-b last:border-b-0 p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between text-sm font-medium">
+                      <span>{result.title}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDuration(result.durationSeconds)}
+                      </span>
+                    </div>
+                    {result.attribution && (
+                      <p className="text-xs text-muted-foreground">
+                        By {result.attribution}
+                      </p>
+                    )}
+                    <AudioPlayer
+                      className="w-full"
+                      src={resolveFreesoundAudioSrc(result)}
+                      label="FreesoundPreview"
+                      debugContext={{
+                        freesoundId: result.id,
+                        attribution: result.attribution,
+                      }}
+                    />
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{result.tags.slice(0, 3).join(", ")}</span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSelectFreesoundTrack(result)}
+                        >
+                          Use Track
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openSfxDialogFromResult(result)}
+                          disabled={!projectId}
+                        >
+                          Add SFX
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </ScrollArea>
+          </div>
+        </div>
+      </Card>
+
       {/* Scenes */}
       <div className="space-y-4 mb-6">
-        {scenes.map((scene, index) => (
-          <Card
-            key={scene.id}
+        {scenes.map((scene, index) => {
+          const sceneAssets = sceneAudioAssets.get(scene.id) ?? [];
+          const sceneSfxAssets = sceneAssets.filter(
+            (asset) => asset.type === "sfx",
+          );
+          return (
+            <Card
+              key={scene.id}
             draggable
             onDragStart={() => handleDragStart(index)}
             onDragOver={(e) => handleDragOver(e, index)}
@@ -464,7 +1292,7 @@ export const StoryboardPhase = ({
             className={`p-6 transition-all cursor-grab active:cursor-grabbing ${
               draggedIndex === index ? "opacity-50" : ""
             }`}
-          >
+            >
             <div className="flex gap-4">
               {/* Drag Handle */}
               <div className="flex items-center text-muted-foreground cursor-grab active:cursor-grabbing">
@@ -577,9 +1405,15 @@ export const StoryboardPhase = ({
                   </div>
                   {scene.narrationUrl ? (
                     <div>
-                      <audio controls className="w-full">
-                        <source src={scene.narrationUrl} type="audio/wav" />
-                      </audio>
+                      <AudioPlayer
+                        className="w-full"
+                        src={scene.narrationUrl}
+                        label="SceneNarration"
+                        debugContext={{
+                          sceneId: scene.id,
+                          sceneNumber: index + 1,
+                        }}
+                      />
                       {scene.narrationText && (
                         <p className="text-xs text-muted-foreground mt-2 italic">
                           “{scene.narrationText}”
@@ -638,8 +1472,96 @@ export const StoryboardPhase = ({
                 </div>
               </div>
             </div>
-          </Card>
-        ))}
+              {/* Sound Effects */}
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Sound Effects</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openSfxDialogForScene(scene.id)}
+                    disabled={
+                      !projectId ||
+                      scene.id.startsWith("temp-") ||
+                      isGeneratingMusic
+                    }
+                  >
+                    Add SFX
+                  </Button>
+                </div>
+                {sceneSfxAssets.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No sound effects attached to this scene.
+                  </p>
+                ) : (
+                  sceneSfxAssets.map((asset) => {
+                    const sceneStart = sceneStartTimes.get(scene.id) ?? 0;
+                    const relativeStart = Math.max(
+                      0,
+                      (asset.timelineStart ?? sceneStart) - sceneStart,
+                    );
+                    const assetDuration =
+                      typeof asset.duration === "number"
+                        ? asset.duration
+                        : 0;
+                    const metadata =
+                      typeof asset.metadata === "object" && asset.metadata
+                        ? (asset.metadata as { attribution?: string })
+                        : {};
+                    const isDeleting = deletingAudioAssetIds.has(asset._id);
+                    return (
+                      <div
+                        key={asset._id}
+                        className="rounded-md border p-3 text-xs space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {asset.mood || "Sound effect"}
+                            </span>
+                            <span className="text-muted-foreground">
+                              Starts at {formatDuration(relativeStart)} •{" "}
+                              {formatDuration(assetDuration)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isDeleting ? (
+                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                            ) : (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleRemoveAudioAsset(asset._id)}
+                                title="Remove sound effect"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {metadata.attribution && (
+                          <p className="text-muted-foreground">
+                            {metadata.attribution}
+                          </p>
+                        )}
+                        <AudioPlayer
+                          className="w-full"
+                          src={asset.url}
+                          label="SceneSFX"
+                          debugContext={{
+                            assetId: asset._id,
+                            sceneId: scene.id,
+                            role: asset.metadata?.role,
+                          }}
+                        />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Add Scene button removed - scenes must be generated via API */}
@@ -703,16 +1625,149 @@ export const StoryboardPhase = ({
         open={showVoiceDialog}
         onClose={() => setShowVoiceDialog(false)}
         defaultVoiceId={
-          (voiceSettings?.selectedVoiceId as keyof typeof MINIMAX_VOICES) ||
-          (scenes[0]?.voiceId as keyof typeof MINIMAX_VOICES) ||
+          voiceSettings?.selectedVoiceId ||
+          scenes[0]?.voiceId ||
           "Wise_Woman"
         }
+        defaultVoiceName={voiceSettings?.selectedVoiceName}
+        defaultVoiceProvider={currentVoiceProvider}
+        defaultVoiceModelKey={voiceSettings?.voiceModelKey ?? undefined}
         defaultEmotion={voiceSettings?.emotion || undefined}
         defaultSpeed={voiceSettings?.speed || undefined}
         defaultPitch={voiceSettings?.pitch || undefined}
         onConfirm={handleVoiceDialogConfirm}
         disabled={!projectId}
       />
+      <Dialog
+        open={sfxDialogOpen}
+        onOpenChange={(open) => {
+          setSfxDialogOpen(open);
+          if (!open) {
+            resetSfxDialogState();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Attach Sound Effect</DialogTitle>
+            <DialogDescription>
+              Select a scene and provide the audio clip you want to drop onto
+              the timeline.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Scene
+              </label>
+              <Select
+                value={sfxDialogSceneId ?? ""}
+                onValueChange={(value) =>
+                  setSfxDialogSceneId(value.length ? value : null)
+                }
+                disabled={!projectId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose scene" />
+                </SelectTrigger>
+                <SelectContent>
+                  {scenes
+                    .filter((scene) => !scene.id.startsWith("temp-"))
+                    .map((scene) => (
+                      <SelectItem key={scene.id} value={scene.id}>
+                        Scene {scene.sceneNumber}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Audio URL
+              </label>
+              <Input
+                placeholder="https://..."
+                value={sfxDialogUrl}
+                onChange={(e) => setSfxDialogUrl(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Duration (seconds)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={sfxDialogDuration}
+                  onChange={(e) =>
+                    setSfxDialogDuration(Number(e.target.value) || 0)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Start offset (seconds)
+                </label>
+                <Input
+                  type="number"
+                  value={sfxDialogOffset}
+                  onChange={(e) =>
+                    setSfxDialogOffset(Number(e.target.value) || 0)
+                  }
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Label/Mood
+              </label>
+              <Input
+                value={sfxDialogMood}
+                onChange={(e) => setSfxDialogMood(e.target.value)}
+                placeholder="e.g., Whoosh, Door slam"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Attribution
+              </label>
+              <Input
+                value={sfxDialogAttribution}
+                onChange={(e) => setSfxDialogAttribution(e.target.value)}
+                placeholder="Credit (optional)"
+              />
+            </div>
+          </div>
+          {sfxDialogError && (
+            <p className="text-xs text-destructive">{sfxDialogError}</p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setSfxDialogOpen(false);
+                resetSfxDialogState();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmSfxAttachment}
+              disabled={sfxDialogLoading}
+            >
+              {sfxDialogLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Attaching...
+                </>
+              ) : (
+                "Attach Sound"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
