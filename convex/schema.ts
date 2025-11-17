@@ -1,6 +1,11 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const beatMarkerValidator = v.object({
+  time: v.number(),
+  strength: v.optional(v.number()),
+});
+
 export default defineSchema({
   videoProjects: defineTable({
     userId: v.string(),
@@ -29,6 +34,38 @@ export default defineSchema({
     textModelId: v.optional(v.string()),
     imageModelId: v.optional(v.string()),
     videoModelId: v.optional(v.string()),
+    backgroundMusicUrl: v.optional(v.string()),
+    backgroundMusicSource: v.optional(
+      v.union(
+        v.literal("generated"),
+        v.literal("freesound"),
+        v.literal("uploaded"),
+      ),
+    ),
+    backgroundMusicPrompt: v.optional(v.string()),
+    backgroundMusicMood: v.optional(v.string()),
+    audioTrackSettings: v.optional(
+      v.object({
+        audioNarration: v.optional(
+          v.object({
+            volume: v.optional(v.number()),
+            muted: v.optional(v.boolean()),
+          }),
+        ),
+        audioBgm: v.optional(
+          v.object({
+            volume: v.optional(v.number()),
+            muted: v.optional(v.boolean()),
+          }),
+        ),
+        audioSfx: v.optional(
+          v.object({
+            volume: v.optional(v.number()),
+            muted: v.optional(v.boolean()),
+          }),
+        ),
+      }),
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
@@ -81,6 +118,16 @@ export default defineSchema({
     ), // Tracks lip sync processing state
     lipsyncPredictionId: v.optional(v.string()), // Replicate prediction ID
     replicateImageId: v.optional(v.string()), // For tracking Replicate prediction
+    backgroundMusicUrl: v.optional(v.string()),
+    backgroundMusicSource: v.optional(
+      v.union(
+        v.literal("generated"),
+        v.literal("freesound"),
+        v.literal("uploaded"),
+      ),
+    ),
+    backgroundMusicPrompt: v.optional(v.string()),
+    backgroundMusicMood: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
@@ -93,6 +140,11 @@ export default defineSchema({
     emotion: v.optional(v.string()),
     speed: v.optional(v.number()),
     pitch: v.optional(v.number()),
+    voiceProvider: v.optional(
+      v.union(v.literal("replicate"), v.literal("elevenlabs")),
+    ),
+    voiceModelKey: v.optional(v.string()),
+    providerVoiceId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
@@ -145,4 +197,35 @@ export default defineSchema({
   })
     .index("by_project", ["projectId", "historyType", "sequenceNumber"])
     .index("by_user", ["userId", "createdAt"]),
+
+  audioAssets: defineTable({
+    projectId: v.id("videoProjects"),
+    sceneId: v.optional(v.id("scenes")),
+    type: v.union(
+      v.literal("bgm"),
+      v.literal("sfx"),
+      v.literal("narration"),
+      v.literal("voiceover"),
+    ),
+    source: v.union(
+      v.literal("generated"),
+      v.literal("freesound"),
+      v.literal("uploaded"),
+      v.literal("external"),
+    ),
+    provider: v.optional(v.string()),
+    modelKey: v.optional(v.string()),
+    url: v.string(),
+    duration: v.optional(v.number()),
+    prompt: v.optional(v.string()),
+    mood: v.optional(v.string()),
+    timelineStart: v.optional(v.number()),
+    timelineEnd: v.optional(v.number()),
+    beatMarkers: v.optional(v.array(beatMarkerValidator)),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_scene", ["sceneId"]),
 });
