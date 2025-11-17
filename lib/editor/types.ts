@@ -68,6 +68,15 @@ export interface TransitionSpec {
 
 export type ClipKind = "video" | "audio" | "image";
 
+export interface SpeedKeyframe {
+  time: number; // Normalized 0-1 representing position within clip
+  speed: number; // Speed multiplier (0.5 = half speed, 2.0 = double speed, 0 = freeze frame)
+}
+
+export interface SpeedCurve {
+  keyframes: SpeedKeyframe[];
+}
+
 export interface Clip {
   id: string;
   mediaId: string;
@@ -81,6 +90,7 @@ export interface Clip {
   volume: number;
   effects: Effect[];
   transitions: TransitionSpec[];
+  speedCurve: SpeedCurve | null; // null = normal speed (1x), otherwise custom speed curve
 }
 
 export interface Track {

@@ -31,3 +31,9 @@ useMemo does not fix bugs, it just makes them happen less often
 🚩 <div onClick
 
 divs are not interactive elements and adding onClick requires implementing keyboard control, screen reader announcement, etc
+
+## Linear Workflow
+
+- **Always link to a Linear issue** before starting work
+- **Update Linear status** after each GitHub push
+- **Add comments** to Linear issues summarizing changes and linking to commits/PRs

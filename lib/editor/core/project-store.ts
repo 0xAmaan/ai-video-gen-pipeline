@@ -226,6 +226,7 @@ export interface ProjectStoreState {
     removeTransitionFromClip: (clipId: string, transitionId: string) => void;
     addEffectToClip: (clipId: string, effect: import("../types").Effect) => void;
     removeEffectFromClip: (clipId: string, effectId: string) => void;
+    setClipSpeedCurve: (clipId: string, speedCurve: import("../types").SpeedCurve | null) => void;
     undo: () => void;
     redo: () => void;
   };
@@ -406,6 +407,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           volume: 1,
           effects: [],
           transitions: [],
+          speedCurve: null, // Default to normal speed (1x)
         };
         track.clips.push(clip);
         sortTrackClips(track);
@@ -652,6 +654,25 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           const clip = findClip(sequence, clipId);
           if (!clip) return state;
           clip.effects = clip.effects.filter((e) => e.id !== effectId);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      setClipSpeedCurve: (clipId, speedCurve) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) {
+            console.warn(`[ProjectStore] Clip ${clipId} not found, cannot set speed curve`);
+            return state;
+          }
+          clip.speedCurve = speedCurve;
+          console.log(`[ProjectStore] Set speed curve for clip ${clipId}`, speedCurve);
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
           persist(snapshot);

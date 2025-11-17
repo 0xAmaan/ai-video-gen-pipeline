@@ -89,6 +89,7 @@ const buildClip = (asset: MediaAssetMeta, start: number, trackId: string): Clip 
   volume: 1,
   effects: [],
   transitions: [],
+  speedCurve: null,
 });
 
 export interface ConvexEditorDataset {
@@ -213,6 +214,7 @@ export const adaptConvexProjectToStandalone = ({
       volume: volume ?? getDefaultVolumeForTrack(trackId),
       effects: [],
       transitions: [],
+      speedCurve: null,
     };
     clipBuckets[trackId].push(clip);
     timelineExtent = Math.max(timelineExtent, clip.start + clip.duration);

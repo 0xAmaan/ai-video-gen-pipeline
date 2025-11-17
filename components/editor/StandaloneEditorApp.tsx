@@ -15,6 +15,7 @@ import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { KonvaTimeline } from "@/components/editor/KonvaTimeline";
 import { TransitionLibrary } from "@/components/editor/TransitionLibrary";
 import { FilterLibrary } from "@/components/editor/FilterLibrary";
+import { SpeedControlPanel } from "@/components/editor/SpeedControlPanel";
 import { ExportModal } from "@/components/ExportModal";
 import { ConfirmDeleteDialog } from "@/components/editor/ConfirmDeleteDialog";
 import { ClipContextMenu } from "@/components/editor/ClipContextMenu";
@@ -206,7 +207,7 @@ export const StandaloneEditorApp = ({
   );
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isAnalyzingBeatTrack, setIsAnalyzingBeatTrack] = useState(false);
-  const [leftPanelTab, setLeftPanelTab] = useState<"media" | "transitions" | "filters">("media");
+  const [leftPanelTab, setLeftPanelTab] = useState<"media" | "transitions" | "filters" | "speed">("media");
   const [selectedTransition, setSelectedTransition] = useState<TransitionSpec | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<Effect | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -840,6 +841,16 @@ export const StandaloneEditorApp = ({
     }
   }, [selectedClipId, actions]);
 
+  const handleSpeedCurveChange = useCallback((speedCurve: import("@/lib/editor/types").SpeedCurve | null) => {
+    console.log("[Editor] Speed curve changed:", speedCurve);
+
+    // If a clip is selected, update its speed curve
+    if (selectedClipId) {
+      actions.setClipSpeedCurve(selectedClipId, speedCurve);
+      console.log("[Editor] Applied speed curve to clip:", selectedClipId);
+    }
+  }, [selectedClipId, actions]);
+
   // Context menu handlers
   const handleContextMenuCut = useCallback(() => {
     if (!selection.clipIds.length) return;
@@ -1019,10 +1030,11 @@ export const StandaloneEditorApp = ({
           {/* Left Panel: Tabbed Media + Transitions */}
           <Tabs value={leftPanelTab} onValueChange={(v) => setLeftPanelTab(v as typeof leftPanelTab)} className="flex flex-col h-full">
             <div className="border-r border-border bg-muted/20 px-2 pt-2">
-              <TabsList className="w-full grid grid-cols-3">
+              <TabsList className="w-full grid grid-cols-4">
                 <TabsTrigger value="media">Media</TabsTrigger>
                 <TabsTrigger value="transitions">Transitions</TabsTrigger>
                 <TabsTrigger value="filters">Filters</TabsTrigger>
+                <TabsTrigger value="speed">Speed</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value="media" className="flex-1 mt-0 overflow-hidden">
@@ -1043,6 +1055,20 @@ export const StandaloneEditorApp = ({
                 onSelectFilter={handleSelectFilter}
                 selectedPresetId={selectedFilter?.id}
               />
+            </TabsContent>
+            <TabsContent value="speed" className="flex-1 mt-0 overflow-hidden">
+              {selectedClip ? (
+                <SpeedControlPanel
+                  speedCurve={selectedClip.speedCurve}
+                  clipDuration={selectedClip.duration}
+                  currentTime={Math.max(0, currentTime - selectedClip.start)}
+                  onSpeedCurveChange={handleSpeedCurveChange}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm p-4 text-center">
+                  Select a clip to adjust its playback speed
+                </div>
+              )}
             </TabsContent>
           </Tabs>
           <PreviewPanel
