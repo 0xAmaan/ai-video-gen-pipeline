@@ -46,8 +46,6 @@ export const InputPhaseWrapper = ({
           await saveQuestions({
             projectId: newProjectId,
             questions,
-            modelId:
-              modelSelectionEnabled && selectedModel ? selectedModel : undefined,
           });
 
           return newProjectId;
@@ -57,8 +55,6 @@ export const InputPhaseWrapper = ({
         await saveQuestions({
           projectId: useProjectId,
           questions,
-          modelId:
-            modelSelectionEnabled && selectedModel ? selectedModel : undefined,
         });
 
         return useProjectId;
