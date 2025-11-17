@@ -61,8 +61,6 @@ const PromptPage = () => {
       await saveQuestions({
         projectId: projectId as Id<"videoProjects">,
         questions: data.questions,
-        modelId:
-          modelSelectionEnabled && selectedModel ? selectedModel : undefined,
       });
 
       setHasGeneratedQuestions(true);
