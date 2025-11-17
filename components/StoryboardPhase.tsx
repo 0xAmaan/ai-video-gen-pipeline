@@ -14,6 +14,8 @@ import { MINIMAX_VOICES } from "@/lib/voice-selection";
 import { SceneCard } from "./storyboard/SceneCard";
 import { TimelinePreview } from "./storyboard/TimelinePreview";
 import { VoiceSettingsCard } from "./storyboard/VoiceSettingsCard";
+import { MusicGenerationControls } from "./storyboard/MusicGenerationControls";
+import { AudioTrackSettings } from "./storyboard/AudioTrackSettings";
 import { useStoryboardState } from "./storyboard/useStoryboardState";
 import { apiFetch } from "@/lib/api-fetch";
 
@@ -51,6 +53,12 @@ export const StoryboardPhase = ({
     currentVoiceLabel,
     currentVoiceReasoning,
     voiceSettings,
+    // Music state
+    backgroundMusicUrl,
+    backgroundMusicPrompt,
+    audioTrackSettings,
+    handleMusicGenerated,
+    handleAudioTrackUpdate,
   } = state;
 
   const toggleAudioGenerating = (sceneId: string, isGenerating: boolean) => {
@@ -352,6 +360,23 @@ export const StoryboardPhase = ({
         sampleAudioUrl={sampleAudioUrl}
         onShowVoiceDialog={() => setShowVoiceDialog(true)}
       />
+
+      {/* Music & Audio Controls */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <MusicGenerationControls
+          projectId={projectId?.toString() || ""}
+          totalDuration={totalDuration}
+          currentMusicUrl={backgroundMusicUrl || undefined}
+          currentMusicPrompt={backgroundMusicPrompt}
+          onMusicGenerated={handleMusicGenerated}
+        />
+        <AudioTrackSettings
+          narration={audioTrackSettings.narration}
+          bgm={audioTrackSettings.bgm}
+          sfx={audioTrackSettings.sfx}
+          onUpdate={handleAudioTrackUpdate}
+        />
+      </div>
 
       {/* Scenes */}
       <div className="space-y-4 mb-6">
