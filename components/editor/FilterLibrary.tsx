@@ -5,63 +5,48 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Badge } from "../ui/badge";
 import {
-  TRANSITION_PRESETS,
+  FILTER_PRESETS,
   getPresetsByCategory,
-  createTransitionFromPreset,
-  type TransitionPreset,
-  type EasingFunction,
-} from "@/lib/editor/transitions";
-import type { TransitionSpec } from "@/lib/editor/types";
+  createEffectFromPreset,
+  type FilterPreset,
+} from "@/lib/editor/filters";
+import type { Effect } from "@/lib/editor/types";
 import {
+  Sparkles,
+  Sunset,
+  Snowflake,
+  Film,
+  Droplet,
+  Camera,
   Circle,
-  Droplets,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ArrowDown,
-  MoveLeft,
-  MoveRight,
-  MoveUp,
-  MoveDown,
-  ZoomIn,
-  ZoomOut,
-  Clock,
+  CircleDot,
+  Video,
 } from "lucide-react";
 
-interface TransitionLibraryProps {
-  onSelectTransition: (transition: TransitionSpec) => void;
+interface FilterLibraryProps {
+  onSelectFilter: (effect: Effect) => void;
   selectedPresetId?: string;
 }
 
 // Map icon names to Lucide components
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  Sparkles,
+  Sunset,
+  Snowflake,
+  Film,
+  Droplet,
+  Camera,
   Circle,
-  Droplets,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ArrowDown,
-  MoveLeft,
-  MoveRight,
-  MoveUp,
-  MoveDown,
-  ZoomIn,
-  ZoomOut,
+  CircleDot,
+  Video,
 };
 
-const formatDuration = (seconds: number) => {
-  if (seconds < 1) {
-    return `${(seconds * 1000).toFixed(0)}ms`;
-  }
-  return `${seconds.toFixed(1)}s`;
-};
-
-const TransitionCard = ({
+const FilterCard = ({
   preset,
   isSelected,
   onSelect,
 }: {
-  preset: TransitionPreset;
+  preset: FilterPreset;
   isSelected: boolean;
   onSelect: () => void;
 }) => {
@@ -89,10 +74,9 @@ const TransitionCard = ({
               : "text-muted-foreground group-hover:text-foreground group-hover:scale-110"
           }`}
         />
-        {/* Duration badge */}
-        <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 backdrop-blur-sm px-2 py-1 rounded text-white text-xs font-medium">
-          <Clock className="h-3 w-3" />
-          {formatDuration(preset.defaultDuration)}
+        {/* Category badge */}
+        <div className="absolute top-2 right-2 bg-black/75 backdrop-blur-sm px-2 py-1 rounded text-white text-xs font-medium">
+          {preset.type}
         </div>
       </div>
 
@@ -108,9 +92,6 @@ const TransitionCard = ({
           >
             {preset.name}
           </p>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {preset.defaultEasing}
-          </Badge>
         </div>
         <p className="text-[10px] text-muted-foreground line-clamp-2">
           {preset.description}
@@ -120,32 +101,33 @@ const TransitionCard = ({
   );
 };
 
-export const TransitionLibrary = ({
-  onSelectTransition,
+export const FilterLibrary = ({
+  onSelectFilter,
   selectedPresetId,
-}: TransitionLibraryProps) => {
+}: FilterLibraryProps) => {
   const [activeCategory, setActiveCategory] = useState<
-    "fade" | "wipe" | "slide" | "zoom"
-  >("fade");
+    "filmGrain" | "colorGrading" | "vintage" | "vignette" | "filmLook"
+  >("filmGrain");
   const [selectedId, setSelectedId] = useState<string | undefined>(
     selectedPresetId,
   );
 
-  const fadePresets = getPresetsByCategory("fade");
-  const wipePresets = getPresetsByCategory("wipe");
-  const slidePresets = getPresetsByCategory("slide");
-  const zoomPresets = getPresetsByCategory("zoom");
+  const filmGrainPresets = getPresetsByCategory("filmGrain");
+  const colorGradingPresets = getPresetsByCategory("colorGrading");
+  const vintagePresets = getPresetsByCategory("vintage");
+  const vignettePresets = getPresetsByCategory("vignette");
+  const filmLookPresets = getPresetsByCategory("filmLook");
 
-  const handleSelectPreset = (preset: TransitionPreset) => {
+  const handleSelectPreset = (preset: FilterPreset) => {
     setSelectedId(preset.id);
-    const transitionSpec = createTransitionFromPreset(preset.id);
-    onSelectTransition(transitionSpec);
+    const effect = createEffectFromPreset(preset.id);
+    onSelectFilter(effect);
   };
 
-  const renderPresetGrid = (presets: TransitionPreset[]) => (
+  const renderPresetGrid = (presets: FilterPreset[]) => (
     <div className="grid grid-cols-2 gap-2 p-3">
       {presets.map((preset) => (
-        <TransitionCard
+        <FilterCard
           key={preset.id}
           preset={preset}
           isSelected={selectedId === preset.id}
@@ -166,34 +148,40 @@ export const TransitionLibrary = ({
         className="flex flex-col flex-1 min-h-0"
       >
         <div className="px-3 pt-2">
-          <TabsList className="w-full grid grid-cols-4">
-            <TabsTrigger value="fade" className="text-xs">
-              Fade
+          <TabsList className="w-full grid grid-cols-5 text-[10px]">
+            <TabsTrigger value="filmGrain" className="text-xs px-1">
+              Grain
             </TabsTrigger>
-            <TabsTrigger value="wipe" className="text-xs">
-              Wipe
+            <TabsTrigger value="colorGrading" className="text-xs px-1">
+              Color
             </TabsTrigger>
-            <TabsTrigger value="slide" className="text-xs">
-              Slide
+            <TabsTrigger value="vintage" className="text-xs px-1">
+              Vintage
             </TabsTrigger>
-            <TabsTrigger value="zoom" className="text-xs">
-              Zoom
+            <TabsTrigger value="vignette" className="text-xs px-1">
+              Vignette
+            </TabsTrigger>
+            <TabsTrigger value="filmLook" className="text-xs px-1">
+              Film
             </TabsTrigger>
           </TabsList>
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <TabsContent value="fade" className="mt-0">
-            {renderPresetGrid(fadePresets)}
+          <TabsContent value="filmGrain" className="mt-0">
+            {renderPresetGrid(filmGrainPresets)}
           </TabsContent>
-          <TabsContent value="wipe" className="mt-0">
-            {renderPresetGrid(wipePresets)}
+          <TabsContent value="colorGrading" className="mt-0">
+            {renderPresetGrid(colorGradingPresets)}
           </TabsContent>
-          <TabsContent value="slide" className="mt-0">
-            {renderPresetGrid(slidePresets)}
+          <TabsContent value="vintage" className="mt-0">
+            {renderPresetGrid(vintagePresets)}
           </TabsContent>
-          <TabsContent value="zoom" className="mt-0">
-            {renderPresetGrid(zoomPresets)}
+          <TabsContent value="vignette" className="mt-0">
+            {renderPresetGrid(vignettePresets)}
+          </TabsContent>
+          <TabsContent value="filmLook" className="mt-0">
+            {renderPresetGrid(filmLookPresets)}
           </TabsContent>
         </div>
       </Tabs>

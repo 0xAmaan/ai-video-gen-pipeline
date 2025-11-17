@@ -3,6 +3,8 @@ import { FrameCache } from "./frame-cache";
 import { renderTransition, type TransitionRenderContext } from "../transitions/renderer";
 import type { TransitionType } from "../transitions/presets";
 import { getEasingFunction } from "../transitions/presets";
+import { applyClipEffects } from "../effects";
+import { calculateSpeedAtTime } from "../effects/speed-interpolation";
 
 export type TimeUpdateHandler = (time: number) => void;
 
@@ -51,6 +53,40 @@ export class PreviewRenderer {
     this.ctx = canvas.getContext("2d");
     if (!this.videoEl) {
       await this.createMediaElements();
+    }
+  }
+
+  /**
+   * Resize the canvas and re-render current frame
+   * @param width New canvas width
+   * @param height New canvas height
+   */
+  resize(width: number, height: number) {
+    if (!this.canvas || !this.ctx) {
+      return;
+    }
+
+    // Pause RAF loop during resize
+    const wasPlaying = this.playing;
+    if (wasPlaying) {
+      this.pause();
+    }
+
+    // Update canvas dimensions
+    this.canvas.width = width;
+    this.canvas.height = height;
+
+    // Re-acquire context after dimension change
+    this.ctx = this.canvas.getContext("2d");
+
+    // Re-render current frame at new dimensions
+    this.drawFrame();
+
+    // Resume playback if it was playing
+    if (wasPlaying) {
+      this.play().catch(() => {
+        // Silently handle resume errors
+      });
     }
   }
 
@@ -323,9 +359,10 @@ export class PreviewRenderer {
       }
     }
     if (this.videoEl) {
-      const playheadWithinClip = this.currentTime - clip.start + clip.trimStart;
-      if (Math.abs(this.videoEl.currentTime - playheadWithinClip) > 0.05) {
-        this.videoEl.currentTime = Math.max(clip.trimStart, playheadWithinClip);
+      // Use speed-aware time mapping
+      const sourceTime = this.getSourceTimeWithSpeed(clip, this.currentTime);
+      if (Math.abs(this.videoEl.currentTime - sourceTime) > 0.05) {
+        this.videoEl.currentTime = sourceTime;
       }
     }
 
@@ -394,11 +431,11 @@ export class PreviewRenderer {
         const toCtx = toCanvas.getContext('2d');
 
         if (fromCtx && toCtx) {
-          // Draw current video with proper aspect ratio to fromCanvas
-          this.drawVideoToCanvas(fromCtx, video, canvasWidth, canvasHeight);
+          // Draw current video with proper aspect ratio to fromCanvas (with effects)
+          this.drawVideoToCanvas(fromCtx, video, canvasWidth, canvasHeight, this.currentClip);
 
-          // Draw next video with proper aspect ratio to toCanvas
-          this.drawVideoToCanvas(toCtx, this.nextVideoEl, canvasWidth, canvasHeight);
+          // Draw next video with proper aspect ratio to toCanvas (with effects)
+          this.drawVideoToCanvas(toCtx, this.nextVideoEl, canvasWidth, canvasHeight, this.nextClip);
 
           // Render transition using aspect-corrected canvases
           renderTransition(transitionInfo.type as TransitionType, {
@@ -435,6 +472,7 @@ export class PreviewRenderer {
     video: HTMLVideoElement,
     canvasWidth: number,
     canvasHeight: number,
+    clip?: Clip,
   ) {
     // Safety check for video dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
@@ -469,6 +507,13 @@ export class PreviewRenderer {
 
     // Draw video centered with correct aspect ratio
     ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+
+    // Apply clip effects if provided
+    if (clip && clip.effects && clip.effects.length > 0) {
+      // Use frame number based on current time for temporal consistency
+      const frameNumber = Math.floor(this.currentTime * 30); // Assume 30fps for seed
+      applyClipEffects(ctx, clip, frameNumber);
+    }
   }
 
   private drawSingleFrame(
@@ -477,7 +522,7 @@ export class PreviewRenderer {
     canvasHeight: number,
   ) {
     if (!this.ctx) return;
-    this.drawVideoToCanvas(this.ctx, video, canvasWidth, canvasHeight);
+    this.drawVideoToCanvas(this.ctx, video, canvasWidth, canvasHeight, this.currentClip);
   }
 
   private getActiveTransition(): {
@@ -532,6 +577,53 @@ export class PreviewRenderer {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Map timeline playback time to source video time, accounting for speed curve
+   *
+   * @param clip - The clip to calculate for
+   * @param timelineTime - Current timeline time (global)
+   * @returns Source video time in seconds
+   */
+  private getSourceTimeWithSpeed(clip: Clip, timelineTime: number): number {
+    // Time relative to clip start
+    const clipRelativeTime = timelineTime - clip.start;
+
+    // If no speed curve, use linear mapping
+    if (!clip.speedCurve || clip.speedCurve.keyframes.length === 0) {
+      return clip.trimStart + clipRelativeTime;
+    }
+
+    // Calculate normalized position in clip (0-1)
+    const normalizedTime = Math.max(0, Math.min(1, clipRelativeTime / clip.duration));
+
+    // Integrate speed curve to find source position
+    // We need to find how far through the source material we've traveled
+    const numSteps = 100; // Balance between accuracy and performance
+    let sourceProgress = 0;
+
+    for (let i = 0; i < numSteps; i++) {
+      const t = i / numSteps;
+
+      // Stop if we've reached the current playback position
+      if (t > normalizedTime) break;
+
+      const speed = calculateSpeedAtTime(clip.speedCurve, t);
+      const dt = 1 / numSteps; // Normalized time step
+
+      // At this speed, we progress through source material at speed * dt
+      // Clamp to prevent issues with freeze frames (speed = 0)
+      const effectiveSpeed = Math.max(0.001, speed);
+      sourceProgress += effectiveSpeed * dt;
+    }
+
+    // Map to actual source time
+    const sourceDuration = clip.trimEnd - clip.trimStart;
+    const sourceTime = clip.trimStart + sourceProgress * sourceDuration;
+
+    // Clamp to valid range
+    return Math.max(clip.trimStart, Math.min(clip.trimEnd, sourceTime));
   }
 
   private handleClipEnded() {
@@ -607,14 +699,54 @@ export class PreviewRenderer {
       const source = this.audioContext.createBufferSource();
       source.buffer = buffer;
 
+      // Apply speed curve to audio playback if present
+      if (clip.speedCurve && clip.speedCurve.keyframes.length > 0) {
+        // Calculate current speed at playback position
+        const clipRelativeTime = this.currentTime - clip.start;
+        const normalizedTime = Math.max(0, Math.min(1, clipRelativeTime / clip.duration));
+        const currentSpeed = calculateSpeedAtTime(clip.speedCurve, normalizedTime);
+
+        // Handle freeze frame (speed near zero) - mute audio
+        if (currentSpeed < 0.01) {
+          source.playbackRate.value = 0.01; // Minimum playback rate
+          // Will be effectively muted by gain adjustment below
+        } else {
+          // Apply playback rate (affects both speed and pitch)
+          source.playbackRate.value = currentSpeed;
+
+          // If preservePitch is enabled, use detune to compensate
+          // Note: This is an approximation. True pitch-preserving time stretch
+          // requires phase vocoder DSP (libraries like Tone.js or custom AudioWorklet)
+          // This detune compensation works reasonably well for moderate speed changes (0.5x-2x)
+          if (clip.preservePitch && currentSpeed !== 1.0) {
+            // Detune is in cents (1200 cents = 1 octave)
+            // To compensate for speed change: detune = -1200 * log2(speed)
+            const pitchShiftCents = -1200 * Math.log2(currentSpeed);
+            // Clamp to reasonable range (-2400 to +2400 cents, or 2 octaves)
+            source.detune.value = Math.max(-2400, Math.min(2400, pitchShiftCents));
+          }
+        }
+      }
+
       const gainNode = this.audioContext.createGain();
       const clipVolume = clip.volume ?? 1;
       const trackVolume = track.volume ?? 1;
       const baseVolume = track.muted ? 0 : clipVolume * trackVolume;
       const isBgmTrack =
         track.id === BGM_TRACK_ID || /bgm/i.test(track.id ?? "");
-      const finalVolume =
+      let finalVolume =
         isBgmTrack && narrationActive ? baseVolume * 0.5 : baseVolume;
+
+      // Mute audio during freeze frames
+      if (clip.speedCurve && clip.speedCurve.keyframes.length > 0) {
+        const clipRelativeTime = this.currentTime - clip.start;
+        const normalizedTime = Math.max(0, Math.min(1, clipRelativeTime / clip.duration));
+        const currentSpeed = calculateSpeedAtTime(clip.speedCurve, normalizedTime);
+        if (currentSpeed < 0.01) {
+          finalVolume = 0; // Mute during freeze frame
+        }
+      }
+
       gainNode.gain.value = finalVolume;
 
       const destination = this.audioGainNode ?? this.audioContext.destination;

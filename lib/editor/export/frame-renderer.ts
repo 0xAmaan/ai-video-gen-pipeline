@@ -2,6 +2,8 @@ import type { Clip, MediaAssetMeta, Sequence } from "../types";
 import { renderTransition } from "../transitions/renderer";
 import type { TransitionType } from "../transitions/presets";
 import { getEasingFunction } from "../transitions/presets";
+import { applyClipEffects } from "../effects";
+import { calculateSpeedAtTime } from "../effects/speed-interpolation";
 
 export type FrameCallback = (frameData: ImageData, timestamp: number) => void;
 
@@ -144,12 +146,12 @@ export class FrameRenderer {
     const video = this.videoElements.get(clip.mediaId);
     if (!video) return;
 
-    // Seek video to correct position within clip
-    const playheadWithinClip = timestamp - clip.start + clip.trimStart;
+    // Use speed-aware time mapping to get source position
+    const sourceTime = this.getSourceTimeWithSpeed(clip, timestamp);
 
     // Seek and wait for seek to complete
-    if (Math.abs(video.currentTime - playheadWithinClip) > 0.001) {
-      video.currentTime = playheadWithinClip;
+    if (Math.abs(video.currentTime - sourceTime) > 0.001) {
+      video.currentTime = sourceTime;
       await new Promise<void>((resolve) => {
         const onSeeked = () => {
           video.removeEventListener("seeked", onSeeked);
@@ -185,6 +187,13 @@ export class FrameRenderer {
       }
 
       this.ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+
+      // Apply clip effects if present
+      if (clip.effects && clip.effects.length > 0) {
+        // Use frame number based on timestamp for temporal consistency
+        const frameNumber = Math.floor(timestamp * 30); // Assume 30fps for seed
+        applyClipEffects(this.ctx, clip, frameNumber);
+      }
     }
   }
 
@@ -204,24 +213,106 @@ export class FrameRenderer {
       return;
     }
 
-    // Seek both videos
-    const currentTime = timestamp - currentClip.start + currentClip.trimStart;
-    const nextTime = timestamp - nextClip.start + nextClip.trimStart;
+    // Seek both videos using speed-aware time mapping
+    const currentTime = this.getSourceTimeWithSpeed(currentClip, timestamp);
+    const nextTime = this.getSourceTimeWithSpeed(nextClip, timestamp);
 
     await Promise.all([
       this.seekVideo(currentVideo, currentTime),
       this.seekVideo(nextVideo, Math.max(nextClip.trimStart, nextTime)),
     ]);
 
-    // Use transition renderer
+    // Create temporary canvases for applying effects before transition
+    const fromCanvas = document.createElement('canvas');
+    fromCanvas.width = this.canvas.width;
+    fromCanvas.height = this.canvas.height;
+    const fromCtx = fromCanvas.getContext('2d');
+
+    const toCanvas = document.createElement('canvas');
+    toCanvas.width = this.canvas.width;
+    toCanvas.height = this.canvas.height;
+    const toCtx = toCanvas.getContext('2d');
+
+    if (!fromCtx || !toCtx) {
+      // Fallback if context creation fails
+      renderTransition(transitionType as TransitionType, {
+        ctx: this.ctx,
+        width: this.canvas.width,
+        height: this.canvas.height,
+        fromFrame: currentVideo,
+        toFrame: nextVideo,
+        progress,
+      });
+      return;
+    }
+
+    // Draw current clip to fromCanvas with aspect ratio
+    this.drawVideoWithAspectRatio(fromCtx, currentVideo, this.canvas.width, this.canvas.height);
+
+    // Apply effects to current clip if present
+    if (currentClip.effects && currentClip.effects.length > 0) {
+      const frameNumber = Math.floor(timestamp * 30);
+      applyClipEffects(fromCtx, currentClip, frameNumber);
+    }
+
+    // Draw next clip to toCanvas with aspect ratio
+    this.drawVideoWithAspectRatio(toCtx, nextVideo, this.canvas.width, this.canvas.height);
+
+    // Apply effects to next clip if present
+    if (nextClip.effects && nextClip.effects.length > 0) {
+      const frameNumber = Math.floor(timestamp * 30);
+      applyClipEffects(toCtx, nextClip, frameNumber);
+    }
+
+    // Use transition renderer with effect-applied canvases
     renderTransition(transitionType as TransitionType, {
       ctx: this.ctx,
       width: this.canvas.width,
       height: this.canvas.height,
-      fromFrame: currentVideo,
-      toFrame: nextVideo,
+      fromFrame: fromCanvas,
+      toFrame: toCanvas,
       progress,
     });
+  }
+
+  /**
+   * Helper to draw video with aspect ratio preservation (letterbox/pillarbox)
+   */
+  private drawVideoWithAspectRatio(
+    ctx: CanvasRenderingContext2D,
+    video: HTMLVideoElement,
+    canvasWidth: number,
+    canvasHeight: number,
+  ): void {
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      return; // Video not ready
+    }
+
+    // Fill with black background
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const canvasAspect = canvasWidth / canvasHeight;
+
+    let drawWidth: number;
+    let drawHeight: number;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (videoAspect > canvasAspect) {
+      // Video is wider - fit to width, letterbox top/bottom
+      drawWidth = canvasWidth;
+      drawHeight = canvasWidth / videoAspect;
+      offsetY = (canvasHeight - drawHeight) / 2;
+    } else {
+      // Video is taller - fit to height, pillarbox left/right
+      drawHeight = canvasHeight;
+      drawWidth = canvasHeight * videoAspect;
+      offsetX = (canvasWidth - drawWidth) / 2;
+    }
+
+    ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
   }
 
   private async seekVideo(
@@ -292,6 +383,54 @@ export class FrameRenderer {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Map timeline playback time to source video time, accounting for speed curve
+   * Same logic as PreviewRenderer.getSourceTimeWithSpeed()
+   *
+   * @param clip - The clip to calculate for
+   * @param timelineTime - Current timeline time (global)
+   * @returns Source video time in seconds
+   */
+  private getSourceTimeWithSpeed(clip: Clip, timelineTime: number): number {
+    // Time relative to clip start
+    const clipRelativeTime = timelineTime - clip.start;
+
+    // If no speed curve, use linear mapping
+    if (!clip.speedCurve || clip.speedCurve.keyframes.length === 0) {
+      return clip.trimStart + clipRelativeTime;
+    }
+
+    // Calculate normalized position in clip (0-1)
+    const normalizedTime = Math.max(0, Math.min(1, clipRelativeTime / clip.duration));
+
+    // Integrate speed curve to find source position
+    // We need to find how far through the source material we've traveled
+    const numSteps = 100; // Balance between accuracy and performance
+    let sourceProgress = 0;
+
+    for (let i = 0; i < numSteps; i++) {
+      const t = i / numSteps;
+
+      // Stop if we've reached the current playback position
+      if (t > normalizedTime) break;
+
+      const speed = calculateSpeedAtTime(clip.speedCurve, t);
+      const dt = 1 / numSteps; // Normalized time step
+
+      // At this speed, we progress through source material at speed * dt
+      // Clamp to prevent issues with freeze frames (speed = 0)
+      const effectiveSpeed = Math.max(0.001, speed);
+      sourceProgress += effectiveSpeed * dt;
+    }
+
+    // Map to actual source time
+    const sourceDuration = clip.trimEnd - clip.trimStart;
+    const sourceTime = clip.trimStart + sourceProgress * sourceDuration;
+
+    // Clamp to valid range
+    return Math.max(clip.trimStart, Math.min(clip.trimEnd, sourceTime));
   }
 
   private cleanup(): void {

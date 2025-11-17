@@ -121,6 +121,7 @@ const createProject = (): Project => {
     mediaAssets: {},
     settings: {
       snap: true,
+      snapThreshold: 0.1,
       zoom: 1,
       activeSequenceId: sequence.id,
     },
@@ -224,6 +225,9 @@ export interface ProjectStoreState {
     setTrackVolume: (trackId: string, volume: number) => void;
     addTransitionToClip: (clipId: string, transition: import("../types").TransitionSpec) => void;
     removeTransitionFromClip: (clipId: string, transitionId: string) => void;
+    addEffectToClip: (clipId: string, effect: import("../types").Effect) => void;
+    removeEffectFromClip: (clipId: string, effectId: string) => void;
+    setClipSpeedCurve: (clipId: string, speedCurve: import("../types").SpeedCurve | null) => void;
     undo: () => void;
     redo: () => void;
   };
@@ -404,6 +408,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           volume: 1,
           effects: [],
           transitions: [],
+          speedCurve: null, // Default to normal speed (1x)
+          preservePitch: true, // Default to pitch preservation enabled
         };
         track.clips.push(clip);
         sortTrackClips(track);
@@ -616,6 +622,59 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           const clip = findClip(sequence, clipId);
           if (!clip) return state;
           clip.transitions = clip.transitions.filter((t) => t.id !== transitionId);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      addEffectToClip: (clipId, effect) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) {
+            console.warn(`[ProjectStore] Clip ${clipId} not found, cannot add effect`);
+            return state;
+          }
+          clip.effects.push(effect);
+          console.log(`[ProjectStore] Added ${effect.type} effect to clip ${clipId}`, clip);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      removeEffectFromClip: (clipId, effectId) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) return state;
+          clip.effects = clip.effects.filter((e) => e.id !== effectId);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      setClipSpeedCurve: (clipId, speedCurve) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) {
+            console.warn(`[ProjectStore] Clip ${clipId} not found, cannot set speed curve`);
+            return state;
+          }
+          clip.speedCurve = speedCurve;
+          console.log(`[ProjectStore] Set speed curve for clip ${clipId}`, speedCurve);
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
           persist(snapshot);

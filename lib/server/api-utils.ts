@@ -24,8 +24,8 @@ export function createLLMProvider(modelId?: string): {
 
   // If a specific model is requested, use it
   if (modelId) {
-    // Check if it's a Groq model
-    if (modelId === "openai/gpt-oss-20b") {
+    // Check if it's a Groq model (Groq models have the "provider/" format)
+    if (modelId === "openai/gpt-oss-20b" || modelId.includes("/")) {
       if (!hasGroqKey) {
         throw new Error("Groq API key not configured");
       }
@@ -35,7 +35,7 @@ export function createLLMProvider(modelId?: string): {
       };
     }
 
-    // Check if it's an OpenAI model
+    // Check if it's an OpenAI model (OpenAI models start with "gpt-")
     if (modelId.startsWith("gpt-")) {
       if (!hasOpenAIKey) {
         throw new Error("OpenAI API key not configured");
@@ -46,6 +46,7 @@ export function createLLMProvider(modelId?: string): {
       };
     }
 
+    // Unknown model - log warning and use default
     console.warn(`Unknown model specified: ${modelId}, using default`);
   }
 
