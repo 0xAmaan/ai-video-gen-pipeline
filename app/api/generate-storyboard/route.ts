@@ -20,23 +20,51 @@ const replicate = new Replicate({
 async function generateSceneImage(
   scene: GeneratedScene,
   modelConfig: ImageModelConfig,
-  style: string,
+  style?: string,
 ) {
   console.log(`🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`);
   console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
 
+  // Prepare input parameters based on model
+  const input: any = {
+    prompt: scene.visualPrompt,
+    aspect_ratio: "16:9",
+    num_images: 1,
+  };
+
+  // Add Leonardo Phoenix specific parameters
+  if (modelConfig.id === "leonardoai/phoenix-1.0" && style) {
+    input.generation_mode = "quality";
+    input.contrast = "medium";
+    input.prompt_enhance = false;
+    input.style = style;
+  }
+
+  // Add FLUX specific parameters
+  if (modelConfig.id.includes("flux")) {
+    input.num_outputs = 1;
+    if (modelConfig.id.includes("schnell")) {
+      input.num_inference_steps = 4;
+    }
+  }
+
+  // Add SDXL specific parameters
+  if (modelConfig.id.includes("sdxl")) {
+    input.num_inference_steps = 25;
+    input.guidance_scale = 7.5;
+  }
+
+  // Add consistent-character specific parameters
+  if (modelConfig.id.includes("consistent-character")) {
+    input.guidance_scale = 7.5;
+    input.num_inference_steps = 50;
+    input.seed = -1;
+  }
+
   const output = await replicate.run(
     modelConfig.id as `${string}/${string}`,
     {
-      input: {
-        prompt: scene.visualPrompt,
-        aspect_ratio: "16:9",
-        generation_mode: "quality",
-        contrast: "medium",
-        num_images: 1,
-        prompt_enhance: false,
-        style,
-      },
+      input,
     },
   );
 
@@ -70,7 +98,7 @@ type ImageModelConfig = (typeof IMAGE_MODELS)[keyof typeof IMAGE_MODELS];
 
 export async function POST(req: Request) {
   try {
-    const { projectId, prompt, responses } = await req.json();
+    const { projectId, prompt, responses, imageModel } = await req.json();
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -108,19 +136,46 @@ export async function POST(req: Request) {
 
     const modelToUse = hasGroqKey
       ? groq("openai/gpt-oss-20b")
-      : openai("gpt-4o-mini");
+      : openai("gpt-4.1-mini-2025-04-14");
 
     console.log(
-      `🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o-mini) - SLOWER 🐌"}`,
+      `🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4.1-mini-2025-04-14) - SLOWER 🐌"}`,
     );
 
-    const { object: sceneData } = await generateObject({
-      model: modelToUse,
-      schema: sceneSchema,
-      system: STORYBOARD_SYSTEM_PROMPT,
-      prompt: buildStoryboardPrompt(prompt, responses),
-      maxRetries: 3,
-    });
+    let sceneData: z.infer<typeof sceneSchema>;
+
+    try {
+      const result = await generateObject({
+        model: modelToUse,
+        schema: sceneSchema,
+        system: STORYBOARD_SYSTEM_PROMPT,
+        prompt: buildStoryboardPrompt(prompt, responses),
+        maxRetries: 3,
+      });
+      sceneData = result.object;
+    } catch (error) {
+      console.error(
+        "❌ Scene generation failed with primary model:",
+        error instanceof Error ? error.message : error,
+      );
+
+      // If Groq (gpt-oss-20b) is rate limited and OpenAI is available, fall back to gpt-4.1-mini-2025-04-14
+      if (hasGroqKey && hasOpenAIKey) {
+        console.warn(
+          "⚠️ Groq (openai/gpt-oss-20b) failed, falling back to OpenAI (gpt-4.1-mini-2025-04-14) for scene generation",
+        );
+        const fallbackResult = await generateObject({
+          model: openai("gpt-4.1-mini-2025-04-14"),
+          schema: sceneSchema,
+          system: STORYBOARD_SYSTEM_PROMPT,
+          prompt: buildStoryboardPrompt(prompt, responses),
+          maxRetries: 3,
+        });
+        sceneData = fallbackResult.object;
+      } else {
+        throw error;
+      }
+    }
 
     // Step 2: Select voice for narration
     const voiceSelection = await generateVoiceSelection(prompt, responses);
@@ -140,15 +195,22 @@ export async function POST(req: Request) {
       console.warn("Unable to persist voice selection to Convex:", error);
     }
 
-    // Step 2: Select style for Leonardo Phoenix
+    // Step 2: Select image generation model
     console.log("\n" + "=".repeat(80));
-    console.log("🔍 LEONARDO PHOENIX MODEL SELECTION");
+    console.log("🔍 IMAGE GENERATION MODEL SELECTION");
     console.log("=".repeat(80));
 
-    const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
-    let phoenixStyle = "cinematic"; // Default style
+    // Use provided model or default to leonardo-phoenix
+    const modelKey = imageModel || "leonardo-phoenix";
+    const modelConfig = IMAGE_MODELS[modelKey] || IMAGE_MODELS["leonardo-phoenix"];
 
-    if (responses && responses["visual-style"]) {
+    console.log(`   Using model: ${modelConfig.name} (${modelKey})`);
+
+    // Style selection only applies to Leonardo Phoenix
+    let phoenixStyle = "cinematic"; // Default style
+    const isLeonardoPhoenix = modelKey === "leonardo-phoenix";
+
+    if (isLeonardoPhoenix && responses && responses["visual-style"]) {
       const visualStyle = responses["visual-style"].toLowerCase();
       if (
         visualStyle.includes("documentary") ||
@@ -181,7 +243,9 @@ export async function POST(req: Request) {
     }
 
     console.log(`   Model: ${modelConfig.name}`);
-    console.log(`   Style: ${phoenixStyle}`);
+    if (isLeonardoPhoenix) {
+      console.log(`   Style: ${phoenixStyle}`);
+    }
     console.log(`   Cost: ~$${modelConfig.estimatedCost}/image`);
     console.log("=".repeat(80) + "\n");
 
@@ -191,7 +255,7 @@ export async function POST(req: Request) {
         const imagePromise = generateSceneImage(
           scene,
           modelConfig,
-          phoenixStyle,
+          isLeonardoPhoenix ? phoenixStyle : undefined,
         ).catch((error) => {
           console.error(
             `Error generating image for scene ${scene.sceneNumber}:`,

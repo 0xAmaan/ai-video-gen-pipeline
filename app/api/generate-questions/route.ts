@@ -33,7 +33,11 @@ const questionSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { prompt } = await req.json();
+    const body = await req.json();
+    console.log('📥 Full request body:', JSON.stringify(body, null, 2));
+
+    const { prompt, model } = body;
+    console.log('📥 Extracted - prompt:', prompt, 'model:', model);
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -41,6 +45,36 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    // Validate model parameter if provided
+    if (model && typeof model !== "string") {
+      return NextResponse.json(
+        { error: "Invalid model provided" },
+        { status: 400 },
+      );
+    }
+
+    // Function to determine which model to use based on parameter
+    const getModelConfig = (modelId: string | undefined) => {
+      // If no model specified, use default behavior (Groq first, then OpenAI)
+      if (!modelId) {
+        return { provider: null, model: null };
+      }
+
+      // Check if it's a Groq model (openai/gpt-oss-20b)
+      if (modelId === "openai/gpt-oss-20b") {
+        return { provider: "groq", model: groq("openai/gpt-oss-20b") };
+      }
+
+      // Check if it's an OpenAI model
+      if (modelId.startsWith("gpt-")) {
+        return { provider: "openai", model: openai(modelId) };
+      }
+
+      // Unknown model
+      console.warn(`Unknown model specified: ${modelId}`);
+      return { provider: null, model: null };
+    };
 
     // Check if Groq API key is available
     const hasGroqKey = !!process.env.GROQ_API_KEY;
@@ -60,52 +94,146 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate clarifying questions using Groq (much faster) or OpenAI (fallback)
-    // Note: Using openai/gpt-oss-20b - supports strict JSON schema, 250K TPM, very fast
+    // Generate clarifying questions using specified or default model
     let object;
+    const modelConfig = getModelConfig(model);
 
-    if (hasGroqKey) {
-      console.log(`🔧 Trying Groq (gpt-oss-20b) - FAST ⚡`);
+    // If a specific model is requested and valid, use it
+    if (modelConfig.model) {
+      console.log(`🔧 Using specified model: ${model} (${modelConfig.provider})`);
+
+      // Check if the required API key is available
+      if (modelConfig.provider === "groq" && !hasGroqKey) {
+        return NextResponse.json(
+          {
+            error: "Groq API key not configured",
+            details: "Set GROQ_API_KEY in your .env.local file",
+          },
+          { status: 500 },
+        );
+      }
+
+      if (modelConfig.provider === "openai" && !hasOpenAIKey) {
+        return NextResponse.json(
+          {
+            error: "OpenAI API key not configured",
+            details: "Set OPENAI_API_KEY in your .env.local file",
+          },
+          { status: 500 },
+        );
+      }
+
       try {
         const result = await generateObject({
-          model: groq("openai/gpt-oss-20b"),
+          model: modelConfig.model,
           schema: questionSchema,
           system: QUESTION_GENERATION_SYSTEM_PROMPT,
           prompt: buildQuestionGenerationPrompt(prompt),
           maxRetries: 2,
         });
         object = result.object;
-      } catch (groqError) {
-        console.warn(
-          `⚠️ Groq failed, falling back to OpenAI:`,
-          groqError instanceof Error ? groqError.message : groqError,
+      } catch (error) {
+        console.error(
+          `❌ Failed to use specified model ${model}:`,
+          error instanceof Error ? error.message : error,
         );
 
-        if (hasOpenAIKey) {
+        // If a specific Groq model fails (e.g. rate limit), fall back to OpenAI
+        if (modelConfig.provider === "groq" && hasOpenAIKey) {
+          console.warn(
+            `⚠️ Groq model ${model} failed, falling back to OpenAI (gpt-4.1-mini-2025-04-14)`,
+          );
+          try {
+            const result = await generateObject({
+              model: openai("gpt-4.1-mini-2025-04-14"),
+              schema: questionSchema,
+              system: QUESTION_GENERATION_SYSTEM_PROMPT,
+              prompt: buildQuestionGenerationPrompt(prompt),
+              maxRetries: 2,
+            });
+            object = result.object;
+          } catch (fallbackError) {
+            console.error(
+              "❌ Fallback to OpenAI (gpt-4.1-mini-2025-04-14) also failed:",
+              fallbackError instanceof Error
+                ? fallbackError.message
+                : fallbackError,
+            );
+            throw new Error(`Failed to use specified model: ${model}`);
+          }
+        } else if (modelConfig.provider === "openai" && hasGroqKey) {
+          // If a specific OpenAI model fails, fall back to Groq default
+          console.warn(
+            `⚠️ OpenAI model ${model} failed, falling back to Groq (openai/gpt-oss-20b)`,
+          );
+          try {
+            const result = await generateObject({
+              model: groq("openai/gpt-oss-20b"),
+              schema: questionSchema,
+              system: QUESTION_GENERATION_SYSTEM_PROMPT,
+              prompt: buildQuestionGenerationPrompt(prompt),
+              maxRetries: 2,
+            });
+            object = result.object;
+          } catch (fallbackError) {
+            console.error(
+              "❌ Fallback to Groq (openai/gpt-oss-20b) also failed:",
+              fallbackError instanceof Error
+                ? fallbackError.message
+                : fallbackError,
+            );
+            throw new Error(`Failed to use specified model: ${model}`);
+          }
+        } else {
+          // No fallback available
+          throw new Error(`Failed to use specified model: ${model}`);
+        }
+      }
+    } else {
+      // Default behavior: Try Groq first, then fallback to OpenAI
+      if (hasGroqKey) {
+        console.log(`🔧 Trying Groq (gpt-oss-20b) - FAST ⚡`);
+        try {
           const result = await generateObject({
-            model: openai("gpt-4o-mini"),
+            model: groq("openai/gpt-oss-20b"),
             schema: questionSchema,
             system: QUESTION_GENERATION_SYSTEM_PROMPT,
             prompt: buildQuestionGenerationPrompt(prompt),
             maxRetries: 2,
           });
           object = result.object;
-        } else {
-          throw groqError; // Re-throw if no OpenAI fallback available
+        } catch (groqError) {
+          console.warn(
+            `⚠️ Groq failed, falling back to OpenAI:`,
+            groqError instanceof Error ? groqError.message : groqError,
+          );
+
+          if (hasOpenAIKey) {
+            const result = await generateObject({
+              model: openai("gpt-4.1-mini-2025-04-14"),
+              schema: questionSchema,
+              system: QUESTION_GENERATION_SYSTEM_PROMPT,
+              prompt: buildQuestionGenerationPrompt(prompt),
+              maxRetries: 2,
+            });
+            object = result.object;
+          } else {
+            throw groqError; // Re-throw if no OpenAI fallback available
+          }
         }
+      } else if (hasOpenAIKey) {
+        console.log(`🔧 Using OpenAI (gpt-4.1-mini-2025-04-14)`);
+        const result = await generateObject({
+          model: openai("gpt-4.1-mini-2025-04-14"),
+          schema: questionSchema,
+          system: QUESTION_GENERATION_SYSTEM_PROMPT,
+          prompt: buildQuestionGenerationPrompt(prompt),
+          maxRetries: 2,
+        });
+        object = result.object;
+      } else {
+        throw new Error("No API keys configured");
       }
-    } else if (hasOpenAIKey) {
-      console.log(`🔧 Using OpenAI (gpt-4o-mini)`);
-      const result = await generateObject({
-        model: openai("gpt-4o-mini"),
-        schema: questionSchema,
-        system: QUESTION_GENERATION_SYSTEM_PROMPT,
-        prompt: buildQuestionGenerationPrompt(prompt),
-        maxRetries: 2,
-      });
-      object = result.object;
-    } else {
-      throw new Error("No API keys configured");
     }
 
     return NextResponse.json(object);
