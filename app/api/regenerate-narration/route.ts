@@ -1,23 +1,46 @@
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getConvexClient } from "@/lib/server/convex";
-import { synthesizeNarrationAudio } from "@/lib/narration";
+import {
+  synthesizeNarrationAudio,
+  sanitizeNarrationText,
+} from "@/lib/narration";
+import { AUDIO_MODELS, type AudioVendor } from "@/lib/audio-models";
+import { getVoiceAdapter } from "@/lib/audio-provider-factory";
 import { apiResponse, apiError } from "@/lib/api-response";
 import { getDemoModeFromHeaders } from "@/lib/demo-mode";
 import { getFlowTracker } from "@/lib/flow-tracker";
 import { mockNarrationSynthesis, mockDelay } from "@/lib/demo-mocks";
+
+const isAudioVendor = (value: unknown): value is AudioVendor =>
+  typeof value === "string" &&
+  ["replicate", "elevenlabs", "freesound", "local"].includes(value);
+
+const isAudioModelKey = (value: unknown): value is keyof typeof AUDIO_MODELS =>
+  typeof value === "string" && value in AUDIO_MODELS;
 
 export async function POST(req: Request) {
   const flowTracker = getFlowTracker();
   const demoMode = getDemoModeFromHeaders(req.headers);
 
   try {
-    const { sceneId, newVoiceId, newEmotion, newSpeed, newPitch, customText } =
-      await req.json();
+    const {
+      sceneId,
+      newVoiceId,
+      newEmotion,
+      newSpeed,
+      newPitch,
+      customText,
+      provider,
+      voiceModelKey,
+      ssml,
+      outputFormat,
+    } = await req.json();
 
     flowTracker.trackAPICall("POST", "/api/regenerate-narration", {
       sceneId,
       voiceId: newVoiceId,
+      provider,
       demoMode,
     });
 
@@ -99,36 +122,92 @@ export async function POST(req: Request) {
       });
     }
 
-    const {
-      audioUrl,
-      sanitizedText,
-      truncated,
-      voiceId: normalizedVoiceId,
-      voiceName,
-    } = await synthesizeNarrationAudio({
-      text: baseText,
-      voiceId,
-      emotion,
-      speed,
-      pitch,
-    });
+    // Determine which provider to use
+    const resolvedVendor = isAudioVendor(provider) ? provider : undefined;
+    const useElevenLabs = resolvedVendor === "elevenlabs";
 
-    await convex.mutation(api.video.updateSceneNarration, {
-      sceneId: sceneId as Id<"scenes">,
-      narrationUrl: audioUrl,
-      narrationText: sanitizedText,
-      voiceId: normalizedVoiceId,
-      voiceName,
-    });
+    if (useElevenLabs) {
+      // Use ElevenLabs adapter
+      flowTracker.trackDecision(
+        "Select voice provider",
+        "elevenlabs",
+        "Using ElevenLabs for premium voice synthesis",
+      );
 
-    return apiResponse({
-      success: true,
-      audioUrl,
-      truncated,
-      voiceId: normalizedVoiceId,
-      voiceName,
-      narrationText: sanitizedText,
-    });
+      const adapter = getVoiceAdapter({
+        vendor: resolvedVendor,
+        modelKey: isAudioModelKey(voiceModelKey) ? voiceModelKey : undefined,
+      });
+
+      const { text: sanitizedText, truncated } =
+        sanitizeNarrationText(baseText);
+
+      const voiceResult = await adapter.synthesizeVoice({
+        text: sanitizedText,
+        ssml: typeof ssml === "string" ? ssml : undefined,
+        voiceId: voiceId,
+        emotion: emotion,
+        speed: speed,
+        pitch: pitch,
+        outputFormat:
+          typeof outputFormat === "string" ? outputFormat : undefined,
+      });
+
+      await convex.mutation(api.video.updateSceneNarration, {
+        sceneId: sceneId as Id<"scenes">,
+        narrationUrl: voiceResult.audioUrl,
+        narrationText: sanitizedText,
+        voiceId: voiceResult.voiceId,
+        voiceName: voiceResult.voiceName,
+      });
+
+      return apiResponse({
+        success: true,
+        audioUrl: voiceResult.audioUrl,
+        truncated,
+        voiceId: voiceResult.voiceId,
+        voiceName: voiceResult.voiceName,
+        narrationText: sanitizedText,
+      });
+    } else {
+      // Use default Replicate/MiniMax narration
+      flowTracker.trackDecision(
+        "Select voice provider",
+        "replicate",
+        "Using Replicate/MiniMax for voice synthesis",
+      );
+
+      const {
+        audioUrl,
+        sanitizedText,
+        truncated,
+        voiceId: normalizedVoiceId,
+        voiceName,
+      } = await synthesizeNarrationAudio({
+        text: baseText,
+        voiceId,
+        emotion,
+        speed,
+        pitch,
+      });
+
+      await convex.mutation(api.video.updateSceneNarration, {
+        sceneId: sceneId as Id<"scenes">,
+        narrationUrl: audioUrl,
+        narrationText: sanitizedText,
+        voiceId: normalizedVoiceId,
+        voiceName,
+      });
+
+      return apiResponse({
+        success: true,
+        audioUrl,
+        truncated,
+        voiceId: normalizedVoiceId,
+        voiceName,
+        narrationText: sanitizedText,
+      });
+    }
   } catch (error) {
     console.error("Failed to regenerate narration:", error);
     return apiError(
