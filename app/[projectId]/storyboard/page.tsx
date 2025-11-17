@@ -6,7 +6,6 @@ import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
 import { StoryboardPhase } from "@/components/StoryboardPhase";
 import { StoryboardGeneratingPhase } from "@/components/StoryboardGeneratingPhase";
-import { ModelSelector } from "@/components/ui/model-selector";
 import { useTextToImageModel, useModelSelectionEnabled } from "@/lib/stores/modelStore";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";

@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { ProjectSidebar } from "@/components/ProjectSidebar";
-import { DemoModeToggle } from "@/components/DemoModeToggle";
+import { DeveloperToolsMenu } from "@/components/DeveloperToolsMenu";
 import { FlowVisualization } from "@/components/FlowVisualization";
 
 export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
@@ -24,7 +24,7 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
       <>
         <main className="h-screen overflow-auto">{children}</main>
         <div className="fixed top-4 right-4 z-60">
-          <DemoModeToggle />
+          <DeveloperToolsMenu />
         </div>
         <FlowVisualization />
       </>
@@ -37,7 +37,7 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
       <main className="flex-1 overflow-auto relative">
         {children}
         <div className="fixed top-4 right-4 z-60">
-          <DemoModeToggle />
+          <DeveloperToolsMenu />
         </div>
         <FlowVisualization />
       </main>

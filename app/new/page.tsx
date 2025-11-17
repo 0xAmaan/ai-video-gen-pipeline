@@ -7,15 +7,11 @@ import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowRight } from "lucide-react";
-import { ModelSelectorToggle } from "@/components/ui/model-selector-toggle";
-import { ModelSelector } from "@/components/ui/model-selector";
-import { useModelSelectionEnabled } from "@/lib/stores/modelStore";
 
 const NewProjectPage = () => {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const modelSelectionEnabled = useModelSelectionEnabled();
 
   const createProject = useMutation(api.video.createProject);
   const updateLastActivePhase = useMutation(api.video.updateLastActivePhase);
@@ -56,27 +52,13 @@ const NewProjectPage = () => {
           </p>
         </div>
 
-        {/* Model Selection Toggle */}
-        <ModelSelectorToggle />
-
-        {/* Model Selection Dropdown - Show immediately when enabled */}
-        {modelSelectionEnabled && (
-          <div className="mb-6">
-            <ModelSelector
-              step="text-to-text"
-              title="Question Generation Model"
-              description="Select the AI model that will generate clarifying questions for your video concept"
-            />
-          </div>
-        )}
-
         {/* Prompt Input */}
         <div className="space-y-4">
           <Textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="e.g., A 60-second product demo showcasing our new app's key features..."
-            className="min-h-[200px] text-lg resize-none"
+            className="min-h-[200px] text-lg resize-none focus-visible:ring-0 focus-visible:border-primary p-4"
             disabled={isCreating}
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.metaKey && prompt.trim()) {

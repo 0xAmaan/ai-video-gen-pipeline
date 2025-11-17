@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
 import { VideoGeneratingPhase } from "@/components/VideoGeneratingPhase";
-import { ModelSelector } from "@/components/ui/model-selector";
 import { useImageToVideoModel, useModelSelectionEnabled } from "@/lib/stores/modelStore";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -535,15 +534,6 @@ const VideoPage = () => {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* Model Selection */}
-      {modelSelectionEnabled && (
-        <ModelSelector
-          step="image-to-video"
-          title="Video Generation Model"
-          description="Select the model for converting storyboard images to video clips"
-        />
-      )}
-
       <PhaseGuard requiredPhase="video">
         <VideoGeneratingPhase
           scenes={scenesForComponent}
