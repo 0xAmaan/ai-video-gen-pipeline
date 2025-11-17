@@ -224,6 +224,8 @@ export interface ProjectStoreState {
     setTrackVolume: (trackId: string, volume: number) => void;
     addTransitionToClip: (clipId: string, transition: import("../types").TransitionSpec) => void;
     removeTransitionFromClip: (clipId: string, transitionId: string) => void;
+    addEffectToClip: (clipId: string, effect: import("../types").Effect) => void;
+    removeEffectFromClip: (clipId: string, effectId: string) => void;
     undo: () => void;
     redo: () => void;
   };
@@ -616,6 +618,40 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           const clip = findClip(sequence, clipId);
           if (!clip) return state;
           clip.transitions = clip.transitions.filter((t) => t.id !== transitionId);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      addEffectToClip: (clipId, effect) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) {
+            console.warn(`[ProjectStore] Clip ${clipId} not found, cannot add effect`);
+            return state;
+          }
+          clip.effects.push(effect);
+          console.log(`[ProjectStore] Added ${effect.type} effect to clip ${clipId}`, clip);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      removeEffectFromClip: (clipId, effectId) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) return state;
+          clip.effects = clip.effects.filter((e) => e.id !== effectId);
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
           persist(snapshot);

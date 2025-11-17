@@ -14,12 +14,13 @@ import { MediaPanel } from "@/components/editor/MediaPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { KonvaTimeline } from "@/components/editor/KonvaTimeline";
 import { TransitionLibrary } from "@/components/editor/TransitionLibrary";
+import { FilterLibrary } from "@/components/editor/FilterLibrary";
 import { ExportModal } from "@/components/ExportModal";
 import { ConfirmDeleteDialog } from "@/components/editor/ConfirmDeleteDialog";
 import { ClipContextMenu } from "@/components/editor/ClipContextMenu";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { MediaAssetMeta, TransitionSpec } from "@/lib/editor/types";
+import type { MediaAssetMeta, TransitionSpec, Effect } from "@/lib/editor/types";
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -205,8 +206,9 @@ export const StandaloneEditorApp = ({
   );
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isAnalyzingBeatTrack, setIsAnalyzingBeatTrack] = useState(false);
-  const [leftPanelTab, setLeftPanelTab] = useState<"media" | "transitions">("media");
+  const [leftPanelTab, setLeftPanelTab] = useState<"media" | "transitions" | "filters">("media");
   const [selectedTransition, setSelectedTransition] = useState<TransitionSpec | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<Effect | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pendingDeleteClips, setPendingDeleteClips] = useState<string[]>([]);
 
@@ -827,6 +829,17 @@ export const StandaloneEditorApp = ({
     }
   }, [selectedClipId, actions]);
 
+  const handleSelectFilter = useCallback((effect: Effect) => {
+    setSelectedFilter(effect);
+    console.log("[Editor] Filter selected:", effect);
+
+    // If a clip is selected, apply the effect to it
+    if (selectedClipId) {
+      actions.addEffectToClip(selectedClipId, effect);
+      console.log("[Editor] Applied filter to clip:", selectedClipId);
+    }
+  }, [selectedClipId, actions]);
+
   // Context menu handlers
   const handleContextMenuCut = useCallback(() => {
     if (!selection.clipIds.length) return;
@@ -1006,9 +1019,10 @@ export const StandaloneEditorApp = ({
           {/* Left Panel: Tabbed Media + Transitions */}
           <Tabs value={leftPanelTab} onValueChange={(v) => setLeftPanelTab(v as typeof leftPanelTab)} className="flex flex-col h-full">
             <div className="border-r border-border bg-muted/20 px-2 pt-2">
-              <TabsList className="w-full grid grid-cols-2">
+              <TabsList className="w-full grid grid-cols-3">
                 <TabsTrigger value="media">Media</TabsTrigger>
                 <TabsTrigger value="transitions">Transitions</TabsTrigger>
+                <TabsTrigger value="filters">Filters</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value="media" className="flex-1 mt-0 overflow-hidden">
@@ -1022,6 +1036,12 @@ export const StandaloneEditorApp = ({
               <TransitionLibrary
                 onSelectTransition={handleSelectTransition}
                 selectedPresetId={selectedTransition?.id}
+              />
+            </TabsContent>
+            <TabsContent value="filters" className="flex-1 mt-0 overflow-hidden">
+              <FilterLibrary
+                onSelectFilter={handleSelectFilter}
+                selectedPresetId={selectedFilter?.id}
               />
             </TabsContent>
           </Tabs>

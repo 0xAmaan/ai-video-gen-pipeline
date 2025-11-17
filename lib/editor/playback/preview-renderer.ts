@@ -3,6 +3,7 @@ import { FrameCache } from "./frame-cache";
 import { renderTransition, type TransitionRenderContext } from "../transitions/renderer";
 import type { TransitionType } from "../transitions/presets";
 import { getEasingFunction } from "../transitions/presets";
+import { applyClipEffects } from "../effects";
 
 export type TimeUpdateHandler = (time: number) => void;
 
@@ -394,11 +395,11 @@ export class PreviewRenderer {
         const toCtx = toCanvas.getContext('2d');
 
         if (fromCtx && toCtx) {
-          // Draw current video with proper aspect ratio to fromCanvas
-          this.drawVideoToCanvas(fromCtx, video, canvasWidth, canvasHeight);
+          // Draw current video with proper aspect ratio to fromCanvas (with effects)
+          this.drawVideoToCanvas(fromCtx, video, canvasWidth, canvasHeight, this.currentClip);
 
-          // Draw next video with proper aspect ratio to toCanvas
-          this.drawVideoToCanvas(toCtx, this.nextVideoEl, canvasWidth, canvasHeight);
+          // Draw next video with proper aspect ratio to toCanvas (with effects)
+          this.drawVideoToCanvas(toCtx, this.nextVideoEl, canvasWidth, canvasHeight, this.nextClip);
 
           // Render transition using aspect-corrected canvases
           renderTransition(transitionInfo.type as TransitionType, {
@@ -435,6 +436,7 @@ export class PreviewRenderer {
     video: HTMLVideoElement,
     canvasWidth: number,
     canvasHeight: number,
+    clip?: Clip,
   ) {
     // Safety check for video dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
@@ -469,6 +471,13 @@ export class PreviewRenderer {
 
     // Draw video centered with correct aspect ratio
     ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+
+    // Apply clip effects if provided
+    if (clip && clip.effects && clip.effects.length > 0) {
+      // Use frame number based on current time for temporal consistency
+      const frameNumber = Math.floor(this.currentTime * 30); // Assume 30fps for seed
+      applyClipEffects(ctx, clip, frameNumber);
+    }
   }
 
   private drawSingleFrame(
@@ -477,7 +486,7 @@ export class PreviewRenderer {
     canvasHeight: number,
   ) {
     if (!this.ctx) return;
-    this.drawVideoToCanvas(this.ctx, video, canvasWidth, canvasHeight);
+    this.drawVideoToCanvas(this.ctx, video, canvasWidth, canvasHeight, this.currentClip);
   }
 
   private getActiveTransition(): {
