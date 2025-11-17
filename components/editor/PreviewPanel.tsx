@@ -120,6 +120,7 @@ const PreviewPanelComponent = ({
             maxHeight: "100%",
             display: "block",
           }}
+          // TODO: tweak scaling offsets to better match CapCut cropping behavior
         />
       </div>
       <div className="flex items-center gap-3">
