@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useRef, useCallback } from "react";
 import { Play, Pause } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -11,6 +11,7 @@ interface PreviewPanelProps {
   isPlaying: boolean;
   onTogglePlayback: () => void;
   onSeek: (time: number) => void;
+  onCanvasResize?: (width: number, height: number) => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -29,17 +30,93 @@ const PreviewPanelComponent = ({
   isPlaying,
   onTogglePlayback,
   onSeek,
+  onCanvasResize,
 }: PreviewPanelProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const resizeTimeoutRef = useRef<number | null>(null);
+  const lastSizeRef = useRef({ width: 0, height: 0 });
+
+  // Debounced resize handler
+  const handleResize = useCallback(
+    (entries: ResizeObserverEntry[]) => {
+      const entry = entries[0];
+      if (!entry || !onCanvasResize) return;
+
+      const { width, height } = entry.contentRect;
+
+      // Clear previous timeout
+      if (resizeTimeoutRef.current !== null) {
+        window.clearTimeout(resizeTimeoutRef.current);
+      }
+
+      // Debounce resize events (150ms)
+      resizeTimeoutRef.current = window.setTimeout(() => {
+        // Calculate canvas dimensions maintaining 16:9 aspect ratio
+        const aspectRatio = 16 / 9;
+        const containerAspect = width / height;
+
+        let canvasWidth: number;
+        let canvasHeight: number;
+
+        if (containerAspect > aspectRatio) {
+          // Container wider than 16:9 - fit to height
+          canvasHeight = Math.floor(height);
+          canvasWidth = Math.floor(height * aspectRatio);
+        } else {
+          // Container taller than 16:9 - fit to width
+          canvasWidth = Math.floor(width);
+          canvasHeight = Math.floor(width / aspectRatio);
+        }
+
+        // Only resize if change is significant (>10% or >50px)
+        const widthDelta = Math.abs(canvasWidth - lastSizeRef.current.width);
+        const heightDelta = Math.abs(canvasHeight - lastSizeRef.current.height);
+        const widthPercentChange = widthDelta / lastSizeRef.current.width;
+        const heightPercentChange = heightDelta / lastSizeRef.current.height;
+
+        if (
+          lastSizeRef.current.width === 0 ||
+          widthDelta > 50 ||
+          heightDelta > 50 ||
+          widthPercentChange > 0.1 ||
+          heightPercentChange > 0.1
+        ) {
+          lastSizeRef.current = { width: canvasWidth, height: canvasHeight };
+          onCanvasResize(canvasWidth, canvasHeight);
+        }
+      }, 150);
+    },
+    [onCanvasResize],
+  );
+
+  // Setup ResizeObserver
+  useEffect(() => {
+    if (!containerRef.current || !onCanvasResize) return;
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      if (resizeTimeoutRef.current !== null) {
+        window.clearTimeout(resizeTimeoutRef.current);
+      }
+    };
+  }, [handleResize, onCanvasResize]);
+
   return (
     <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
       {/* Aspect ratio wrapper to maintain 16:9 and prevent distortion */}
-      <div className="flex flex-1 items-center justify-center overflow-hidden">
+      <div
+        ref={containerRef}
+        className="flex flex-1 items-center justify-center overflow-hidden"
+      >
         <canvas
           ref={canvasRef}
           className="w-full h-full object-contain rounded-md bg-black"
           width={1280}
           height={720}
-          style={{ maxWidth: "100%", maxHeight: "100%", aspectRatio: "16/9" }}
+          style={{ maxWidth: "100%", maxHeight: "100%" }}
         />
       </div>
       <div className="flex items-center gap-3">

@@ -533,9 +533,10 @@
               1
             ],
             "details": "Add selectedClipIds Set to KonvaTimeline state. Implement shift-click handler that toggles clip selection without clearing existing selection. Create marquee selection: on mousedown in empty timeline area, start drawing selection rectangle using Konva Rect. On mousemove, update rectangle dimensions. On mouseup, select all clips whose bounds intersect rectangle. Add visual feedback: selected clips show highlight border (e.g., blue outline, 2px). Implement Cmd/Ctrl+A to select all clips. Add deselect on click in empty area. Store selection state for undo/redo operations.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Shift-click multiple clips and verify all remain selected with blue borders. Click-drag marquee across clips and verify all intersecting clips selected. Press Cmd+A and verify all timeline clips selected. Click empty area and verify selection cleared. Test with 50+ clips for performance.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-17T07:40:29.856Z"
           },
           {
             "id": 3,
@@ -613,7 +614,7 @@
         "complexity": 8,
         "recommendedSubtasks": 8,
         "expansionPrompt": "Break down timeline UX enhancements into: (1) implementing magnetic snap guides with visual indicators in Konva, (2) adding multi-select via shift-click and marquee selection, (3) implementing split-at-playhead with Cmd+B shortcut, (4) adding ripple delete with gap closure logic, (5) implementing slip/slide editing modes, (6) adding visual feedback (hover previews, duration tooltips, snap indicators), (7) creating comprehensive keyboard shortcut system (J/K/L, arrows, zoom), (8) optimizing Konva rendering performance for complex timelines",
-        "updatedAt": "2025-11-17T07:29:45.057Z"
+        "updatedAt": "2025-11-17T07:40:29.856Z"
       },
       {
         "id": "8",
@@ -1676,7 +1677,7 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2025-11-17T07:29:45.058Z",
+      "lastModified": "2025-11-17T07:40:29.857Z",
       "taskCount": 20,
       "completedCount": 3,
       "tags": [

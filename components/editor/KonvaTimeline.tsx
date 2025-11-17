@@ -127,6 +127,14 @@ const KonvaTimelineComponent = ({
   const pendingScrubTimeRef = useRef<number | null>(null);
   const isScrubbing = useRef(false);
 
+  // Ref to track current selection state (prevents stale closures)
+  const selectedClipIdsRef = useRef<string[]>(selectedClipIds);
+
+  // Keep ref in sync with prop
+  useEffect(() => {
+    selectedClipIdsRef.current = selectedClipIds;
+  }, [selectedClipIds]);
+
   // Get first video track
   const videoTrack = sequence.tracks.find((t) => t.kind === "video");
   const audioTrack = sequence.tracks.find((t) => t.kind === "audio");
@@ -301,8 +309,8 @@ const KonvaTimelineComponent = ({
       const snappedTime = snapTime(clampedTime);
       onSeek(snappedTime);
 
-      // Deselect all clips on background click (unless shift is held)
-      if (!e.evt.shiftKey && onClipMultiSelect) {
+      // Deselect all clips on background click (unless shift or cmd/ctrl is held)
+      if (!e.evt.shiftKey && !(e.evt.metaKey || e.evt.ctrlKey) && onClipMultiSelect) {
         onClipMultiSelect([]);
       }
     }
@@ -431,8 +439,9 @@ const KonvaTimelineComponent = ({
       // Update selection
       if (onClipMultiSelect && selectedIds.length > 0) {
         if (e.evt.shiftKey) {
-          // Shift+marquee: add to existing selection
-          const combined = [...new Set([...selectedClipIds, ...selectedIds])];
+          // Shift+marquee: add to existing selection (use ref for current state)
+          const currentSelection = selectedClipIdsRef.current;
+          const combined = [...new Set([...currentSelection, ...selectedIds])];
           onClipMultiSelect(combined);
         } else {
           // Regular marquee: replace selection
@@ -453,31 +462,53 @@ const KonvaTimelineComponent = ({
       timeToPixels,
       PIXELS_PER_SECOND,
       onClipMultiSelect,
-      selectedClipIds,
     ],
   );
 
-  // Handle clip selection with shift-click support
+  // Handle clip selection with shift-click and cmd/ctrl-click support
   const handleClipClick = useCallback(
-    (clipId: string, shiftKey: boolean) => {
-      if (shiftKey && onClipMultiSelect) {
-        // Shift-click: toggle clip in multi-selection
-        if (selectedClipIds.includes(clipId)) {
-          // Remove from selection
-          onClipMultiSelect(selectedClipIds.filter((id) => id !== clipId));
+    (clipId: string, shiftKey: boolean, metaKey: boolean) => {
+      if (!onClipMultiSelect) {
+        // Fallback to single selection if multi-select not supported
+        onClipSelect(clipId);
+        return;
+      }
+
+      // Use ref to get current selection state (prevents stale closures)
+      const currentSelection = selectedClipIdsRef.current;
+
+      if (shiftKey && currentSelection.length > 0) {
+        // Shift-click: range selection between last selected clip and clicked clip
+        const lastSelectedId = currentSelection[currentSelection.length - 1];
+        const clickedIndex = clips.findIndex((c) => c.id === clipId);
+        const lastSelectedIndex = clips.findIndex((c) => c.id === lastSelectedId);
+
+        if (clickedIndex !== -1 && lastSelectedIndex !== -1) {
+          // Select all clips in the range (inclusive)
+          const startIndex = Math.min(clickedIndex, lastSelectedIndex);
+          const endIndex = Math.max(clickedIndex, lastSelectedIndex);
+          const rangeIds = clips.slice(startIndex, endIndex + 1).map((c) => c.id);
+
+          // Merge with existing selection (preserve clips outside the range)
+          const newSelection = [...new Set([...currentSelection, ...rangeIds])];
+          onClipMultiSelect(newSelection);
+        }
+      } else if (metaKey) {
+        // Cmd/Ctrl-click: toggle individual clip in multi-selection
+        if (currentSelection.includes(clipId)) {
+          // Remove from selection (allow empty selection)
+          const newSelection = currentSelection.filter((id) => id !== clipId);
+          onClipMultiSelect(newSelection);
         } else {
           // Add to selection
-          onClipMultiSelect([...selectedClipIds, clipId]);
+          onClipMultiSelect([...currentSelection, clipId]);
         }
       } else {
-        // Regular click: single selection (backward compatible)
-        onClipSelect(clipId);
-        if (onClipMultiSelect) {
-          onClipMultiSelect([clipId]);
-        }
+        // Regular click: single selection
+        onClipMultiSelect([clipId]);
       }
     },
-    [onClipSelect, onClipMultiSelect, selectedClipIds],
+    [onClipMultiSelect, clips],
   );
 
   // Calculate snap points for magnetic snapping
@@ -778,7 +809,10 @@ const KonvaTimelineComponent = ({
                         cornerRadius={4}
                         stroke={isSelected ? "#FFFFFF" : "#6366F1"}
                         strokeWidth={isSelected ? 2 : 1}
-                        onClick={(e) => handleClipClick(clip.id, e.evt.shiftKey)}
+                        onClick={(e) => {
+                          e.cancelBubble = true;
+                          handleClipClick(clip.id, e.evt.shiftKey, e.evt.metaKey || e.evt.ctrlKey);
+                        }}
                       />
                       {waveformPoints && waveformPoints.length > 0 && (
                         <Line
@@ -856,7 +890,7 @@ const KonvaTimelineComponent = ({
                   dragX={isDragging ? draggedClipX : undefined}
                   pixelsPerSecond={PIXELS_PER_SECOND}
                   xOffset={X_OFFSET}
-                  onSelect={(shiftKey) => handleClipClick(clip.id, shiftKey)}
+                  onSelect={(shiftKey, metaKey) => handleClipClick(clip.id, shiftKey, metaKey)}
                   onDragStart={(startX) => handleClipDragStart(clip.id, startX)}
                   onDragMove={(currentX) =>
                     handleClipDragMove(clip.id, currentX)

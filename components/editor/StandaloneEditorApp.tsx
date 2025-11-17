@@ -25,8 +25,11 @@ import type { MediaAssetMeta, TransitionSpec, Effect } from "@/lib/editor/types"
 import { Card } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Waves } from "lucide-react";
 import type { BeatMarker } from "@/types/audio";
+import { TRANSITION_PRESETS } from "@/lib/editor/transitions";
+import { FILTER_PRESETS } from "@/lib/editor/filters";
 
 const NARRATION_TRACK_ID = "audio-narration";
 const BGM_TRACK_ID = "audio-bgm";
@@ -212,6 +215,8 @@ export const StandaloneEditorApp = ({
   const [selectedFilter, setSelectedFilter] = useState<Effect | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pendingDeleteClips, setPendingDeleteClips] = useState<string[]>([]);
+  const [timelineHeight, setTimelineHeight] = useState(340);
+  const [isResizingTimeline, setIsResizingTimeline] = useState(false);
 
   // Convex hooks for project persistence
   const saveProject = useMutation(api.editor.saveProject);
@@ -910,6 +915,50 @@ export const StandaloneEditorApp = ({
     setPendingDeleteClips([]);
   }, [pendingDeleteClips, actions]);
 
+  // Canvas resize handler
+  const handleCanvasResize = useCallback((width: number, height: number) => {
+    if (rendererRef.current) {
+      rendererRef.current.resize(width, height);
+    }
+  }, []);
+
+  // Timeline resize handlers
+  const handleTimelineResizeStart = useCallback(() => {
+    setIsResizingTimeline(true);
+  }, []);
+
+  const handleTimelineResize = useCallback((e: MouseEvent) => {
+    if (!isResizingTimeline) return;
+
+    // Calculate new height from bottom of window
+    const windowHeight = window.innerHeight;
+    const newHeight = windowHeight - e.clientY;
+
+    // Clamp between min (200px) and max (60% of window height)
+    const minHeight = 200;
+    const maxHeight = windowHeight * 0.6;
+    const clampedHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+
+    setTimelineHeight(clampedHeight);
+  }, [isResizingTimeline]);
+
+  const handleTimelineResizeEnd = useCallback(() => {
+    setIsResizingTimeline(false);
+  }, []);
+
+  // Add mouse event listeners for timeline resize
+  useEffect(() => {
+    if (!isResizingTimeline) return;
+
+    window.addEventListener('mousemove', handleTimelineResize);
+    window.addEventListener('mouseup', handleTimelineResizeEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleTimelineResize);
+      window.removeEventListener('mouseup', handleTimelineResizeEnd);
+    };
+  }, [isResizingTimeline, handleTimelineResize, handleTimelineResizeEnd]);
+
   if (!ready || !project || !sequence) {
     return (
       <div className="flex h-screen items-center justify-center text-muted-foreground">
@@ -1031,32 +1080,47 @@ export const StandaloneEditorApp = ({
           <Tabs value={leftPanelTab} onValueChange={(v) => setLeftPanelTab(v as typeof leftPanelTab)} className="flex flex-col h-full">
             <div className="border-r border-border bg-muted/20 px-2 pt-2">
               <TabsList className="w-full grid grid-cols-4">
-                <TabsTrigger value="media">Media</TabsTrigger>
-                <TabsTrigger value="transitions">Transitions</TabsTrigger>
-                <TabsTrigger value="filters">Filters</TabsTrigger>
+                <TabsTrigger value="media" className="gap-1.5">
+                  <span>Media</span>
+                  <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">
+                    {assets.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="transitions" className="gap-1.5">
+                  <span>Transitions</span>
+                  <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">
+                    {TRANSITION_PRESETS.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="filters" className="gap-1.5">
+                  <span>Filters</span>
+                  <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">
+                    {FILTER_PRESETS.length}
+                  </Badge>
+                </TabsTrigger>
                 <TabsTrigger value="speed">Speed</TabsTrigger>
               </TabsList>
             </div>
-            <TabsContent value="media" className="flex-1 mt-0 overflow-hidden">
+            <TabsContent value="media" className="flex-1 mt-0 overflow-auto">
               <MediaPanel
                 assets={assets}
                 onImport={handleImport}
                 onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
               />
             </TabsContent>
-            <TabsContent value="transitions" className="flex-1 mt-0 overflow-hidden">
+            <TabsContent value="transitions" className="flex-1 mt-0 overflow-auto">
               <TransitionLibrary
                 onSelectTransition={handleSelectTransition}
                 selectedPresetId={selectedTransition?.id}
               />
             </TabsContent>
-            <TabsContent value="filters" className="flex-1 mt-0 overflow-hidden">
+            <TabsContent value="filters" className="flex-1 mt-0 overflow-auto">
               <FilterLibrary
                 onSelectFilter={handleSelectFilter}
                 selectedPresetId={selectedFilter?.id}
               />
             </TabsContent>
-            <TabsContent value="speed" className="flex-1 mt-0 overflow-hidden">
+            <TabsContent value="speed" className="flex-1 mt-0 overflow-auto">
               {selectedClip ? (
                 <SpeedControlPanel
                   speedCurve={selectedClip.speedCurve}
@@ -1078,25 +1142,40 @@ export const StandaloneEditorApp = ({
             isPlaying={isPlaying}
             onTogglePlayback={handleTogglePlayback}
             onSeek={handleSeek}
+            onCanvasResize={handleCanvasResize}
           />
+        </div>
+        {/* Resize handle */}
+        <div
+          className="flex-none h-1 bg-border hover:bg-primary cursor-ns-resize transition-colors group relative"
+          onMouseDown={handleTimelineResizeStart}
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-12 h-1 bg-muted-foreground/30 rounded-full group-hover:bg-primary/50 transition-colors" />
+          </div>
         </div>
         {/* Bottom row: Timeline (full width) */}
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <div
-              className="flex-none h-[340px] flex flex-col"
+              className="flex-none flex flex-col"
+              style={{ height: `${timelineHeight}px` }}
               ref={timelineContainerRef}
             >
               <KonvaTimeline
                 sequence={sequence}
                 selectedClipId={selection.clipIds[0] || null}
+                selectedClipIds={selection.clipIds}
                 currentTime={currentTime}
                 isPlaying={isPlaying}
                 containerWidth={timelineWidth}
-                containerHeight={340}
+                containerHeight={timelineHeight}
                 assets={assets}
                 onClipSelect={(clipId) =>
                   actions.setSelection({ clipIds: [clipId], trackIds: [] })
+                }
+                onClipMultiSelect={(clipIds) =>
+                  actions.setSelection({ clipIds, trackIds: [] })
                 }
                 onClipMove={(clipId, newStart) => {
                   const videoTrack = sequence.tracks.find(

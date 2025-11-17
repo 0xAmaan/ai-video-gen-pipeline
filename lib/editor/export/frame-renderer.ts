@@ -3,6 +3,7 @@ import { renderTransition } from "../transitions/renderer";
 import type { TransitionType } from "../transitions/presets";
 import { getEasingFunction } from "../transitions/presets";
 import { applyClipEffects } from "../effects";
+import { calculateSpeedAtTime } from "../effects/speed-interpolation";
 
 export type FrameCallback = (frameData: ImageData, timestamp: number) => void;
 
@@ -145,12 +146,12 @@ export class FrameRenderer {
     const video = this.videoElements.get(clip.mediaId);
     if (!video) return;
 
-    // Seek video to correct position within clip
-    const playheadWithinClip = timestamp - clip.start + clip.trimStart;
+    // Use speed-aware time mapping to get source position
+    const sourceTime = this.getSourceTimeWithSpeed(clip, timestamp);
 
     // Seek and wait for seek to complete
-    if (Math.abs(video.currentTime - playheadWithinClip) > 0.001) {
-      video.currentTime = playheadWithinClip;
+    if (Math.abs(video.currentTime - sourceTime) > 0.001) {
+      video.currentTime = sourceTime;
       await new Promise<void>((resolve) => {
         const onSeeked = () => {
           video.removeEventListener("seeked", onSeeked);
@@ -212,9 +213,9 @@ export class FrameRenderer {
       return;
     }
 
-    // Seek both videos
-    const currentTime = timestamp - currentClip.start + currentClip.trimStart;
-    const nextTime = timestamp - nextClip.start + nextClip.trimStart;
+    // Seek both videos using speed-aware time mapping
+    const currentTime = this.getSourceTimeWithSpeed(currentClip, timestamp);
+    const nextTime = this.getSourceTimeWithSpeed(nextClip, timestamp);
 
     await Promise.all([
       this.seekVideo(currentVideo, currentTime),
@@ -382,6 +383,54 @@ export class FrameRenderer {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Map timeline playback time to source video time, accounting for speed curve
+   * Same logic as PreviewRenderer.getSourceTimeWithSpeed()
+   *
+   * @param clip - The clip to calculate for
+   * @param timelineTime - Current timeline time (global)
+   * @returns Source video time in seconds
+   */
+  private getSourceTimeWithSpeed(clip: Clip, timelineTime: number): number {
+    // Time relative to clip start
+    const clipRelativeTime = timelineTime - clip.start;
+
+    // If no speed curve, use linear mapping
+    if (!clip.speedCurve || clip.speedCurve.keyframes.length === 0) {
+      return clip.trimStart + clipRelativeTime;
+    }
+
+    // Calculate normalized position in clip (0-1)
+    const normalizedTime = Math.max(0, Math.min(1, clipRelativeTime / clip.duration));
+
+    // Integrate speed curve to find source position
+    // We need to find how far through the source material we've traveled
+    const numSteps = 100; // Balance between accuracy and performance
+    let sourceProgress = 0;
+
+    for (let i = 0; i < numSteps; i++) {
+      const t = i / numSteps;
+
+      // Stop if we've reached the current playback position
+      if (t > normalizedTime) break;
+
+      const speed = calculateSpeedAtTime(clip.speedCurve, t);
+      const dt = 1 / numSteps; // Normalized time step
+
+      // At this speed, we progress through source material at speed * dt
+      // Clamp to prevent issues with freeze frames (speed = 0)
+      const effectiveSpeed = Math.max(0.001, speed);
+      sourceProgress += effectiveSpeed * dt;
+    }
+
+    // Map to actual source time
+    const sourceDuration = clip.trimEnd - clip.trimStart;
+    const sourceTime = clip.trimStart + sourceProgress * sourceDuration;
+
+    // Clamp to valid range
+    return Math.max(clip.trimStart, Math.min(clip.trimEnd, sourceTime));
   }
 
   private cleanup(): void {

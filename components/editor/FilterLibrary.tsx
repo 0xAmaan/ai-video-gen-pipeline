@@ -139,18 +139,6 @@ export const FilterLibrary = ({
 
   return (
     <div className="flex h-full flex-col bg-muted/20">
-      {/* Header */}
-      <div className="border-b border-border px-3 py-2 flex items-center justify-between">
-        <span className="text-sm font-medium">
-          Filters ({FILTER_PRESETS.length})
-        </span>
-        {selectedId && (
-          <Badge variant="secondary" className="text-xs">
-            Selected
-          </Badge>
-        )}
-      </div>
-
       {/* Category Tabs */}
       <Tabs
         value={activeCategory}
@@ -179,7 +167,7 @@ export const FilterLibrary = ({
           </TabsList>
         </div>
 
-        <ScrollArea className="flex-1">
+        <div className="flex-1 overflow-y-auto">
           <TabsContent value="filmGrain" className="mt-0">
             {renderPresetGrid(filmGrainPresets)}
           </TabsContent>
@@ -195,7 +183,7 @@ export const FilterLibrary = ({
           <TabsContent value="filmLook" className="mt-0">
             {renderPresetGrid(filmLookPresets)}
           </TabsContent>
-        </ScrollArea>
+        </div>
       </Tabs>
     </div>
   );
