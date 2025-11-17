@@ -1,0 +1,67 @@
+AUDIO INTEGRATION REQUIREMENTS FOR AI VIDEO GENERATION PIPELINE
+
+CURRENT STATE:
+The application is an AI-powered video generation pipeline that creates videos from text prompts. It currently handles:
+- Image generation (multiple models via Replicate)
+- Video clip generation (image-to-video via Replicate)
+- Basic narration/voiceover (MiniMax TTS via Replicate)
+- Lip sync processing (Sync Labs via Replicate)
+
+The codebase uses Next.js with Convex as the backend, and all AI services are accessed through APIs (primarily Replicate).
+
+GOAL:
+Expand the audio capabilities to create more professional, dynamic, and engaging video content by integrating multiple specialized audio services.
+
+SERVICES TO INTEGRATE:
+
+1. SUNO/MUSICGEN (via Replicate API)
+   Purpose: Generate original, AI-composed background music and soundtracks
+   Use cases:
+   - Create custom background music that matches the mood/theme of each video
+   - Generate bespoke musical tracks for specific scenes or ads
+   - Fast iteration on different musical styles without licensing concerns
+   Already have: Replicate API key that provides access to MusicGen and Bark models
+
+2. ELEVENLABS (direct API)
+   Purpose: High-quality voice cloning and professional voiceover generation
+   Use cases:
+   - Clone specific voices for brand consistency across videos
+   - Generate natural-sounding narration with emotion control
+   - SSML support for fine-grained control over speech patterns
+   - Potentially replace or complement the existing MiniMax TTS
+   Already have: ElevenLabs API key with access to Text-to-Speech, Voices, Sound Effects, and Music Generation endpoints
+
+3. PIXABAY AUDIO (API)
+   Purpose: Access a library of royalty-free, pre-made music and sound effects
+   Use cases:
+   - Fallback option when AI-generated music isn't suitable
+   - Quick access to professional sound effects (whooshes, transitions, ambient sounds)
+   - Pre-cleared for commercial use
+   - Search by mood, genre, or category
+   Already have: Pixabay API key
+
+4. BEAT DETECTION AND AUDIO ANALYSIS (librosa/Aubio or Replicate model)
+   Purpose: Analyze audio to extract timing information for intelligent video editing
+   Use cases:
+   - Extract BPM (beats per minute) from music tracks
+   - Identify downbeats and onset times
+   - Use beat timestamps to trigger scene cuts automatically (cut on the beat)
+   - Synchronize visual transitions with musical rhythm
+   - Place sound effects at optimal moments based on audio analysis
+   No API key needed: This is either a local Python library or can be done via a Replicate model
+
+DESIRED OUTCOME:
+The integration should follow the existing patterns in the codebase for consistency. The system should be able to:
+- Generate custom background music that complements the video content
+- Provide multiple voice options including cloned voices for narration
+- Access both AI-generated and pre-made audio assets
+- Analyze music to enable smart, beat-synchronized video editing
+- Mix multiple audio layers (narration, background music, sound effects) appropriately
+
+CONSTRAINTS:
+- Must work with the existing Next.js + Convex architecture
+- Should follow similar patterns to existing integrations (like image-models.ts for configuration)
+- API keys are already secured in environment variables
+- Should integrate cleanly with the existing scene-based video generation workflow
+
+The goal is to have a comprehensive audio toolkit that can handle any audio need in the video production pipeline, from generating original music to analyzing it for intelligent editing decisions.
