@@ -13,12 +13,14 @@ import type { BeatMarker } from "@/types/audio";
 interface KonvaTimelineProps {
   sequence: Sequence;
   selectedClipId: string | null;
+  selectedClipIds?: string[]; // Multi-select support
   currentTime: number;
   isPlaying: boolean;
   containerWidth: number;
   containerHeight?: number;
   assets: MediaAssetMeta[];
   onClipSelect: (clipId: string) => void;
+  onClipMultiSelect?: (clipIds: string[]) => void; // Multi-select callback
   onClipMove: (clipId: string, newStart: number) => void;
   onClipReorder: (clips: Clip[]) => void;
   onClipTrim: (
@@ -87,11 +89,13 @@ const generateWaveformPoints = (
 const KonvaTimelineComponent = ({
   sequence,
   selectedClipId,
+  selectedClipIds = [],
   currentTime,
   containerWidth,
   containerHeight = TIMELINE_HEIGHT,
   assets,
   onClipSelect,
+  onClipMultiSelect,
   onClipMove,
   onClipReorder,
   onClipTrim,
@@ -113,6 +117,12 @@ const KonvaTimelineComponent = ({
   const [draggedClipX, setDraggedClipX] = useState<number>(0);
   const [virtualClipOrder, setVirtualClipOrder] = useState<Clip[]>([]);
   const [snapGuides, setSnapGuides] = useState<number[]>([]); // Array of time positions for snap guides
+
+  // Marquee selection state
+  const [marqueeStart, setMarqueeStart] = useState<{ x: number; y: number } | null>(null);
+  const [marqueeCurrent, setMarqueeCurrent] = useState<{ x: number; y: number } | null>(null);
+  const [isMarqueeSelecting, setIsMarqueeSelecting] = useState(false);
+
   const scrubRafRef = useRef<number | null>(null);
   const pendingScrubTimeRef = useRef<number | null>(null);
   const isScrubbing = useRef(false);
@@ -124,6 +134,17 @@ const KonvaTimelineComponent = ({
   const audioClips = audioTrack?.clips ?? [];
   const hasAudioTrack = audioClips.length > 0;
   const snapEnabled = snapToBeats && beatMarkers.length > 0;
+
+  // Helper to check if a clip is selected (either in single or multi mode)
+  const isClipSelected = useCallback(
+    (clipId: string) => {
+      if (selectedClipIds.length > 0) {
+        return selectedClipIds.includes(clipId);
+      }
+      return clipId === selectedClipId;
+    },
+    [selectedClipId, selectedClipIds],
+  );
 
   // Create asset lookup Map for O(1) access instead of O(n) find
   const assetMap = useMemo(() => {
@@ -251,7 +272,24 @@ const KonvaTimelineComponent = ({
     }
   }, [zoomLevel, containerWidth, pixelsToTime]);
 
-  // Handle timeline click for seeking
+  // Keyboard shortcuts (Cmd/Ctrl+A for select all)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+A: Select all clips
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        e.preventDefault();
+        if (onClipMultiSelect && clips.length > 0) {
+          const allClipIds = clips.map((c) => c.id);
+          onClipMultiSelect(allClipIds);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [clips, onClipMultiSelect]);
+
+  // Handle timeline click for seeking and deselection
   const handleTimelineClick = (e: any) => {
     const stage = e.target.getStage();
     if (!stage) return;
@@ -262,6 +300,11 @@ const KonvaTimelineComponent = ({
       const clampedTime = Math.max(0, Math.min(effectiveDuration, clickedTime));
       const snappedTime = snapTime(clampedTime);
       onSeek(snappedTime);
+
+      // Deselect all clips on background click (unless shift is held)
+      if (!e.evt.shiftKey && onClipMultiSelect) {
+        onClipMultiSelect([]);
+      }
     }
   };
 
@@ -318,6 +361,124 @@ const KonvaTimelineComponent = ({
       pendingScrubTimeRef.current = null;
     }
   };
+
+  // Marquee selection handlers
+  const handleStageMouseDown = useCallback(
+    (e: any) => {
+      // Only start marquee on background click (not on clips)
+      const target = e.target;
+      if (target === e.target.getStage() || target.attrs.id === "timeline-background") {
+        const stage = e.target.getStage();
+        const pointerPosition = stage.getPointerPosition();
+        if (pointerPosition) {
+          setMarqueeStart({ x: pointerPosition.x, y: pointerPosition.y });
+          setMarqueeCurrent({ x: pointerPosition.x, y: pointerPosition.y });
+          setIsMarqueeSelecting(true);
+        }
+      }
+    },
+    [],
+  );
+
+  const handleStageMouseMove = useCallback(
+    (e: any) => {
+      if (!isMarqueeSelecting || !marqueeStart) return;
+
+      const stage = e.target.getStage();
+      const pointerPosition = stage.getPointerPosition();
+      if (pointerPosition) {
+        setMarqueeCurrent({ x: pointerPosition.x, y: pointerPosition.y });
+      }
+    },
+    [isMarqueeSelecting, marqueeStart],
+  );
+
+  const handleStageMouseUp = useCallback(
+    (e: any) => {
+      if (!isMarqueeSelecting || !marqueeStart || !marqueeCurrent) {
+        setIsMarqueeSelecting(false);
+        setMarqueeStart(null);
+        setMarqueeCurrent(null);
+        return;
+      }
+
+      // Calculate marquee bounds
+      const x1 = Math.min(marqueeStart.x, marqueeCurrent.x);
+      const x2 = Math.max(marqueeStart.x, marqueeCurrent.x);
+      const y1 = Math.min(marqueeStart.y, marqueeCurrent.y);
+      const y2 = Math.max(marqueeStart.y, marqueeCurrent.y);
+
+      // Find clips that intersect with marquee
+      const selectedIds: string[] = [];
+      clips.forEach((clip) => {
+        const clipX = timeToPixels(clip.start) + X_OFFSET;
+        const clipWidth = clip.duration * PIXELS_PER_SECOND;
+        const clipY = CLIP_Y;
+        const clipHeight = CLIP_HEIGHT;
+
+        // Check if clip intersects with marquee rectangle
+        const intersects =
+          clipX < x2 &&
+          clipX + clipWidth > x1 &&
+          clipY < y2 &&
+          clipY + clipHeight > y1;
+
+        if (intersects) {
+          selectedIds.push(clip.id);
+        }
+      });
+
+      // Update selection
+      if (onClipMultiSelect && selectedIds.length > 0) {
+        if (e.evt.shiftKey) {
+          // Shift+marquee: add to existing selection
+          const combined = [...new Set([...selectedClipIds, ...selectedIds])];
+          onClipMultiSelect(combined);
+        } else {
+          // Regular marquee: replace selection
+          onClipMultiSelect(selectedIds);
+        }
+      }
+
+      // Clear marquee state
+      setIsMarqueeSelecting(false);
+      setMarqueeStart(null);
+      setMarqueeCurrent(null);
+    },
+    [
+      isMarqueeSelecting,
+      marqueeStart,
+      marqueeCurrent,
+      clips,
+      timeToPixels,
+      PIXELS_PER_SECOND,
+      onClipMultiSelect,
+      selectedClipIds,
+    ],
+  );
+
+  // Handle clip selection with shift-click support
+  const handleClipClick = useCallback(
+    (clipId: string, shiftKey: boolean) => {
+      if (shiftKey && onClipMultiSelect) {
+        // Shift-click: toggle clip in multi-selection
+        if (selectedClipIds.includes(clipId)) {
+          // Remove from selection
+          onClipMultiSelect(selectedClipIds.filter((id) => id !== clipId));
+        } else {
+          // Add to selection
+          onClipMultiSelect([...selectedClipIds, clipId]);
+        }
+      } else {
+        // Regular click: single selection (backward compatible)
+        onClipSelect(clipId);
+        if (onClipMultiSelect) {
+          onClipMultiSelect([clipId]);
+        }
+      }
+    },
+    [onClipSelect, onClipMultiSelect, selectedClipIds],
+  );
 
   // Calculate snap points for magnetic snapping
   const calculateSnapPoints = useCallback(
@@ -537,12 +698,18 @@ const KonvaTimelineComponent = ({
           key="konva-timeline-stage"
           width={TIMELINE_WIDTH}
           height={timelineHeight}
-          onMouseMove={handleTimelineMouseMove}
+          onMouseMove={(e) => {
+            handleTimelineMouseMove(e);
+            handleStageMouseMove(e);
+          }}
           onMouseLeave={handleTimelineMouseLeave}
+          onMouseDown={handleStageMouseDown}
+          onMouseUp={handleStageMouseUp}
         >
           <Layer>
             {/* Background */}
             <Rect
+              id="timeline-background"
               x={0}
               y={0}
               width={TIMELINE_WIDTH}
@@ -587,7 +754,7 @@ const KonvaTimelineComponent = ({
                     MIN_CLIP_WIDTH,
                     clip.duration * PIXELS_PER_SECOND,
                   );
-                  const isSelected = clip.id === selectedClipId;
+                  const isSelected = isClipSelected(clip.id);
                   const waveformPoints =
                     asset?.waveform && clipWidth >= 10
                       ? generateWaveformPoints(
@@ -611,7 +778,7 @@ const KonvaTimelineComponent = ({
                         cornerRadius={4}
                         stroke={isSelected ? "#FFFFFF" : "#6366F1"}
                         strokeWidth={isSelected ? 2 : 1}
-                        onClick={() => onClipSelect(clip.id)}
+                        onClick={(e) => handleClipClick(clip.id, e.evt.shiftKey)}
                       />
                       {waveformPoints && waveformPoints.length > 0 && (
                         <Line
@@ -684,12 +851,12 @@ const KonvaTimelineComponent = ({
                   key={clip.id}
                   clip={clip}
                   asset={asset}
-                  isSelected={clip.id === selectedClipId}
+                  isSelected={isClipSelected(clip.id)}
                   isDragging={isDragging}
                   dragX={isDragging ? draggedClipX : undefined}
                   pixelsPerSecond={PIXELS_PER_SECOND}
                   xOffset={X_OFFSET}
-                  onSelect={() => onClipSelect(clip.id)}
+                  onSelect={(shiftKey) => handleClipClick(clip.id, shiftKey)}
                   onDragStart={(startX) => handleClipDragStart(clip.id, startX)}
                   onDragMove={(currentX) =>
                     handleClipDragMove(clip.id, currentX)
@@ -734,6 +901,21 @@ const KonvaTimelineComponent = ({
                 listening={false}
               />
             ))}
+
+            {/* Marquee selection rectangle (blue semi-transparent) */}
+            {isMarqueeSelecting && marqueeStart && marqueeCurrent && (
+              <Rect
+                x={Math.min(marqueeStart.x, marqueeCurrent.x)}
+                y={Math.min(marqueeStart.y, marqueeCurrent.y)}
+                width={Math.abs(marqueeCurrent.x - marqueeStart.x)}
+                height={Math.abs(marqueeCurrent.y - marqueeStart.y)}
+                fill="rgba(59, 130, 246, 0.2)" // Blue with transparency
+                stroke="rgba(59, 130, 246, 0.8)" // Blue border
+                strokeWidth={2}
+                dash={[5, 5]}
+                listening={false}
+              />
+            )}
 
             {/* Playhead (white - actual position) - updated via ref */}
             <Line

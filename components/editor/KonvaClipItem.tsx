@@ -15,7 +15,7 @@ interface KonvaClipItemProps {
   xOffset?: number;
   isDragging?: boolean;
   dragX?: number;
-  onSelect: () => void;
+  onSelect: (shiftKey: boolean) => void; // Updated to pass shift key state
   onDragStart?: (startX: number) => void;
   onDragMove?: (currentX: number) => void;
   onDragEnd?: () => void;
@@ -190,7 +190,7 @@ const KonvaClipItemComponent = ({
         strokeWidth={isSelected ? 3 : 0}
         shadowBlur={isSelected ? 10 : 0}
         shadowColor="rgba(255, 255, 255, 0.5)"
-        onClick={onSelect}
+        onClick={(e) => onSelect(e.evt.shiftKey)}
       />
 
       {/* Render thumbnails if available - CapCut-style tiling */}
@@ -317,7 +317,7 @@ const KonvaClipItemComponent = ({
           height={CLIP_HEIGHT}
           fill="transparent"
           draggable
-          onClick={onSelect}
+          onClick={(e) => onSelect(e.evt.shiftKey)}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
           onDragEnd={handleDragEndHandler}
