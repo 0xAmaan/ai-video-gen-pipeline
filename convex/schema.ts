@@ -68,38 +68,6 @@ export default defineSchema({
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
-    backgroundMusicUrl: v.optional(v.string()),
-    backgroundMusicSource: v.optional(
-      v.union(
-        v.literal("generated"),
-        v.literal("freesound"),
-        v.literal("uploaded"),
-      ),
-    ),
-    backgroundMusicPrompt: v.optional(v.string()),
-    backgroundMusicMood: v.optional(v.string()),
-    audioTrackSettings: v.optional(
-      v.object({
-        audioNarration: v.optional(
-          v.object({
-            volume: v.optional(v.number()),
-            muted: v.optional(v.boolean()),
-          }),
-        ),
-        audioBgm: v.optional(
-          v.object({
-            volume: v.optional(v.number()),
-            muted: v.optional(v.boolean()),
-          }),
-        ),
-        audioSfx: v.optional(
-          v.object({
-            volume: v.optional(v.number()),
-            muted: v.optional(v.boolean()),
-          }),
-        ),
-      }),
-    ),
   }).index("by_user", ["userId"]),
 
   clarifyingQuestions: defineTable({
