@@ -78,10 +78,21 @@ const PhaseIndicator = () => {
 const ProjectLayout = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const isEditor = pathname?.endsWith("/editor");
+  const isCharacterSelect = pathname?.includes("/character-select");
 
-  // Editor needs full-screen layout without container constraints
+  // Editor needs full-screen layout without nav or container constraints
   if (isEditor) {
     return <div className="h-screen bg-background-base">{children}</div>;
+  }
+
+  // Character-select keeps nav but removes container constraints for full-width
+  if (isCharacterSelect) {
+    return (
+      <div className="min-h-screen bg-background-base">
+        <PhaseIndicator />
+        {children}
+      </div>
+    );
   }
 
   // Other phases use centered container layout

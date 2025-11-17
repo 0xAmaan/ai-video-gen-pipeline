@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
@@ -29,6 +29,7 @@ const StoryboardPage = () => {
     project,
     questions,
     scenes: convexScenes,
+    isLoading,
   } = useProjectData(projectId as Id<"videoProjects">);
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -51,19 +52,29 @@ const StoryboardPage = () => {
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
   const updateLastActivePhase = useMutation(api.video.updateLastActivePhase);
 
+  // Ref to track if generation has been initiated (prevents duplicate calls)
+  const hasInitiatedGeneration = useRef(false);
+
   // Check if we need to generate storyboard
   useEffect(() => {
+    // Guard: only run once
+    if (hasInitiatedGeneration.current) {
+      return;
+    }
+
     if (
+      !isLoading &&
       project &&
       questions?.answers &&
       convexScenes.length === 0 &&
       !isGenerating
     ) {
       // Need to generate storyboard
+      hasInitiatedGeneration.current = true;
       setIsGenerating(true);
       generateStoryboard();
     }
-  }, [project, questions, convexScenes]);
+  }, [isLoading, project, questions, convexScenes, isGenerating]);
 
   const generateStoryboard = async () => {
     if (!project || !questions?.answers) return;

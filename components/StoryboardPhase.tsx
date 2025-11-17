@@ -47,6 +47,7 @@ import {
 import { MINIMAX_VOICES } from "@/lib/voice-selection";
 import type { MiniMaxVoiceId } from "@/lib/voice-selection";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
+import { VoiceWaveformPlayer } from "@/components/audio/VoiceWaveformPlayer";
 import type { MusicGenerationOptions } from "@/types/audio";
 
 type VoiceProvider = "replicate" | "elevenlabs";
@@ -1194,39 +1195,39 @@ export const StoryboardPhase = ({
     </div>
 
     {/* Voice Settings */}
-      <Card className="p-4 mb-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h3 className="font-medium flex items-center gap-2">
-              <Volume2 className="w-4 h-4" /> Narration Voice
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {currentVoiceLabel} • {currentVoiceProviderLabel}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {currentVoiceReasoning}
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setShowVoiceDialog(true)}>
-            Change Voice
-          </Button>
-        </div>
-        {sampleAudioUrl ? (
-          <AudioPlayer
-            className="w-full mt-3"
-            src={sampleAudioUrl}
-            label="NarrationSample"
-            debugContext={{
-              provider: currentVoiceProviderLabel,
-              projectId,
-            }}
+      {sampleAudioUrl ? (
+        <div className="mb-6">
+          <VoiceWaveformPlayer
+            audioUrl={sampleAudioUrl}
+            voiceName={currentVoiceLabel}
+            provider={currentVoiceProviderLabel}
+            narrationText={currentVoiceReasoning}
+            onChangeVoice={() => setShowVoiceDialog(true)}
           />
-        ) : (
+        </div>
+      ) : (
+        <Card className="p-4 mb-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="font-medium flex items-center gap-2">
+                <Volume2 className="w-4 h-4" /> Narration Voice
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {currentVoiceLabel} • {currentVoiceProviderLabel}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {currentVoiceReasoning}
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => setShowVoiceDialog(true)}>
+              Change Voice
+            </Button>
+          </div>
           <p className="text-sm text-muted-foreground mt-3">
             Generate narration to preview the selected voice.
           </p>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {/* Background Music */}
       <Card className="p-4 mb-6 space-y-4">
