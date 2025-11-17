@@ -1,0 +1,27 @@
+Current editor has basic functionality. Need to enhance to match CapCut-like experience with professional editing capabilities.
+
+Tech stack: Using Conva for editing interface, Media Bunny for video exporting
+
+Features to add:
+
+Transition effects and filters (leverage open source libraries)
+
+Speed controls for ramp up/down effects within clips
+
+AI-generated text overlays with customizable positioning
+
+Grain, filters, and visual effects beyond base video generation
+
+Regeneration capability for individual clips within editor
+
+Transition library and effect presets for non-technical users
+
+Success criteria:
+
+Editor feels as intuitive as CapCut
+
+Users can apply transitions without technical knowledge
+
+Speed ramping works smoothly for ad-style pacing
+
+Text overlays integrate seamlessly with AI-generated content

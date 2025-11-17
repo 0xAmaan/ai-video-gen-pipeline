@@ -1,5 +1,8 @@
 import type { Clip, MediaAssetMeta, Sequence } from "../types";
 import { FrameCache } from "./frame-cache";
+import { renderTransition, type TransitionRenderContext } from "../transitions/renderer";
+import type { TransitionType } from "../transitions/presets";
+import { getEasingFunction } from "../transitions/presets";
 
 export type TimeUpdateHandler = (time: number) => void;
 
@@ -7,7 +10,9 @@ export class PreviewRenderer {
   private canvas?: HTMLCanvasElement;
   private ctx?: CanvasRenderingContext2D | null;
   private videoEl?: HTMLVideoElement;
+  private nextVideoEl?: HTMLVideoElement;
   private currentClip?: Clip;
+  private nextClip?: Clip;
   private raf?: number;
   private playing = false;
   private currentTime = 0;
@@ -95,6 +100,13 @@ export class PreviewRenderer {
     this.videoEl.preload = "metadata";
     this.videoEl.muted = true;
     this.videoEl.addEventListener("ended", () => this.handleClipEnded());
+
+    // Create second video element for transition blending
+    this.nextVideoEl = document.createElement("video");
+    this.nextVideoEl.crossOrigin = "anonymous";
+    this.nextVideoEl.playsInline = true;
+    this.nextVideoEl.preload = "metadata";
+    this.nextVideoEl.muted = true;
     try {
       this.audioContext = new AudioContext({ sampleRate: 44100 });
       this.audioGainNode = this.audioContext.createGain();
@@ -268,6 +280,7 @@ export class PreviewRenderer {
     const clip = this.resolveClip(sequence, this.currentTime);
     if (!clip) {
       this.currentClip = undefined;
+      this.nextClip = undefined;
       return;
     }
     if (!this.currentClip || this.currentClip.id !== clip.id) {
@@ -277,11 +290,41 @@ export class PreviewRenderer {
         this.videoEl.src = asset.url;
         this.videoEl.currentTime = clip.trimStart;
       }
+
+      // Load next clip for transitions
+      const videoTrack = sequence.tracks.find((t) => t.kind === "video");
+      if (videoTrack) {
+        const clipIndex = videoTrack.clips.findIndex((c) => c.id === clip.id);
+        if (clipIndex >= 0 && clipIndex < videoTrack.clips.length - 1) {
+          this.nextClip = videoTrack.clips[clipIndex + 1];
+          const nextAsset = this.getAsset(this.nextClip.mediaId);
+          if (nextAsset && this.nextVideoEl && this.nextVideoEl.src !== nextAsset.url) {
+            this.nextVideoEl.src = nextAsset.url;
+            this.nextVideoEl.currentTime = this.nextClip.trimStart;
+          }
+        } else {
+          this.nextClip = undefined;
+        }
+      }
     }
     if (this.videoEl) {
       const playheadWithinClip = this.currentTime - clip.start + clip.trimStart;
       if (Math.abs(this.videoEl.currentTime - playheadWithinClip) > 0.05) {
         this.videoEl.currentTime = Math.max(clip.trimStart, playheadWithinClip);
+      }
+    }
+
+    // Sync next video if we're near transition
+    if (this.nextClip && this.nextVideoEl && clip.transitions && clip.transitions.length > 0) {
+      const transition = clip.transitions[0];
+      const clipEnd = clip.start + clip.duration;
+      const transitionStart = clipEnd - transition.duration;
+
+      if (this.currentTime >= transitionStart) {
+        const nextClipTime = this.currentTime - clipEnd + this.nextClip.trimStart;
+        if (Math.abs(this.nextVideoEl.currentTime - nextClipTime) > 0.05) {
+          this.nextVideoEl.currentTime = Math.max(this.nextClip.trimStart, nextClipTime);
+        }
       }
     }
   }
@@ -297,6 +340,9 @@ export class PreviewRenderer {
     const canvasHeight = this.canvas.height;
     const video = this.videoEl;
 
+    // Check if we're in a transition
+    const transitionInfo = this.getActiveTransition();
+
     // Only clear if we have no video to draw (prevents flicker)
     const hasVideo =
       video &&
@@ -304,41 +350,32 @@ export class PreviewRenderer {
       video.videoWidth > 0 &&
       video.videoHeight > 0;
 
-    if (hasVideo) {
-      // Calculate aspect ratios
-      const videoAspect = video.videoWidth / video.videoHeight;
-      const canvasAspect = canvasWidth / canvasHeight;
+    if (hasVideo && transitionInfo && this.nextVideoEl) {
+      // Render transition between current and next clip
+      const hasNextVideo =
+        this.nextVideoEl.readyState >= 2 &&
+        this.nextVideoEl.videoWidth > 0 &&
+        this.nextVideoEl.videoHeight > 0;
 
-      let drawWidth: number;
-      let drawHeight: number;
-      let offsetX = 0;
-      let offsetY = 0;
+      if (hasNextVideo) {
+        this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-      // Fit video to canvas while preserving aspect ratio (letterbox/pillarbox)
-      if (videoAspect > canvasAspect) {
-        // Video is wider - fit to width, add letterbox (black bars top/bottom)
-        drawWidth = canvasWidth;
-        drawHeight = canvasWidth / videoAspect;
-        offsetY = (canvasHeight - drawHeight) / 2;
-
-        // Clear letterbox bars ONLY (not entire canvas)
-        this.ctx.fillStyle = "#050505";
-        this.ctx.fillRect(0, 0, canvasWidth, offsetY); // Top bar
-        this.ctx.fillRect(0, offsetY + drawHeight, canvasWidth, offsetY); // Bottom bar
+        // Render transition
+        renderTransition(transitionInfo.type as TransitionType, {
+          ctx: this.ctx,
+          width: canvasWidth,
+          height: canvasHeight,
+          fromFrame: video,
+          toFrame: this.nextVideoEl,
+          progress: transitionInfo.progress,
+        });
       } else {
-        // Video is taller - fit to height, add pillarbox (black bars left/right)
-        drawHeight = canvasHeight;
-        drawWidth = canvasHeight * videoAspect;
-        offsetX = (canvasWidth - drawWidth) / 2;
-
-        // Clear pillarbox bars ONLY (not entire canvas)
-        this.ctx.fillStyle = "#050505";
-        this.ctx.fillRect(0, 0, offsetX, canvasHeight); // Left bar
-        this.ctx.fillRect(offsetX + drawWidth, 0, offsetX, canvasHeight); // Right bar
+        // Next video not ready, just draw current frame
+        this.drawSingleFrame(video, canvasWidth, canvasHeight);
       }
-
-      // Draw video centered with correct aspect ratio
-      this.ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+    } else if (hasVideo) {
+      // No transition, just draw current frame
+      this.drawSingleFrame(video, canvasWidth, canvasHeight);
     } else {
       // No media fallback
       this.ctx.fillStyle = "#888";
@@ -346,6 +383,89 @@ export class PreviewRenderer {
     }
 
     this.isDrawingFrame = false;
+  }
+
+  private drawSingleFrame(
+    video: HTMLVideoElement,
+    canvasWidth: number,
+    canvasHeight: number,
+  ) {
+    if (!this.ctx) return;
+
+    // Calculate aspect ratios
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const canvasAspect = canvasWidth / canvasHeight;
+
+    let drawWidth: number;
+    let drawHeight: number;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // Fit video to canvas while preserving aspect ratio (letterbox/pillarbox)
+    if (videoAspect > canvasAspect) {
+      // Video is wider - fit to width, add letterbox (black bars top/bottom)
+      drawWidth = canvasWidth;
+      drawHeight = canvasWidth / videoAspect;
+      offsetY = (canvasHeight - drawHeight) / 2;
+
+      // Clear letterbox bars ONLY (not entire canvas)
+      this.ctx.fillStyle = "#050505";
+      this.ctx.fillRect(0, 0, canvasWidth, offsetY); // Top bar
+      this.ctx.fillRect(0, offsetY + drawHeight, canvasWidth, offsetY); // Bottom bar
+    } else {
+      // Video is taller - fit to height, add pillarbox (black bars left/right)
+      drawHeight = canvasHeight;
+      drawWidth = canvasHeight * videoAspect;
+      offsetX = (canvasWidth - drawWidth) / 2;
+
+      // Clear pillarbox bars ONLY (not entire canvas)
+      this.ctx.fillStyle = "#050505";
+      this.ctx.fillRect(0, 0, offsetX, canvasHeight); // Left bar
+      this.ctx.fillRect(offsetX + drawWidth, 0, offsetX, canvasHeight); // Right bar
+    }
+
+    // Draw video centered with correct aspect ratio
+    this.ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+  }
+
+  private getActiveTransition(): {
+    type: string;
+    progress: number;
+  } | null {
+    if (!this.currentClip || !this.nextClip) return null;
+
+    const sequence = this.getSequence();
+    if (!sequence) return null;
+
+    // Check if current clip has transitions
+    if (!this.currentClip.transitions || this.currentClip.transitions.length === 0) {
+      return null;
+    }
+
+    // Get the first transition (simplified - assumes one transition per clip)
+    const transition = this.currentClip.transitions[0];
+    if (!transition) return null;
+
+    // Calculate if we're in the transition period
+    const clipEnd = this.currentClip.start + this.currentClip.duration;
+    const transitionStart = clipEnd - transition.duration;
+
+    if (this.currentTime >= transitionStart && this.currentTime <= clipEnd) {
+      // We're in the transition!
+      const elapsed = this.currentTime - transitionStart;
+      const rawProgress = elapsed / transition.duration;
+
+      // Apply easing function (reconstruct from string identifier)
+      const easingFn = getEasingFunction(transition.easing);
+      const progress = easingFn(rawProgress);
+
+      return {
+        type: transition.type,
+        progress: Math.max(0, Math.min(1, progress)),
+      };
+    }
+
+    return null;
   }
 
   private resolveClip(sequence: Sequence, time: number) {

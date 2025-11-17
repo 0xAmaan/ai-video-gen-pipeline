@@ -182,6 +182,7 @@ export interface ProjectStoreState {
   isPlaying: boolean;
   currentTime: number;
   history: HistoryState;
+  clipboard: { clips: Clip[]; timestamp: number } | null;
   // Convex functions injected from component
   _saveProject: SaveProjectFn | null;
   _saveHistorySnapshot: SaveHistorySnapshotFn | null;
@@ -210,10 +211,17 @@ export interface ProjectStoreState {
     moveClip: (clipId: string, trackId: string, start: number) => void;
     trimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
     splitClip: (clipId: string, offset: number) => void;
+    splitClipAtTime: (clipId: string, globalTime: number) => void;
     rippleDelete: (clipId: string) => void;
+    duplicateClip: (clipId: string) => void;
+    copyClipsToClipboard: (clipIds: string[]) => void;
+    cutClipsToClipboard: (clipIds: string[]) => void;
+    pasteClipsFromClipboard: (trackId: string, start: number) => void;
     reorderClips: (clips: Clip[]) => void;
     setClipVolume: (clipId: string, volume: number) => void;
     toggleTrackMute: (trackId: string) => void;
+    addTransitionToClip: (clipId: string, transition: import("../types").TransitionSpec) => void;
+    removeTransitionFromClip: (clipId: string, transitionId: string) => void;
     undo: () => void;
     redo: () => void;
   };
@@ -248,6 +256,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
     isPlaying: false,
     currentTime: 0,
     history: { past: [], future: [] },
+    clipboard: null,
     _saveProject: null,
     _saveHistorySnapshot: null,
     _clearFutureHistory: null,
@@ -562,6 +571,36 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           return { ...state, project: snapshot, history };
         });
       },
+      addTransitionToClip: (clipId, transition) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) return state;
+          clip.transitions.push(transition);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      removeTransitionFromClip: (clipId, transitionId) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const clip = findClip(sequence, clipId);
+          if (!clip) return state;
+          clip.transitions = clip.transitions.filter((t) => t.id !== transitionId);
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
       undo: () =>
         set((state) => {
           if (!state.history.past.length) return state;
@@ -618,6 +657,155 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           project: snapshot,
           history,
           currentTime: Math.min(current.currentTime, duration),
+        }));
+      },
+      duplicateClip: (clipId) => {
+        const project = get().project;
+        if (!project) return;
+        const snapshot = deepClone(project);
+        const sequence = getSequence(snapshot);
+        const located = findTrackAndClip(sequence, clipId);
+        if (!located) return;
+        const { track, clip } = located;
+
+        // Create duplicate with new ID
+        const duplicate: Clip = {
+          ...deepClone(clip),
+          id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+          start: clip.start + clip.duration, // Place right after original
+        };
+
+        // Insert duplicate after original
+        const index = track.clips.findIndex((c) => c.id === clipId);
+        track.clips.splice(index + 1, 0, duplicate);
+        sortTrackClips(track);
+
+        const duration = recalculateSequenceDuration(sequence);
+        snapshot.updatedAt = Date.now();
+        const state = get();
+        const history = historyAfterPush(state, project);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
+        set((current) => ({
+          project: snapshot,
+          history,
+          currentTime: Math.min(current.currentTime, duration),
+          selection: { ...current.selection, clipIds: [duplicate.id] },
+        }));
+      },
+      splitClipAtTime: (clipId, globalTime) => {
+        const project = get().project;
+        if (!project) return;
+        const snapshot = deepClone(project);
+        const sequence = getSequence(snapshot);
+        const located = findTrackAndClip(sequence, clipId);
+        if (!located) return;
+        const { track, clip } = located;
+
+        // Calculate offset within clip
+        const offset = globalTime - clip.start;
+
+        // Validate offset is within clip bounds
+        if (offset <= 0 || offset >= clip.duration) return;
+
+        const index = track.clips.findIndex((c) => c.id === clipId);
+        if (index === -1) return;
+
+        // Create right side of split
+        const right: Clip = {
+          ...deepClone(clip),
+          id: `${clip.id}_split_${Date.now()}`,
+          start: clip.start + offset,
+          duration: Math.max(0.1, clip.duration - offset),
+          trimStart: clip.trimStart + offset,
+        };
+
+        // Modify original (left side)
+        clip.duration = offset;
+        clip.trimEnd = Math.max(0, clip.trimEnd - right.duration);
+
+        track.clips.splice(index + 1, 0, right);
+        sortTrackClips(track);
+
+        const duration = recalculateSequenceDuration(sequence);
+        snapshot.updatedAt = Date.now();
+        const state = get();
+        const history = historyAfterPush(state, project);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
+        set((current) => ({
+          project: snapshot,
+          history,
+          currentTime: Math.min(current.currentTime, duration),
+        }));
+      },
+      copyClipsToClipboard: (clipIds) => {
+        const project = get().project;
+        if (!project) return;
+        const sequence = getSequence(project);
+
+        // Collect all clips to copy
+        const clipsToCopy: Clip[] = [];
+        for (const clipId of clipIds) {
+          const clip = findClip(sequence, clipId);
+          if (clip) {
+            clipsToCopy.push(deepClone(clip));
+          }
+        }
+
+        if (clipsToCopy.length > 0) {
+          set({ clipboard: { clips: clipsToCopy, timestamp: Date.now() } });
+        }
+      },
+      cutClipsToClipboard: (clipIds) => {
+        const { actions } = get();
+
+        // First copy to clipboard
+        actions.copyClipsToClipboard(clipIds);
+
+        // Then ripple delete each clip
+        for (const clipId of clipIds) {
+          actions.rippleDelete(clipId);
+        }
+      },
+      pasteClipsFromClipboard: (trackId, start) => {
+        const state = get();
+        const project = state.project;
+        if (!project || !state.clipboard) return;
+
+        const snapshot = deepClone(project);
+        const sequence = getSequence(snapshot);
+        const track = sequence.tracks.find((t) => t.id === trackId);
+        if (!track) return;
+
+        // Find minimum start time from clipboard clips
+        const minStart = Math.min(...state.clipboard.clips.map((c) => c.start));
+
+        // Paste clips with new IDs and adjusted positions
+        const pastedClips: Clip[] = [];
+        for (const clipboardClip of state.clipboard.clips) {
+          const offsetFromMin = clipboardClip.start - minStart;
+          const newClip: Clip = {
+            ...deepClone(clipboardClip),
+            id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+            trackId: track.id,
+            start: start + offsetFromMin,
+          };
+          track.clips.push(newClip);
+          pastedClips.push(newClip);
+        }
+
+        sortTrackClips(track);
+        const duration = recalculateSequenceDuration(sequence);
+        snapshot.updatedAt = Date.now();
+        const history = historyAfterPush(state, project);
+        persist(snapshot);
+        persistHistorySnapshot(snapshot.id, project, "past");
+        set((current) => ({
+          project: snapshot,
+          history,
+          currentTime: Math.min(current.currentTime, duration),
+          selection: { ...current.selection, clipIds: pastedClips.map((c) => c.id) },
         }));
       },
     },

@@ -25,22 +25,20 @@ export const MediaPanel = ({
   onAddToTimeline,
 }: MediaPanelProps) => {
   return (
-    <div className="flex h-full flex-col border-r border-border bg-muted/20">
-      <div className="border-b border-border px-3 py-2">
-        <div className="flex items-center justify-between text-sm font-medium">
-          <span>Media Library ({assets.length})</span>
-          <label className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors">
-            <UploadCloud className="h-3 w-3" />
-            Import
-            <input
-              type="file"
-              accept="video/*,audio/*,image/*"
-              className="hidden"
-              multiple
-              onChange={(event) => onImport(event.target.files)}
-            />
-          </label>
-        </div>
+    <div className="flex h-full flex-col bg-muted/20">
+      <div className="border-b border-border px-3 py-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Media Library ({assets.length})</span>
+        <label className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors">
+          <UploadCloud className="h-3 w-3" />
+          Import
+          <input
+            type="file"
+            accept="video/*,audio/*,image/*"
+            className="hidden"
+            multiple
+            onChange={(event) => onImport(event.target.files)}
+          />
+        </label>
       </div>
       <ScrollArea className="flex-1">
         <div className="p-3">
