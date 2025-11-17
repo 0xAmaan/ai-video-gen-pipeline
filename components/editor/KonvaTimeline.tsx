@@ -32,6 +32,8 @@ interface KonvaTimelineProps {
   onScrubEnd?: () => void;
   beatMarkers?: BeatMarker[];
   snapToBeats?: boolean;
+  magneticSnapEnabled?: boolean; // Enable magnetic snapping to clip edges/playhead
+  magneticSnapThreshold?: number; // Snap distance threshold in seconds (default: 0.1)
 }
 
 const CLIP_HEIGHT = 120;
@@ -99,6 +101,8 @@ const KonvaTimelineComponent = ({
   onScrubEnd,
   beatMarkers = [],
   snapToBeats = false,
+  magneticSnapEnabled = true,
+  magneticSnapThreshold = 0.1, // Default 100ms snap threshold
 }: KonvaTimelineProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const playheadLineRef = useRef<Konva.Line>(null);
@@ -108,6 +112,7 @@ const KonvaTimelineComponent = ({
   const [draggingClipId, setDraggingClipId] = useState<string | null>(null);
   const [draggedClipX, setDraggedClipX] = useState<number>(0);
   const [virtualClipOrder, setVirtualClipOrder] = useState<Clip[]>([]);
+  const [snapGuides, setSnapGuides] = useState<number[]>([]); // Array of time positions for snap guides
   const scrubRafRef = useRef<number | null>(null);
   const pendingScrubTimeRef = useRef<number | null>(null);
   const isScrubbing = useRef(false);
@@ -314,6 +319,66 @@ const KonvaTimelineComponent = ({
     }
   };
 
+  // Calculate snap points for magnetic snapping
+  const calculateSnapPoints = useCallback(
+    (draggedClipId: string, draggedClipTime: number, draggedClipDuration: number) => {
+      if (!magneticSnapEnabled) {
+        setSnapGuides([]);
+        return draggedClipTime;
+      }
+
+      const snapPoints: Array<{ time: number; type: string }> = [];
+
+      // Add playhead as snap point
+      snapPoints.push({ time: currentTime, type: "playhead" });
+
+      // Add all other clip edges as snap points
+      clips.forEach((clip) => {
+        if (clip.id === draggedClipId) return; // Skip the dragged clip
+
+        // Clip start
+        snapPoints.push({ time: clip.start, type: "clip-start" });
+        // Clip end
+        snapPoints.push({ time: clip.start + clip.duration, type: "clip-end" });
+      });
+
+      // Check both start and end of dragged clip for snapping
+      const draggedStart = draggedClipTime;
+      const draggedEnd = draggedClipTime + draggedClipDuration;
+
+      let bestSnapPoint: { time: number; offset: number } | null = null;
+      let minDistance = magneticSnapThreshold;
+
+      for (const snapPoint of snapPoints) {
+        // Check if dragged clip START is close to snap point
+        const distanceToStart = Math.abs(draggedStart - snapPoint.time);
+        if (distanceToStart < minDistance) {
+          minDistance = distanceToStart;
+          bestSnapPoint = { time: snapPoint.time, offset: 0 }; // Snap start to point
+        }
+
+        // Check if dragged clip END is close to snap point
+        const distanceToEnd = Math.abs(draggedEnd - snapPoint.time);
+        if (distanceToEnd < minDistance) {
+          minDistance = distanceToEnd;
+          bestSnapPoint = { time: snapPoint.time, offset: -draggedClipDuration }; // Snap end to point
+        }
+      }
+
+      if (bestSnapPoint) {
+        // Show snap guide at the snap point
+        setSnapGuides([bestSnapPoint.time]);
+        // Return snapped time
+        return bestSnapPoint.time + bestSnapPoint.offset;
+      }
+
+      // No snap, clear guides
+      setSnapGuides([]);
+      return draggedClipTime;
+    },
+    [magneticSnapEnabled, magneticSnapThreshold, currentTime, clips],
+  );
+
   // Clip drag handlers - memoized to prevent child re-renders
   const handleClipDragStart = useCallback(
     (clipId: string, startX: number) => {
@@ -326,7 +391,24 @@ const KonvaTimelineComponent = ({
 
   const handleClipDragMove = useCallback(
     (clipId: string, currentX: number) => {
-      setDraggedClipX(currentX);
+      const draggedClip = clips.find((c) => c.id === clipId);
+      if (draggedClip) {
+        // Convert pixel position to time
+        const dragTime = pixelsToTime(currentX);
+
+        // Apply snap logic if enabled
+        const snappedTime = calculateSnapPoints(
+          clipId,
+          dragTime,
+          draggedClip.duration
+        );
+
+        // Convert back to pixels for rendering
+        const snappedX = timeToPixels(snappedTime);
+        setDraggedClipX(snappedX);
+      } else {
+        setDraggedClipX(currentX);
+      }
 
       setVirtualClipOrder((prevOrder) => {
         const draggedClip = prevOrder.find((c) => c.id === clipId);
@@ -357,7 +439,7 @@ const KonvaTimelineComponent = ({
         return newOrder;
       });
     },
-    [PIXELS_PER_SECOND],
+    [PIXELS_PER_SECOND, clips, pixelsToTime, timeToPixels, calculateSnapPoints],
   );
 
   const handleClipDragEnd = useCallback(
@@ -386,6 +468,7 @@ const KonvaTimelineComponent = ({
       setDraggingClipId(null);
       setDraggedClipX(0);
       setVirtualClipOrder([]);
+      setSnapGuides([]); // Clear snap guides when drag ends
     },
     [draggingClipId, onClipReorder],
   );
@@ -633,6 +716,24 @@ const KonvaTimelineComponent = ({
                 listening={false}
               />
             )}
+
+            {/* Magnetic snap guide lines (cyan - shown during drag) */}
+            {snapGuides.map((snapTime, index) => (
+              <Line
+                key={`snap-guide-${index}`}
+                points={[
+                  timeToPixels(snapTime) + X_OFFSET,
+                  0,
+                  timeToPixels(snapTime) + X_OFFSET,
+                  timelineHeight,
+                ]}
+                stroke="#00D9FF"
+                strokeWidth={2}
+                opacity={0.7}
+                dash={[10, 5]} // Dashed line to distinguish from playhead
+                listening={false}
+              />
+            ))}
 
             {/* Playhead (white - actual position) - updated via ref */}
             <Line

@@ -91,6 +91,7 @@ export interface Clip {
   effects: Effect[];
   transitions: TransitionSpec[];
   speedCurve: SpeedCurve | null; // null = normal speed (1x), otherwise custom speed curve
+  preservePitch: boolean; // When true, attempt to preserve audio pitch during speed changes (default: true)
 }
 
 export interface Track {
@@ -132,6 +133,7 @@ export interface MediaAssetMeta {
 
 export interface ProjectSettings {
   snap: boolean;
+  snapThreshold: number; // Distance in seconds within which snapping occurs
   zoom: number;
   activeSequenceId: string;
 }

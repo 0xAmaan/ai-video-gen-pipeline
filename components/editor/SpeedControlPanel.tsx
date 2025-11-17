@@ -8,12 +8,18 @@ import { Slider } from "../ui/slider";
 import type { SpeedCurve, SpeedKeyframe } from "@/lib/editor/types";
 import { calculateSpeedAtTime } from "@/lib/editor/effects/speed-interpolation";
 import {
+  SPEED_PRESETS,
+  generatePresetThumbnail,
+} from "@/lib/editor/effects/speed-presets";
+import {
   Gauge,
   Zap,
   TrendingUp,
   TrendingDown,
   Pause,
   RotateCcw,
+  Activity,
+  Film,
 } from "lucide-react";
 
 interface SpeedControlPanelProps {
@@ -23,49 +29,12 @@ interface SpeedControlPanelProps {
   onSpeedCurveChange: (curve: SpeedCurve | null) => void;
 }
 
-interface SpeedPreset {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  keyframes: SpeedKeyframe[];
-}
-
-const SPEED_PRESETS: SpeedPreset[] = [
-  {
-    id: "slow-to-fast",
-    name: "Slow to Fast",
-    description: "Speed ramp from 0.5x to 2x",
-    icon: TrendingUp,
-    keyframes: [
-      { time: 0, speed: 0.5 },
-      { time: 1, speed: 2.0 },
-    ],
-  },
-  {
-    id: "fast-to-slow",
-    name: "Fast to Slow",
-    description: "Speed ramp from 2x to 0.5x",
-    icon: TrendingDown,
-    keyframes: [
-      { time: 0, speed: 2.0 },
-      { time: 1, speed: 0.5 },
-    ],
-  },
-  {
-    id: "freeze-mid",
-    name: "Freeze Frame",
-    description: "Freeze in the middle",
-    icon: Pause,
-    keyframes: [
-      { time: 0, speed: 1.0 },
-      { time: 0.45, speed: 1.0 },
-      { time: 0.5, speed: 0 },
-      { time: 0.55, speed: 1.0 },
-      { time: 1, speed: 1.0 },
-    ],
-  },
-];
+// Category icons for preset organization
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  ramps: TrendingUp,
+  effects: Zap,
+  custom: Activity,
+};
 
 export const SpeedControlPanel = ({
   speedCurve,
@@ -76,10 +45,17 @@ export const SpeedControlPanel = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoveredKeyframe, setHoveredKeyframe] = useState<number | null>(null);
   const [draggingKeyframe, setDraggingKeyframe] = useState<number | null>(null);
+  const [previewPreset, setPreviewPreset] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<"ramps" | "effects" | "all">("all");
 
   // Current speed at playhead position
   const normalizedTime = clipDuration > 0 ? currentTime / clipDuration : 0;
   const currentSpeed = calculateSpeedAtTime(speedCurve, normalizedTime);
+
+  // Filter presets by category
+  const filteredPresets = selectedCategory === "all"
+    ? SPEED_PRESETS
+    : SPEED_PRESETS.filter((p) => p.category === selectedCategory);
 
   // Draw the curve visualization
   useEffect(() => {
@@ -232,14 +208,23 @@ export const SpeedControlPanel = ({
   }, [speedCurve, normalizedTime, currentSpeed, hoveredKeyframe, draggingKeyframe]);
 
   const handleApplyPreset = useCallback(
-    (preset: SpeedPreset) => {
-      onSpeedCurveChange({ keyframes: [...preset.keyframes] });
+    (presetId: string) => {
+      const preset = SPEED_PRESETS.find((p) => p.id === presetId);
+      if (preset) {
+        onSpeedCurveChange({ keyframes: [...preset.keyframes] });
+        setPreviewPreset(null);
+      }
     },
     [onSpeedCurveChange],
   );
 
+  const handlePreviewPreset = useCallback((presetId: string | null) => {
+    setPreviewPreset(presetId);
+  }, []);
+
   const handleReset = useCallback(() => {
     onSpeedCurveChange(null);
+    setPreviewPreset(null);
   }, [onSpeedCurveChange]);
 
   return (
@@ -281,34 +266,88 @@ export const SpeedControlPanel = ({
           </div>
         </Card>
 
-        {/* Preset Buttons */}
+        {/* Preset Library */}
         <div>
-          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            Speed Presets
-          </h3>
-          <div className="grid grid-cols-1 gap-2">
-            {SPEED_PRESETS.map((preset) => {
-              const Icon = preset.icon;
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Film className="h-4 w-4" />
+              Speed Presets
+            </h3>
+            <div className="flex gap-1">
+              <Button
+                variant={selectedCategory === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedCategory("all")}
+                className="h-7 px-2 text-xs"
+              >
+                All
+              </Button>
+              <Button
+                variant={selectedCategory === "ramps" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedCategory("ramps")}
+                className="h-7 px-2 text-xs"
+              >
+                Ramps
+              </Button>
+              <Button
+                variant={selectedCategory === "effects" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedCategory("effects")}
+                className="h-7 px-2 text-xs"
+              >
+                Effects
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {filteredPresets.map((preset) => {
+              const isActive = speedCurve &&
+                JSON.stringify(speedCurve.keyframes) === JSON.stringify(preset.keyframes);
+              const isPreviewing = previewPreset === preset.id;
+
               return (
                 <button
                   key={preset.id}
-                  onClick={() => handleApplyPreset(preset)}
-                  className="group w-full rounded-lg border border-border bg-card hover:border-primary hover:bg-accent text-left transition-all cursor-pointer p-3"
+                  onClick={() => handleApplyPreset(preset.id)}
+                  onMouseEnter={() => handlePreviewPreset(preset.id)}
+                  onMouseLeave={() => handlePreviewPreset(null)}
+                  className={`group relative rounded-lg border-2 text-left transition-all cursor-pointer p-2 ${
+                    isActive
+                      ? "border-primary bg-primary/10"
+                      : isPreviewing
+                        ? "border-primary/50 bg-accent"
+                        : "border-border bg-card hover:border-primary/30 hover:bg-accent"
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex-shrink-0">
-                      <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
-                        {preset.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {preset.description}
-                      </p>
-                    </div>
+                  {/* Thumbnail Preview */}
+                  <div className="mb-2 rounded overflow-hidden bg-muted/30 flex items-center justify-center h-12">
+                    <img
+                      src={generatePresetThumbnail(preset, 120, 48)}
+                      alt={`${preset.name} curve`}
+                      className="w-full h-full object-contain"
+                    />
                   </div>
+
+                  {/* Preset Info */}
+                  <div className="space-y-0.5">
+                    <p className={`text-xs font-semibold leading-tight ${
+                      isActive ? "text-primary" : "text-foreground"
+                    }`}>
+                      {preset.name}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
+                      {preset.description}
+                    </p>
+                  </div>
+
+                  {/* Active Indicator */}
+                  {isActive && (
+                    <div className="absolute top-1 right-1">
+                      <div className="w-2 h-2 rounded-full bg-primary" />
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -319,9 +358,11 @@ export const SpeedControlPanel = ({
         <div className="text-xs text-muted-foreground p-3 bg-muted/30 rounded">
           <p className="font-medium mb-1">How to use:</p>
           <ul className="space-y-1 ml-4 list-disc">
-            <li>Select a preset to apply a speed ramp</li>
+            <li>Hover over presets to preview their curves</li>
+            <li>Click a preset to apply it instantly</li>
+            <li>Filter by category (Ramps or Effects)</li>
             <li>The red line shows your current playhead position</li>
-            <li>Future: Click to add keyframes, drag to adjust</li>
+            <li>Active preset is highlighted with a blue dot</li>
           </ul>
         </div>
       </div>

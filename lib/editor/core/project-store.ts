@@ -121,6 +121,7 @@ const createProject = (): Project => {
     mediaAssets: {},
     settings: {
       snap: true,
+      snapThreshold: 0.1,
       zoom: 1,
       activeSequenceId: sequence.id,
     },
@@ -408,6 +409,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           effects: [],
           transitions: [],
           speedCurve: null, // Default to normal speed (1x)
+          preservePitch: true, // Default to pitch preservation enabled
         };
         track.clips.push(clip);
         sortTrackClips(track);
