@@ -335,6 +335,12 @@ export class PreviewRenderer {
   private drawFrame() {
     if (!this.canvas || !this.ctx) return;
 
+    // Safety check: ensure canvas has valid dimensions
+    if (this.canvas.width === 0 || this.canvas.height === 0) {
+      console.warn('[PreviewRenderer] Canvas has invalid dimensions, skipping draw');
+      return;
+    }
+
     // Render coalescing: skip if already drawing
     if (this.isDrawingFrame) return;
     this.isDrawingFrame = true;
@@ -395,6 +401,11 @@ export class PreviewRenderer {
   ) {
     if (!this.ctx) return;
 
+    // Safety check for video dimensions
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      return; // Video not ready yet
+    }
+
     // Calculate aspect ratios
     const videoAspect = video.videoWidth / video.videoHeight;
     const canvasAspect = canvasWidth / canvasHeight;
@@ -435,7 +446,13 @@ export class PreviewRenderer {
     type: string;
     progress: number;
   } | null {
-    if (!this.currentClip || !this.nextClip) return null;
+    if (!this.currentClip || !this.nextClip) {
+      // Debug: Log when we don't have both clips
+      if (this.currentClip && !this.nextClip) {
+        console.log('[PreviewRenderer] No next clip for transition');
+      }
+      return null;
+    }
 
     const sequence = this.getSequence();
     if (!sequence) return null;
@@ -461,6 +478,8 @@ export class PreviewRenderer {
       // Apply easing function (reconstruct from string identifier)
       const easingFn = getEasingFunction(transition.easing);
       const progress = easingFn(rawProgress);
+
+      console.log(`[PreviewRenderer] Active transition: ${transition.type} at ${(progress * 100).toFixed(1)}%`);
 
       return {
         type: transition.type,
