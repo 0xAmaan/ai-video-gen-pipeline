@@ -30,6 +30,7 @@ export const DeveloperToolsMenu = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   // Model store state
+  const modelSelectionEnabled = useModelStore((state) => state.modelSelectionEnabled);
   const modelPreset = useModelStore((state) => state.modelPreset);
   const setModelPreset = useModelStore((state) => state.setModelPreset);
   const textToTextModel = useModelStore((state) => state.textToTextModel);
@@ -230,10 +231,12 @@ export const DeveloperToolsMenu = () => {
           </DropdownMenuRadioGroup>
         </div>
 
-        <DropdownMenuSeparator />
+        {modelSelectionEnabled && (
+          <>
+            <DropdownMenuSeparator />
 
-        {/* Model Preset Section */}
-        <div className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+            {/* Model Preset Section */}
+            <div className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
           <p className="text-xs font-medium text-muted-foreground mb-2 px-2">Model Preset</p>
           <DropdownMenuRadioGroup 
             value={modelPreset} 
@@ -414,6 +417,8 @@ export const DeveloperToolsMenu = () => {
                 </Select>
               </div>
             </div>
+          </>
+        )}
           </>
         )}
 

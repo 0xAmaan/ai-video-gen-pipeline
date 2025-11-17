@@ -8,10 +8,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
-import { ModelSelector } from "@/components/ui/model-selector";
-import { useModelSelectionEnabled } from "@/lib/stores/modelStore";
 
 interface CharacterVariation {
   model: string;
@@ -31,7 +29,6 @@ export default function CharacterSelectPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const modelSelectionEnabled = useModelSelectionEnabled();
 
   // Get project data including questionnaire responses
   const projectData = useQuery(api.video.getProjectWithAllData, {
@@ -134,8 +131,8 @@ export default function CharacterSelectPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto p-8">
+    <div className="min-h-screen">
+      <div className="max-w-7xl mx-auto px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">
@@ -146,17 +143,6 @@ export default function CharacterSelectPage() {
             reference for all scenes.
           </p>
         </div>
-
-        {/* Storyboard Model Selection */}
-        {modelSelectionEnabled && (
-          <div className="mb-8">
-            <ModelSelector
-              step="text-to-image"
-              title="Storyboard Image Generation"
-              description="Select the model for generating storyboard images"
-            />
-          </div>
-        )}
 
         {/* Error State */}
         {error && !isLoading && (
@@ -190,39 +176,23 @@ export default function CharacterSelectPage() {
               {variations.map((variation, index) => (
                 <Card
                   key={index}
-                  className={`cursor-pointer transition-all hover:shadow-lg ${
+                  className={`cursor-pointer transition-all duration-200 overflow-hidden p-0 border-4 ${
                     selectedIndex === index
-                      ? "ring-2 ring-primary shadow-xl"
-                      : "hover:ring-1 hover:ring-primary/50"
+                      ? "border-primary shadow-2xl scale-[1.02]"
+                      : "border-transparent hover:border-primary/30 hover:shadow-lg"
                   }`}
                   onClick={() => setSelectedIndex(index)}
                 >
-                  <div className="aspect-square relative overflow-hidden rounded-t-lg bg-muted">
+                  <div className="aspect-square relative overflow-hidden bg-muted">
                     <img
                       src={variation.imageUrl}
                       alt={`${variation.modelName} - Variation ${index + 1}`}
                       className="w-full h-full object-cover transition-transform hover:scale-105"
                     />
-                    <Badge className="absolute top-3 left-3 bg-black/70 text-white border-none">
+                    {/* Model badge - bottom left */}
+                    <Badge className="absolute bottom-3 left-3 bg-black/60 text-white border-none text-xs backdrop-blur-sm">
                       {variation.modelName}
                     </Badge>
-                    {selectedIndex === index && (
-                      <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">
-                        <div className="bg-primary text-primary-foreground rounded-full p-3">
-                          <Check className="w-6 h-6" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">
-                        Style {index + 1}
-                      </span>
-                      {selectedIndex === index && (
-                        <Badge variant="default">✓ Selected</Badge>
-                      )}
-                    </div>
                   </div>
                 </Card>
               ))}
@@ -242,6 +212,11 @@ export default function CharacterSelectPage() {
               <Button
                 size="lg"
                 disabled={selectedIndex === null || isSaving}
+                className={`${
+                  selectedIndex === null
+                    ? "opacity-50 cursor-not-allowed"
+                    : "shadow-lg hover:shadow-xl"
+                }`}
                 onClick={async () => {
                   if (selectedIndex === null) return;
 

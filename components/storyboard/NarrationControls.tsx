@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, RefreshCw, Sparkles } from "lucide-react";
 import type { Scene } from "@/types/scene";
+import { VoiceWaveformPlayer } from "@/components/audio/VoiceWaveformPlayer";
 
 interface NarrationControlsProps {
   scene: Scene;
@@ -72,16 +73,13 @@ export const NarrationControls = ({
         </div>
       </div>
       {scene.narrationUrl ? (
-        <div>
-          <audio controls className="w-full">
-            <source src={scene.narrationUrl} type="audio/wav" />
-          </audio>
-          {scene.narrationText && (
-            <p className="text-xs text-muted-foreground mt-2 italic">
-              "{scene.narrationText}"
-            </p>
-          )}
-        </div>
+        <VoiceWaveformPlayer
+          audioUrl={scene.narrationUrl}
+          voiceName={scene.voiceName || currentVoiceLabel}
+          provider="ElevenLabs"
+          narrationText={scene.narrationText || undefined}
+          onChangeVoice={onShowVoiceDialog}
+        />
       ) : (
         <p className="text-sm text-muted-foreground">
           Narration not generated yet.
