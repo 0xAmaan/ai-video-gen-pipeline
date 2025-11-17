@@ -9,6 +9,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { Scene } from "@/types/scene";
+import { apiFetch } from "@/lib/api-fetch";
 
 const VideoPage = () => {
   const router = useRouter();
@@ -101,9 +102,11 @@ const VideoPage = () => {
       attempts += 1;
 
       try {
-        const response = await fetch("/api/poll-lipsync", {
+        const response = await apiFetch("/api/poll-lipsync", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             predictionId,
             sceneId,
@@ -196,9 +199,11 @@ const VideoPage = () => {
     }
 
     try {
-      const response = await fetch("/api/lipsync-video", {
+      const response = await apiFetch("/api/lipsync-video", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           videoUrl,
           audioUrl: scene.narrationUrl,
@@ -249,9 +254,11 @@ const VideoPage = () => {
       attempts += 1;
 
       try {
-        const response = await fetch("/api/poll-prediction", {
+        const response = await apiFetch("/api/poll-prediction", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({ predictionId }),
         });
 
@@ -334,7 +341,6 @@ const VideoPage = () => {
     );
 
     if (processingClips.length > 0) {
-      console.log(`Resuming polling for ${processingClips.length} clips...`);
       processingClips.forEach((clip) => {
         if (clip.replicateVideoId) {
           startPolling(clip._id, clip.replicateVideoId, clip.sceneId);
@@ -366,12 +372,6 @@ const VideoPage = () => {
 
   const generateVideoClips = async () => {
     try {
-      console.log(
-        "Starting video clip generation for",
-        convexScenes.length,
-        "scenes",
-      );
-
       // Prepare scenes data for API
       const scenesData = convexScenes.map((scene, index) => ({
         id: scene._id,
@@ -382,9 +382,11 @@ const VideoPage = () => {
       }));
 
       // Call API to create Replicate predictions
-      const response = await fetch("/api/generate-all-clips", {
+      const response = await apiFetch("/api/generate-all-clips", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ scenes: scenesData }),
       });
 
@@ -393,7 +395,6 @@ const VideoPage = () => {
       }
 
       const result = await response.json();
-      console.log("Replicate predictions created:", result.predictions);
 
       // Create video clip records in Convex with prediction IDs
       const clipRecords = await Promise.all(
@@ -409,8 +410,6 @@ const VideoPage = () => {
           return { clipId, predictionId: prediction.predictionId, sceneId };
         }),
       );
-
-      console.log("Created clip records:", clipRecords);
 
       // Start polling each prediction
       clipRecords.forEach(({ clipId, predictionId, sceneId }) => {
@@ -429,8 +428,6 @@ const VideoPage = () => {
 
   const handleVideoGenerationComplete = async (completedClips: any[]) => {
     try {
-      console.log("All clips generated:", completedClips);
-
       // Update last active phase to editor
       await updateLastActivePhase({
         projectId: projectId as Id<"videoProjects">,

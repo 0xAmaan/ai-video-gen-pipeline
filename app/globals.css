@@ -10,6 +10,9 @@
   --card: oklch(0.22 0.01 250); /* Elevated card with good contrast */
   --card-foreground: oklch(0.98 0.003 250); /* Bright white on cards */
 
+  --popover: oklch(0.22 0.01 250); /* Popover background matches card */
+  --popover-foreground: oklch(0.98 0.003 250); /* Bright white text */
+
   --primary: oklch(0.68 0.21 35); /* Vibrant warm orange */
   --primary-foreground: oklch(0.99 0 0); /* Pure white on orange */
 
@@ -44,6 +47,9 @@
 
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
 
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);

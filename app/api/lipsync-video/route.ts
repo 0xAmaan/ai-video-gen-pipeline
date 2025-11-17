@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getConvexClient } from "@/lib/server/convex";
 import { startLipSyncPrediction } from "@/lib/server/lipsync";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { mockReplicatePrediction, mockDelay } from "@/lib/demo-mocks";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 type SceneId = Id<"scenes">;
 type ClipId = Id<"videoClips">;
@@ -15,6 +18,8 @@ const toClipId = (value: unknown): ClipId | null =>
   typeof value === "string" ? (value as ClipId) : null;
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+
   try {
     const {
       videoUrl,
@@ -26,11 +31,35 @@ export async function POST(req: Request) {
       clipId,
     } = await req.json();
 
+    // Get demo mode from headers
+    const demoMode = getDemoModeFromHeaders(req.headers);
+    const shouldMock = demoMode === "no-cost";
+
+    // Track API call
+    flowTracker.trackAPICall("POST", "/api/lipsync-video", {
+      sceneId,
+      clipId,
+      demoMode,
+    });
+
     if (typeof videoUrl !== "string" || typeof audioUrl !== "string") {
-      return NextResponse.json(
-        { error: "Video and audio URLs are required" },
-        { status: 400 },
+      return apiError("Video and audio URLs are required", 400);
+    }
+
+    // If no-cost mode, return instant mock prediction
+    if (shouldMock) {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Using mock lip-sync - zero API costs",
       );
+      await mockDelay(50);
+      const mockPrediction = mockReplicatePrediction("lipsync");
+      return apiResponse({
+        success: true,
+        predictionId: mockPrediction.id,
+        status: mockPrediction.status,
+      });
     }
 
     const prediction = await startLipSyncPrediction({
@@ -83,19 +112,17 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       predictionId: prediction.id,
       status: prediction.status,
     });
   } catch (error) {
     console.error("Lip sync error:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to start lip sync",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to start lip sync",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Film, AlertCircle, Mic } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Check, Film, AlertCircle, Mic, XCircle } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { Scene } from "@/types/scene";
+import { apiFetch } from "@/lib/api-fetch";
 
 interface VideoGeneratingPhaseProps {
   scenes: Scene[];
@@ -27,7 +29,49 @@ export const VideoGeneratingPhase = ({
 }: VideoGeneratingPhaseProps) => {
   // Query video clips from Convex to track real-time status
   const videoClips = useQuery(api.video.getVideoClips, { projectId });
+  const cancelVideoClip = useMutation(api.video.cancelVideoClip);
   const hasCalledComplete = useRef(false);
+  const [cancelling, setCancelling] = useState<Set<Id<"videoClips">>>(new Set());
+
+  const handleCancelClip = async (clipId: Id<"videoClips">, predictionId?: string) => {
+    try {
+      setCancelling((prev) => new Set(prev).add(clipId));
+
+      // Cancel on Replicate if we have a prediction ID
+      if (predictionId) {
+        await apiFetch("/api/cancel-prediction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ predictionId }),
+        });
+      }
+
+      // Update status in Convex
+      await cancelVideoClip({ clipId });
+    } catch (error) {
+      console.error("Failed to cancel clip:", error);
+    } finally {
+      setCancelling((prev) => {
+        const next = new Set(prev);
+        next.delete(clipId);
+        return next;
+      });
+    }
+  };
+
+  const handleCancelAll = async () => {
+    const processingClips = videoClips?.filter(
+      (clip) => clip.status === "pending" || clip.status === "processing"
+    );
+
+    if (!processingClips || processingClips.length === 0) return;
+
+    await Promise.all(
+      processingClips.map((clip) =>
+        handleCancelClip(clip._id, clip.replicateVideoId || undefined)
+      )
+    );
+  };
 
   // Calculate progress
   const totalClips = scenes.length || 1;
@@ -35,6 +79,8 @@ export const VideoGeneratingPhase = ({
     videoClips?.filter((c) => c.status === "complete").length || 0;
   const failedClips =
     videoClips?.filter((c) => c.status === "failed").length || 0;
+  const cancelledClips =
+    videoClips?.filter((c) => c.status === "cancelled").length || 0;
   const processingClips =
     videoClips?.filter(
       (c) => c.status === "processing" || c.status === "pending",
@@ -78,17 +124,7 @@ export const VideoGeneratingPhase = ({
 
   // Trigger completion callback in useEffect to avoid state update during render
   useEffect(() => {
-    console.log("Completion check:", {
-      readyForEditor,
-      failedClips,
-      hasClips: !!videoClips,
-      clipCount: videoClips?.length,
-      completedCount: completedClips,
-      hasCalledComplete: hasCalledComplete.current,
-    });
-
     if (readyForEditor && videoClips && !hasCalledComplete.current) {
-      console.log("✅ All clips processed! Navigating to editor...");
       hasCalledComplete.current = true;
       onComplete(videoClips);
     }
@@ -110,13 +146,26 @@ export const VideoGeneratingPhase = ({
           </div>
           <p className="text-muted-foreground">
             {readyForEditor
-              ? failedClips + lipsyncFailedScenes > 0
-                ? `Generation finished with ${failedClips + lipsyncFailedScenes} issue(s)`
+              ? failedClips + lipsyncFailedScenes + cancelledClips > 0
+                ? `Generation finished with ${failedClips + lipsyncFailedScenes} failed, ${cancelledClips} cancelled`
                 : "All clips generated and audio synced!"
               : enableLipsync
                 ? `Generating videos (${completedClips}/${totalClips}) • Lip sync ${Math.min(lipsyncCompleteScenes, totalClips)}/${totalClips}`
                 : `Generating videos (${completedClips}/${totalClips})...`}
           </p>
+          {processingClips > 0 && (
+            <div className="mt-4">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleCancelAll}
+                className="gap-2"
+              >
+                <XCircle className="w-4 h-4" />
+                Cancel All ({processingClips})
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Overall Progress */}
@@ -182,8 +231,10 @@ export const VideoGeneratingPhase = ({
               const clip = getClipForScene(scene.id);
               const hasVideo = clip?.status === "complete";
               const hasFailed = clip?.status === "failed";
+              const isCancelled = clip?.status === "cancelled";
               const isProcessing =
                 clip?.status === "processing" || clip?.status === "pending";
+              const isCancelling = clip?._id ? cancelling.has(clip._id) : false;
 
               return (
                 <div
@@ -193,9 +244,11 @@ export const VideoGeneratingPhase = ({
                       ? "border-primary/30 bg-accent/30"
                       : hasFailed
                         ? "border-destructive/30 bg-destructive/5"
-                        : isProcessing
-                          ? "border-primary/50 bg-primary/5"
-                          : "border-border bg-transparent"
+                        : isCancelled
+                          ? "border-muted bg-muted/10"
+                          : isProcessing
+                            ? "border-primary/50 bg-primary/5"
+                            : "border-border bg-transparent"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -208,6 +261,10 @@ export const VideoGeneratingPhase = ({
                       ) : hasFailed ? (
                         <div className="w-8 h-8 rounded-full bg-destructive flex items-center justify-center">
                           <AlertCircle className="w-5 h-5 text-destructive-foreground" />
+                        </div>
+                      ) : isCancelled ? (
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                          <XCircle className="w-5 h-5 text-muted-foreground" />
                         </div>
                       ) : isProcessing ? (
                         <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -222,7 +279,7 @@ export const VideoGeneratingPhase = ({
 
                     {/* Scene Info */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <h4 className="font-medium text-sm">
                           Scene {scene.sceneNumber}
                         </h4>
@@ -236,10 +293,32 @@ export const VideoGeneratingPhase = ({
                             Failed
                           </Badge>
                         )}
-                        {isProcessing && (
-                          <Badge variant="default" className="text-xs">
-                            Generating...
+                        {isCancelled && (
+                          <Badge variant="secondary" className="text-xs">
+                            Cancelled
                           </Badge>
+                        )}
+                        {isProcessing && (
+                          <>
+                            <Badge variant="default" className="text-xs">
+                              Generating...
+                            </Badge>
+                            {clip && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleCancelClip(clip._id, clip.replicateVideoId || undefined)}
+                                disabled={isCancelling}
+                                className="h-6 px-2 text-xs"
+                              >
+                                {isCancelling ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <XCircle className="w-3 h-3" />
+                                )}
+                              </Button>
+                            )}
+                          </>
                         )}
                       </div>
 

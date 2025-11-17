@@ -1,31 +1,21 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Slider } from "@/components/ui/slider";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  ArrowRight,
-  GripVertical,
-  Trash2,
-  Sparkles,
-  Plus,
-  Loader2,
-  RefreshCw,
-  Volume2,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import type { Scene } from "@/types/scene";
 import {
   VoiceSelectionDialog,
   type VoiceSelectionDialogSelection,
 } from "@/components/VoiceSelectionDialog";
 import { MINIMAX_VOICES } from "@/lib/voice-selection";
-import type { MiniMaxVoiceId } from "@/lib/voice-selection";
+import { SceneCard } from "./storyboard/SceneCard";
+import { TimelinePreview } from "./storyboard/TimelinePreview";
+import { VoiceSettingsCard } from "./storyboard/VoiceSettingsCard";
+import { useStoryboardState } from "./storyboard/useStoryboardState";
+import { apiFetch } from "@/lib/api-fetch";
 
 interface StoryboardPhaseProps {
   prompt: string;
@@ -40,149 +30,28 @@ export const StoryboardPhase = ({
   onGenerateVideo,
   projectId,
 }: StoryboardPhaseProps) => {
-  const [scenes, setScenes] = useState<Scene[]>(initialScenes);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [regeneratingScenes, setRegeneratingScenes] = useState<Set<string>>(
-    new Set(),
-  );
-  const [audioGeneratingScenes, setAudioGeneratingScenes] = useState<
-    Set<string>
-  >(new Set());
-  const [showVoiceDialog, setShowVoiceDialog] = useState(false);
-
-  // Convex mutations
-  const updateScene = useMutation(api.video.updateScene);
-  const updateSceneOrder = useMutation(api.video.updateSceneOrder);
-  const deleteSceneMutation = useMutation(api.video.deleteScene);
-  const updateVoiceSettings = useMutation(api.video.updateProjectVoiceSettings);
-
-  // Load scenes from Convex
-  const convexScenes = useQuery(
-    api.video.getScenes,
-    projectId ? { projectId } : "skip",
-  );
-  const voiceSettings = useQuery(
-    api.video.getProjectVoiceSettings,
-    projectId ? { projectId } : "skip",
-  );
-
-  // Sync Convex scenes to local state
-  useEffect(() => {
-    if (convexScenes && convexScenes.length > 0) {
-      const formattedScenes: Scene[] = convexScenes.map((scene) => ({
-        id: scene._id,
-        image: scene.imageUrl || "",
-        description: scene.description,
-        visualPrompt: scene.visualPrompt,
-        duration: scene.duration,
-        sceneNumber: scene.sceneNumber,
-        narrationUrl: scene.narrationUrl || undefined,
-        narrationText: scene.narrationText || "",
-        voiceId: scene.voiceId || undefined,
-        voiceName: scene.voiceName || undefined,
-      }));
-      setScenes(formattedScenes);
-    }
-  }, [convexScenes]);
-
-  const totalDuration = scenes.reduce((sum, scene) => sum + scene.duration, 0);
-  const sampleAudioUrl = useMemo(
-    () => scenes.find((scene) => scene.narrationUrl)?.narrationUrl,
-    [scenes],
-  );
-  const currentVoiceLabel =
-    voiceSettings?.selectedVoiceName ||
-    scenes[0]?.voiceName ||
-    MINIMAX_VOICES["Wise_Woman"].name;
-  const currentVoiceReasoning =
-    voiceSettings?.voiceReasoning || "AI selected this voice for your prompt.";
-
-  const handleDurationChange = async (id: string, duration: number) => {
-    // Update local state immediately
-    setScenes((prev) =>
-      prev.map((scene) => (scene.id === id ? { ...scene, duration } : scene)),
-    );
-
-    // Save to Convex
-    if (projectId) {
-      try {
-        await updateScene({
-          sceneId: id as Id<"scenes">,
-          duration,
-        });
-      } catch (error) {
-        console.error("Failed to update scene duration:", error);
-      }
-    }
-  };
-
-  const handleDescriptionChange = async (id: string, description: string) => {
-    // Update local state immediately
-    setScenes((prev) =>
-      prev.map((scene) =>
-        scene.id === id ? { ...scene, description } : scene,
-      ),
-    );
-
-    // Save to Convex (debounced in practice, but we'll do it immediately for now)
-    if (projectId) {
-      try {
-        await updateScene({
-          sceneId: id as Id<"scenes">,
-          description,
-        });
-      } catch (error) {
-        console.error("Failed to update scene description:", error);
-      }
-    }
-  };
-
-  const handleVisualPromptChange = async (id: string, visualPrompt: string) => {
-    // Update local state immediately
-    setScenes((prev) =>
-      prev.map((scene) =>
-        scene.id === id ? { ...scene, visualPrompt } : scene,
-      ),
-    );
-
-    // Save to Convex
-    if (projectId) {
-      try {
-        await updateScene({
-          sceneId: id as Id<"scenes">,
-          visualPrompt,
-        });
-      } catch (error) {
-        console.error("Failed to update scene visual prompt:", error);
-      }
-    }
-  };
-
-  const handleDeleteScene = async (id: string) => {
-    if (scenes.length > 1) {
-      // Update local state immediately
-      setScenes((prev) => prev.filter((scene) => scene.id !== id));
-
-      // Delete from Convex
-      if (projectId) {
-        try {
-          await deleteSceneMutation({
-            sceneId: id as Id<"scenes">,
-          });
-        } catch (error) {
-          console.error("Failed to delete scene:", error);
-        }
-      }
-    }
-  };
-
-  const handleNarrationTextChange = (id: string, narrationText: string) => {
-    setScenes((prev) =>
-      prev.map((scene) =>
-        scene.id === id ? { ...scene, narrationText } : scene,
-      ),
-    );
-  };
+  const state = useStoryboardState(initialScenes, projectId);
+  const {
+    scenes,
+    setScenes,
+    draggedIndex,
+    setDraggedIndex,
+    regeneratingScenes,
+    setRegeneratingScenes,
+    audioGeneratingScenes,
+    setAudioGeneratingScenes,
+    showVoiceDialog,
+    setShowVoiceDialog,
+    updateScene,
+    updateSceneOrder,
+    deleteSceneMutation,
+    updateVoiceSettings,
+    totalDuration,
+    sampleAudioUrl,
+    currentVoiceLabel,
+    currentVoiceReasoning,
+    voiceSettings,
+  } = state;
 
   const toggleAudioGenerating = (sceneId: string, isGenerating: boolean) => {
     setAudioGeneratingScenes((prev) => {
@@ -207,14 +76,13 @@ export const StoryboardPhase = ({
     },
   ) => {
     if (!projectId || scene.id.startsWith("temp-")) {
-      console.warn("Cannot regenerate narration until scenes are saved.");
       return;
     }
 
     toggleAudioGenerating(scene.id, true);
 
     try {
-      const response = await fetch("/api/regenerate-narration", {
+      const response = await apiFetch("/api/regenerate-narration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -241,7 +109,9 @@ export const StoryboardPhase = ({
                 ...s,
                 narrationUrl: result.audioUrl,
                 narrationText:
-                  result.narrationText ?? options?.customText ?? s.narrationText,
+                  result.narrationText ??
+                  options?.customText ??
+                  s.narrationText,
                 voiceId: result.voiceId ?? s.voiceId,
                 voiceName: result.voiceName ?? s.voiceName,
               }
@@ -253,6 +123,66 @@ export const StoryboardPhase = ({
     } finally {
       toggleAudioGenerating(scene.id, false);
     }
+  };
+
+  const handleDurationChange = async (id: string, duration: number) => {
+    setScenes((prev) =>
+      prev.map((scene) => (scene.id === id ? { ...scene, duration } : scene)),
+    );
+
+    if (projectId) {
+      try {
+        await updateScene({
+          sceneId: id as Id<"scenes">,
+          duration,
+        });
+      } catch (error) {
+        console.error("Failed to update scene duration:", error);
+      }
+    }
+  };
+
+  const handleDescriptionChange = async (id: string, description: string) => {
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.id === id ? { ...scene, description } : scene,
+      ),
+    );
+
+    if (projectId) {
+      try {
+        await updateScene({
+          sceneId: id as Id<"scenes">,
+          description,
+        });
+      } catch (error) {
+        console.error("Failed to update scene description:", error);
+      }
+    }
+  };
+
+  const handleDeleteScene = async (id: string) => {
+    if (scenes.length > 1) {
+      setScenes((prev) => prev.filter((scene) => scene.id !== id));
+
+      if (projectId) {
+        try {
+          await deleteSceneMutation({
+            sceneId: id as Id<"scenes">,
+          });
+        } catch (error) {
+          console.error("Failed to delete scene:", error);
+        }
+      }
+    }
+  };
+
+  const handleNarrationTextChange = (id: string, narrationText: string) => {
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.id === id ? { ...scene, narrationText } : scene,
+      ),
+    );
   };
 
   const handleRegenerateNarration = (sceneId: string) => {
@@ -301,21 +231,16 @@ export const StoryboardPhase = ({
     }
   };
 
-  // Removed handleAddScene - scenes must be generated via API, not manually added
-  // Manual scenes weren't persisted to Convex and caused data loss on refresh
-
   const handleRegenerateScene = async (id: string) => {
     const scene = scenes.find((s) => s.id === id);
     if (!scene) return;
 
-    // Mark scene as regenerating
     setRegeneratingScenes((prev) => new Set(prev).add(id));
 
     try {
-      // Create enhanced visual prompt from description
       const visualPrompt = `${scene.description}, cinematic lighting, high quality, professional photography, 8k, photorealistic`;
 
-      const response = await fetch("/api/regenerate-scene", {
+      const response = await apiFetch("/api/regenerate-scene", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -325,7 +250,6 @@ export const StoryboardPhase = ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("Regenerate API error:", errorData);
         throw new Error(
           errorData.details || errorData.error || "Failed to regenerate scene",
         );
@@ -333,12 +257,10 @@ export const StoryboardPhase = ({
 
       const result = await response.json();
 
-      // Update local state
       setScenes((prev) =>
         prev.map((s) => (s.id === id ? { ...s, image: result.imageUrl } : s)),
       );
 
-      // Save to Convex
       if (projectId) {
         try {
           await updateScene({
@@ -352,7 +274,6 @@ export const StoryboardPhase = ({
     } catch (error) {
       console.error("Error regenerating scene:", error);
     } finally {
-      // Remove from regenerating set
       setRegeneratingScenes((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -381,12 +302,11 @@ export const StoryboardPhase = ({
   const handleDragEnd = async () => {
     setDraggedIndex(null);
 
-    // Save the new order to Convex
     if (projectId && scenes.length > 0) {
       try {
         const sceneUpdates = scenes.map((scene, index) => ({
           sceneId: scene.id as Id<"scenes">,
-          sceneNumber: index + 1, // Convert to 1-indexed
+          sceneNumber: index + 1,
         }));
 
         await updateSceneOrder({
@@ -420,266 +340,49 @@ export const StoryboardPhase = ({
         <Badge variant="secondary" className="text-base px-4 py-2">
           {scenes.length} {scenes.length === 1 ? "Scene" : "Scenes"}
         </Badge>
-      <Badge variant="secondary" className="text-base px-4 py-2">
-        {totalDuration}s Total Duration
-      </Badge>
-    </div>
+        <Badge variant="secondary" className="text-base px-4 py-2">
+          {totalDuration}s Total Duration
+        </Badge>
+      </div>
 
-    {/* Voice Settings */}
-      <Card className="p-4 mb-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h3 className="font-medium flex items-center gap-2">
-              <Volume2 className="w-4 h-4" /> Narration Voice
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {currentVoiceLabel} — {currentVoiceReasoning}
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setShowVoiceDialog(true)}>
-            Change Voice
-          </Button>
-        </div>
-        {sampleAudioUrl ? (
-          <audio controls className="w-full mt-3">
-            <source src={sampleAudioUrl} type="audio/wav" />
-            Your browser does not support the audio element.
-          </audio>
-        ) : (
-          <p className="text-sm text-muted-foreground mt-3">
-            Generate narration to preview the selected voice.
-          </p>
-        )}
-      </Card>
+      {/* Voice Settings */}
+      <VoiceSettingsCard
+        currentVoiceLabel={currentVoiceLabel}
+        currentVoiceReasoning={currentVoiceReasoning}
+        sampleAudioUrl={sampleAudioUrl}
+        onShowVoiceDialog={() => setShowVoiceDialog(true)}
+      />
 
       {/* Scenes */}
       <div className="space-y-4 mb-6">
         {scenes.map((scene, index) => (
-          <Card
+          <SceneCard
             key={scene.id}
-            draggable
-            onDragStart={() => handleDragStart(index)}
-            onDragOver={(e) => handleDragOver(e, index)}
+            scene={scene}
+            index={index}
+            draggedIndex={draggedIndex}
+            isRegenerating={regeneratingScenes.has(scene.id)}
+            isAudioGenerating={audioGeneratingScenes.has(scene.id)}
+            currentVoiceLabel={currentVoiceLabel}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
-            className={`p-6 transition-all cursor-grab active:cursor-grabbing ${
-              draggedIndex === index ? "opacity-50" : ""
-            }`}
-          >
-            <div className="flex gap-4">
-              {/* Drag Handle */}
-              <div className="flex items-center text-muted-foreground cursor-grab active:cursor-grabbing">
-                <GripVertical className="w-5 h-5" />
-              </div>
-
-              {/* Scene Number & Image */}
-              <div className="shrink-0">
-                <Badge className="mb-2">Scene {index + 1}</Badge>
-                <div className="relative w-48 h-27 rounded-lg overflow-hidden bg-accent">
-                  {scene.image ? (
-                    <img
-                      src={scene.image}
-                      alt={`Scene ${index + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      <span className="text-sm">No image</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => handleRegenerateScene(scene.id)}
-                    disabled={regeneratingScenes.has(scene.id)}
-                    className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 rounded-md transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                    title={
-                      regeneratingScenes.has(scene.id)
-                        ? "Regenerating..."
-                        : "Regenerate scene"
-                    }
-                  >
-                    {regeneratingScenes.has(scene.id) ? (
-                      <Loader2 className="w-4 h-4 text-white animate-spin" />
-                    ) : (
-                      <Sparkles className="w-4 h-4 text-white" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Scene Content */}
-              <div className="flex-1 space-y-4">
-                {/* Description (contains the detailed visual prompt for video generation) */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Scene Prompt{" "}
-                    <span className="text-muted-foreground font-normal">
-                      (for video generation)
-                    </span>
-                  </label>
-                  <Textarea
-                    value={scene.description}
-                    onChange={(e) =>
-                      handleDescriptionChange(scene.id, e.target.value)
-                    }
-                    className="min-h-[120px] resize-y text-sm"
-                    placeholder="Detailed visual description for AI video generation..."
-                  />
-                </div>
-
-                {/* Narration Controls */}
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-3 justify-between">
-                    <Badge
-                      variant="outline"
-                      className="cursor-pointer"
-                      onClick={() => setShowVoiceDialog(true)}
-                    >
-                      Voice: {scene.voiceName || currentVoiceLabel}
-                    </Badge>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleRegenerateNarration(scene.id)}
-                        disabled={
-                          audioGeneratingScenes.has(scene.id) ||
-                          scene.id.startsWith("temp-") ||
-                          !projectId
-                        }
-                      >
-                        {audioGeneratingScenes.has(scene.id) ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4 mr-2" />
-                        )}
-                        Regenerate Audio
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          handleRegenerateNarrationWithText(scene.id)
-                        }
-                        disabled={
-                          audioGeneratingScenes.has(scene.id) ||
-                          !scene.narrationText ||
-                          scene.id.startsWith("temp-") ||
-                          !projectId
-                        }
-                      >
-                        {audioGeneratingScenes.has(scene.id) ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 mr-2" />
-                        )}
-                        Regenerate with new text
-                      </Button>
-                    </div>
-                  </div>
-                  {scene.narrationUrl ? (
-                    <div>
-                      <audio controls className="w-full">
-                        <source src={scene.narrationUrl} type="audio/wav" />
-                      </audio>
-                      {scene.narrationText && (
-                        <p className="text-xs text-muted-foreground mt-2 italic">
-                          “{scene.narrationText}”
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Narration not generated yet.
-                    </p>
-                  )}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Narration Text
-                    </label>
-                    <Textarea
-                      value={scene.narrationText || ""}
-                      onChange={(e) =>
-                        handleNarrationTextChange(scene.id, e.target.value)
-                      }
-                      className="min-h-[80px] resize-y text-sm"
-                      placeholder="What should the narrator say for this scene?"
-                    />
-                  </div>
-                </div>
-
-                {/* Duration & Delete */}
-                <div className="flex items-center gap-6">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium mb-2 block">
-                      Duration: {scene.duration}s
-                    </label>
-                    <Slider
-                      value={[scene.duration]}
-                      onValueChange={([value]) =>
-                        handleDurationChange(scene.id, value)
-                      }
-                      min={5}
-                      max={10}
-                      step={5}
-                      className="w-full"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      WAN 2.5 supports 5s or 10s clips
-                    </p>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    onClick={() => handleDeleteScene(scene.id)}
-                    disabled={scenes.length === 1}
-                    title="Delete scene"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </Card>
+            onRegenerateScene={handleRegenerateScene}
+            onDescriptionChange={handleDescriptionChange}
+            onDurationChange={handleDurationChange}
+            onDeleteScene={handleDeleteScene}
+            onRegenerateNarration={handleRegenerateNarration}
+            onRegenerateNarrationWithText={handleRegenerateNarrationWithText}
+            onNarrationTextChange={handleNarrationTextChange}
+            onShowVoiceDialog={() => setShowVoiceDialog(true)}
+            canDelete={scenes.length > 1}
+            projectId={projectId}
+          />
         ))}
       </div>
 
-      {/* Add Scene button removed - scenes must be generated via API */}
-
       {/* Timeline Preview */}
-      <Card className="p-6 mb-8">
-        <h3 className="text-sm font-semibold mb-4">Timeline Preview</h3>
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {scenes.map((scene, index) => {
-            const widthPercent = (scene.duration / totalDuration) * 100;
-            return (
-              <div
-                key={scene.id}
-                style={{ width: `${Math.max(widthPercent, 10)}%` }}
-                className="relative shrink-0 h-16 rounded overflow-hidden border-2 border-border hover:border-primary transition-colors cursor-pointer"
-                title={`Scene ${index + 1} - ${scene.duration}s`}
-              >
-                {scene.image ? (
-                  <img
-                    src={scene.image}
-                    alt={`Scene ${index + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-accent flex items-center justify-center">
-                    <span className="text-xs text-muted-foreground">
-                      No image
-                    </span>
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent flex items-end p-1">
-                  <span className="text-white text-xs font-medium">
-                    {scene.duration}s
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+      <TimelinePreview scenes={scenes} totalDuration={totalDuration} />
 
       {/* Generate Button */}
       <div className="flex justify-end">

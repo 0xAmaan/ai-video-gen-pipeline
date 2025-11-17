@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { ProjectSidebar } from "@/components/ProjectSidebar";
+import { DemoModeToggle } from "@/components/DemoModeToggle";
+import { FlowVisualization } from "@/components/FlowVisualization";
 
 export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
@@ -18,13 +20,27 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
   const showSidebar = isSignedIn && pathname !== "/";
 
   if (!showSidebar) {
-    return <main className="h-screen overflow-auto">{children}</main>;
+    return (
+      <>
+        <main className="h-screen overflow-auto">{children}</main>
+        <div className="fixed top-4 right-4 z-60">
+          <DemoModeToggle />
+        </div>
+        <FlowVisualization />
+      </>
+    );
   }
 
   return (
     <div className="flex h-screen overflow-hidden">
       <ProjectSidebar activeProjectId={activeProjectId} />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto relative">
+        {children}
+        <div className="fixed top-4 right-4 z-60">
+          <DemoModeToggle />
+        </div>
+        <FlowVisualization />
+      </main>
     </div>
   );
 };

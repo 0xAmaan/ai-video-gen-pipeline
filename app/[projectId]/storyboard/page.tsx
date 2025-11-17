@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
@@ -10,6 +10,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { Scene } from "@/types/scene";
+import { apiFetch } from "@/lib/api-fetch";
 
 type StoryboardStage =
   | "parsing_prompt"
@@ -51,19 +52,24 @@ const StoryboardPage = () => {
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
   const updateLastActivePhase = useMutation(api.video.updateLastActivePhase);
 
+  // Ref to track if generation has been initiated (prevents duplicate calls)
+  const hasInitiatedGeneration = useRef(false);
+
   // Check if we need to generate storyboard
   useEffect(() => {
     if (
+      !hasInitiatedGeneration.current &&
       project &&
       questions?.answers &&
       convexScenes.length === 0 &&
       !isGenerating
     ) {
       // Need to generate storyboard
+      hasInitiatedGeneration.current = true;
       setIsGenerating(true);
       generateStoryboard();
     }
-  }, [project, questions, convexScenes]);
+  }, [project, questions?.answers, convexScenes.length, isGenerating]);
 
   const generateStoryboard = async () => {
     if (!project || !questions?.answers) return;
@@ -100,6 +106,7 @@ const StoryboardPage = () => {
         ? JSON.parse(characterData).referenceImageUrl
         : undefined;
 
+      // Get demo mode from localStorage
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -107,7 +114,7 @@ const StoryboardPage = () => {
         headers["x-character-reference"] = characterReference;
       }
 
-      const response = await fetch("/api/generate-storyboard", {
+      const response = await apiFetch("/api/generate-storyboard", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -127,16 +134,11 @@ const StoryboardPage = () => {
 
       // Update model info immediately when we get the response
       if (result.modelInfo) {
-        console.log("✅ Model info received from API:", result.modelInfo);
         setModelInfo({
           modelName: result.modelInfo.modelName,
           estimatedCost: result.modelInfo.estimatedCost,
           reason: result.modelInfo.reason,
         });
-        console.log(
-          "✅ UI updated with actual model:",
-          result.modelInfo.modelName,
-        );
       }
 
       // Selecting voice completed server-side

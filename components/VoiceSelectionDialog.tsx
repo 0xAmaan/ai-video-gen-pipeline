@@ -18,6 +18,7 @@ import {
   type MiniMaxVoiceId,
 } from "@/lib/voice-selection";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-fetch";
 
 export interface VoiceSelectionDialogSelection {
   voiceId: MiniMaxVoiceId;
@@ -93,7 +94,7 @@ export const VoiceSelectionDialog = ({
   const handlePreview = async (targetVoiceId: MiniMaxVoiceId) => {
     setPreviewingVoice(targetVoiceId);
     try {
-      const response = await fetch("/api/preview-voice", {
+      const response = await apiFetch("/api/preview-voice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

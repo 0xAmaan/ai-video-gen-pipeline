@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getConvexClient } from "@/lib/server/convex";
 import { generateVoiceSelection } from "@/lib/server/voice-selection";
 import { selectVoiceForPrompt } from "@/lib/voice-selection";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 export async function POST(req: Request) {
   let promptInput = "";
@@ -14,11 +14,11 @@ export async function POST(req: Request) {
     responsesInput = responses;
 
     if (!projectId || typeof projectId !== "string") {
-      return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+      return apiError("projectId is required", 400);
     }
 
     if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json({ error: "prompt is required" }, { status: 400 });
+      return apiError("prompt is required", 400);
     }
 
     const selection = await generateVoiceSelection(prompt, responses);
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       pitch: selection.pitch,
     });
 
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       ...selection,
     });
@@ -45,13 +45,10 @@ export async function POST(req: Request) {
       prompt: promptInput,
       responses: responsesInput,
     });
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to select voice",
-        fallbackVoice: fallback,
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to select voice",
+      500,
+      { fallbackVoice: fallback },
     );
   }
 }

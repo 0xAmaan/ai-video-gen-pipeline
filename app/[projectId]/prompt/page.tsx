@@ -8,6 +8,7 @@ import { InputPhase } from "@/components/InputPhase";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { apiFetchJSON } from "@/lib/api-fetch";
 
 const PromptPage = () => {
   const router = useRouter();
@@ -52,18 +53,12 @@ const PromptPage = () => {
     try {
       setIsGeneratingQuestions(true);
 
-      // Call API to generate questions
-      const response = await fetch("/api/generate-questions", {
+      // Call API - automatically handles demo mode headers and flow event import
+      const data = await apiFetchJSON("/api/generate-questions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: project.prompt }),
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate questions");
-      }
-
-      const data = await response.json();
 
       // Save questions to Convex
       await saveQuestions({

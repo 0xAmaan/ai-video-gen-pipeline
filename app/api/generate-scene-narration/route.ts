@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { synthesizeNarrationAudio } from "@/lib/narration";
 import { getConvexClient } from "@/lib/server/convex";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 export async function POST(req: Request) {
   try {
@@ -16,29 +16,20 @@ export async function POST(req: Request) {
     } = await req.json();
 
     if (!sceneId || typeof sceneId !== "string") {
-      return NextResponse.json({ error: "sceneId is required" }, { status: 400 });
+      return apiError("sceneId is required", 400);
     }
 
     if (!text || typeof text !== "string") {
-      return NextResponse.json(
-        { error: "Narration text is required" },
-        { status: 400 },
-      );
+      return apiError("Narration text is required", 400);
     }
 
     if (!voiceId || typeof voiceId !== "string") {
-      return NextResponse.json(
-        { error: "voiceId is required" },
-        { status: 400 },
-      );
+      return apiError("voiceId is required", 400);
     }
 
     const trimmedText = text.trim();
     if (!trimmedText) {
-      return NextResponse.json(
-        { error: "Narration text must contain characters" },
-        { status: 400 },
-      );
+      return apiError("Narration text must contain characters", 400);
     }
 
     const {
@@ -65,7 +56,7 @@ export async function POST(req: Request) {
       voiceName,
     });
 
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       audioUrl,
       truncated,
@@ -73,13 +64,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Failed to generate scene narration:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to generate narration",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to generate narration",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getConvexClient } from "@/lib/server/convex";
 import { startLipSyncPrediction } from "@/lib/server/lipsync";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 type SceneId = Id<"scenes">;
 type ClipId = Id<"videoClips">;
@@ -29,10 +29,7 @@ export async function POST(req: Request) {
     const { clips } = await req.json();
 
     if (!Array.isArray(clips) || clips.length === 0) {
-      return NextResponse.json(
-        { error: "clips array is required" },
-        { status: 400 },
-      );
+      return apiError("clips array is required", 400);
     }
 
     let convexPromise: Promise<ConvexClient> | null = null;
@@ -133,7 +130,7 @@ export async function POST(req: Request) {
 
     const successful = results.filter((result) => result.predictionId);
 
-    return NextResponse.json({
+    return apiResponse({
       success: successful.length === results.length,
       predictions: results,
       summary: {
@@ -144,12 +141,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Failed to queue lipsync clips:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to queue lip sync predictions",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to queue lip sync predictions",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

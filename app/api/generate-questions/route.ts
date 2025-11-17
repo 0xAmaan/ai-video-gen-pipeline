@@ -1,12 +1,14 @@
 import { generateObject } from "ai";
-import { groq } from "@ai-sdk/groq";
-import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
-import { NextResponse } from "next/server";
 import {
   QUESTION_GENERATION_SYSTEM_PROMPT,
   buildQuestionGenerationPrompt,
 } from "@/lib/prompts";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { mockClarifyingQuestions, mockDelay } from "@/lib/demo-mocks";
+import { apiResponse, apiError } from "@/lib/api-response";
+import { createLLMProvider, validateAPIKeys } from "@/lib/server/api-utils";
 
 // Zod schema matching the Question interface from InputPhase
 const questionSchema = z.object({
@@ -32,99 +34,79 @@ const questionSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+  const startTime = Date.now();
+
   try {
     const { prompt } = await req.json();
 
+    // Get demo mode from headers
+    const demoMode = getDemoModeFromHeaders(req.headers);
+    const shouldMock = demoMode === "no-cost";
+
+    // Track API call
+    flowTracker.trackAPICall("POST", "/api/generate-questions", {
+      prompt,
+      demoMode,
+    });
+
     if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json(
-        { error: "Invalid prompt provided" },
-        { status: 400 },
-      );
+      return apiError("Invalid prompt provided", 400);
     }
 
-    // Check if Groq API key is available
-    const hasGroqKey = !!process.env.GROQ_API_KEY;
-    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-
-    if (!hasGroqKey && !hasOpenAIKey) {
-      console.error(
-        "❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local",
+    // If no-cost mode, return instant mock data
+    if (shouldMock) {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Using mock question generation - zero API costs",
       );
-      return NextResponse.json(
-        {
-          error: "No API keys configured",
-          details:
-            "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file",
-        },
-        { status: 500 },
+
+      await mockDelay(100);
+      const mockQuestions = mockClarifyingQuestions(prompt);
+
+      flowTracker.trackTiming(
+        "Mock question generation",
+        Date.now() - startTime,
+        startTime,
       );
-    }
 
-    // Generate clarifying questions using Groq (much faster) or OpenAI (fallback)
-    // Note: Using openai/gpt-oss-20b - supports strict JSON schema, 250K TPM, very fast
-    let object;
-
-    if (hasGroqKey) {
-      console.log(`🔧 Trying Groq (gpt-oss-20b) - FAST ⚡`);
-      try {
-        const result = await generateObject({
-          model: groq("openai/gpt-oss-20b"),
-          schema: questionSchema,
-          system: QUESTION_GENERATION_SYSTEM_PROMPT,
-          prompt: buildQuestionGenerationPrompt(prompt),
-          maxRetries: 2,
-        });
-        object = result.object;
-      } catch (groqError) {
-        console.warn(
-          `⚠️ Groq failed, falling back to OpenAI:`,
-          groqError instanceof Error ? groqError.message : groqError,
-        );
-
-        if (hasOpenAIKey) {
-          const result = await generateObject({
-            model: openai("gpt-4o-mini"),
-            schema: questionSchema,
-            system: QUESTION_GENERATION_SYSTEM_PROMPT,
-            prompt: buildQuestionGenerationPrompt(prompt),
-            maxRetries: 2,
-          });
-          object = result.object;
-        } else {
-          throw groqError; // Re-throw if no OpenAI fallback available
-        }
-      }
-    } else if (hasOpenAIKey) {
-      console.log(`🔧 Using OpenAI (gpt-4o-mini)`);
-      const result = await generateObject({
-        model: openai("gpt-4o-mini"),
-        schema: questionSchema,
-        system: QUESTION_GENERATION_SYSTEM_PROMPT,
-        prompt: buildQuestionGenerationPrompt(prompt),
-        maxRetries: 2,
+      return apiResponse({
+        questions: mockQuestions,
       });
-      object = result.object;
-    } else {
-      throw new Error("No API keys configured");
     }
 
-    return NextResponse.json(object);
+    // Validate API keys
+    const keyValidationError = validateAPIKeys();
+    if (keyValidationError) {
+      return keyValidationError;
+    }
+
+    // Create LLM provider with automatic fallback
+    const { provider } = createLLMProvider();
+
+    // Generate clarifying questions
+    const result = await generateObject({
+      model: provider,
+      schema: questionSchema,
+      system: QUESTION_GENERATION_SYSTEM_PROMPT,
+      prompt: buildQuestionGenerationPrompt(prompt),
+      maxRetries: 2,
+    });
+
+    flowTracker.trackTiming(
+      "Total question generation",
+      Date.now() - startTime,
+      startTime,
+    );
+
+    return apiResponse(result.object);
   } catch (error) {
     console.error("Error generating questions:", error);
-    console.error(
-      "Full error details:",
-      error instanceof Error ? error.message : error,
-    );
-    console.error(
-      "Stack trace:",
-      error instanceof Error ? error.stack : "No stack trace",
-    );
-    return NextResponse.json(
-      {
-        error: "Failed to generate questions",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to generate questions",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

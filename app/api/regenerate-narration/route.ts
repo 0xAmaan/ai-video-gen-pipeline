@@ -1,22 +1,28 @@
-import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { getConvexClient } from "@/lib/server/convex";
 import { synthesizeNarrationAudio } from "@/lib/narration";
+import { apiResponse, apiError } from "@/lib/api-response";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { mockNarrationSynthesis, mockDelay } from "@/lib/demo-mocks";
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+  const demoMode = getDemoModeFromHeaders(req.headers);
+
   try {
-    const {
+    const { sceneId, newVoiceId, newEmotion, newSpeed, newPitch, customText } =
+      await req.json();
+
+    flowTracker.trackAPICall("POST", "/api/regenerate-narration", {
       sceneId,
-      newVoiceId,
-      newEmotion,
-      newSpeed,
-      newPitch,
-      customText,
-    } = await req.json();
+      voiceId: newVoiceId,
+      demoMode,
+    });
 
     if (!sceneId || typeof sceneId !== "string") {
-      return NextResponse.json({ error: "sceneId is required" }, { status: 400 });
+      return apiError("sceneId is required", 400);
     }
 
     const convex = await getConvexClient();
@@ -25,10 +31,7 @@ export async function POST(req: Request) {
     });
 
     if (!scene) {
-      return NextResponse.json(
-        { error: "Scene not found" },
-        { status: 404 },
-      );
+      return apiError("Scene not found", 404);
     }
 
     const baseText =
@@ -37,9 +40,9 @@ export async function POST(req: Request) {
         : scene.narrationText || "";
 
     if (!baseText) {
-      return NextResponse.json(
-        { error: "Scene has no narration text. Provide customText to regenerate." },
-        { status: 400 },
+      return apiError(
+        "Scene has no narration text. Provide customText to regenerate.",
+        400,
       );
     }
 
@@ -56,20 +59,45 @@ export async function POST(req: Request) {
       projectVoiceSettings?.selectedVoiceId ||
       "Wise_Woman";
 
-    const emotion =
-      newEmotion ||
-      projectVoiceSettings?.emotion ||
-      "auto";
+    const emotion = newEmotion || projectVoiceSettings?.emotion || "auto";
 
     const speed =
       typeof newSpeed === "number"
         ? newSpeed
-        : projectVoiceSettings?.speed ?? 1;
+        : (projectVoiceSettings?.speed ?? 1);
 
     const pitch =
       typeof newPitch === "number"
         ? newPitch
-        : projectVoiceSettings?.pitch ?? 0;
+        : (projectVoiceSettings?.pitch ?? 0);
+
+    // Demo mode: Return mock narration instantly
+    if (demoMode === "no-cost") {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Using mock narration synthesis - zero API costs",
+      );
+      await mockDelay(200);
+      const mockNarration = mockNarrationSynthesis();
+
+      await convex.mutation(api.video.updateSceneNarration, {
+        sceneId: sceneId as Id<"scenes">,
+        narrationUrl: mockNarration.audio_url,
+        narrationText: baseText,
+        voiceId,
+        voiceName: "Demo Voice",
+      });
+
+      return apiResponse({
+        success: true,
+        audioUrl: mockNarration.audio_url,
+        truncated: false,
+        voiceId,
+        voiceName: "Demo Voice",
+        narrationText: baseText,
+      });
+    }
 
     const {
       audioUrl,
@@ -93,7 +121,7 @@ export async function POST(req: Request) {
       voiceName,
     });
 
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       audioUrl,
       truncated,
@@ -103,13 +131,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Failed to regenerate narration:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to regenerate narration",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to regenerate narration",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

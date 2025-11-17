@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Check } from "lucide-react";
+import { apiFetch } from "@/lib/api-fetch";
 
 interface CharacterVariation {
   model: string;
@@ -38,12 +39,22 @@ export default function CharacterSelectPage() {
   // TEMPORARY: Using updateProjectStatus instead since saveCharacterReference isn't deployed
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
 
+  // Ref to track if generation has been initiated (prevents duplicate calls)
+  const hasInitiatedGeneration = useRef(false);
+
   // Generate variations when page loads
   useEffect(() => {
     const generateVariations = async () => {
+      // Guard: only run once
+      if (hasInitiatedGeneration.current) {
+        return;
+      }
+
       if (!projectData?.questions?.answers) {
         return;
       }
+
+      hasInitiatedGeneration.current = true;
 
       try {
         setError(null);
@@ -61,9 +72,11 @@ export default function CharacterSelectPage() {
           projectData.questions.answers.responses,
         );
 
-        const response = await fetch("/api/generate-character-variations", {
+        const response = await apiFetch("/api/generate-character-variations", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             projectId: projectId,
             scenePrompt: videoPrompt,
@@ -100,13 +113,15 @@ export default function CharacterSelectPage() {
             ? error.message
             : "Failed to generate character variations";
         setError(errorMessage);
+        // On error, allow retry
+        hasInitiatedGeneration.current = false;
       } finally {
         setIsLoading(false);
       }
     };
 
     generateVariations();
-  }, [projectData, projectId]);
+  }, [projectData?.questions?.answers]);
 
   const retryGeneration = () => {
     setIsLoading(true);

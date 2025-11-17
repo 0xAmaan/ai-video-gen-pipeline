@@ -1,22 +1,56 @@
-import { NextResponse } from "next/server";
 import Replicate from "replicate";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { getDemoModeFromHeaders, getModelConfig } from "@/lib/demo-mode";
+import { mockReplicatePrediction, mockDelay } from "@/lib/demo-mocks";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+  const startTime = Date.now();
+
   try {
     const { scenes } = await req.json();
 
+    // Get demo mode from headers (passed from client)
+    const demoMode = getDemoModeFromHeaders(req.headers);
+    const shouldMock = demoMode === "no-cost";
+    const shouldUseCheap = demoMode === "cheap";
+
+    // Track API call
+    flowTracker.trackAPICall("POST", "/api/generate-all-clips", {
+      sceneCount: scenes?.length,
+      demoMode,
+    });
+
     if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
-      return NextResponse.json(
-        { error: "Scenes array is required" },
-        { status: 400 },
+      return apiError("Scenes array is required", 400);
+    }
+
+    // Track demo mode decision
+    if (demoMode !== "off") {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        demoMode,
+        `Using ${demoMode} mode for video generation`,
       );
     }
 
-    console.log(`Starting ${scenes.length} video clip predictions...`);
+    // Track model selection
+    const modelConfig = getModelConfig();
+    if (modelConfig.enabled && modelConfig.models?.video) {
+      flowTracker.trackModelSelection(
+        modelConfig.models.video.name,
+        modelConfig.models.video.version,
+        modelConfig.models.video.cost,
+        shouldUseCheap
+          ? "Using cheaper/faster model for development"
+          : "Using production-quality model",
+      );
+    }
 
     // Create all predictions in parallel (don't wait for completion)
     const predictionPromises = scenes.map(async (scene: any, index: number) => {
@@ -25,31 +59,45 @@ export async function POST(req: Request) {
           throw new Error(`Scene ${index + 1} has no image URL`);
         }
 
-        console.log(`Creating prediction for scene ${scene.sceneNumber}...`);
-
         // Round duration to nearest valid value (5 or 10)
         const validDuration = scene.duration <= 7.5 ? 5 : 10;
 
-        // Create prediction without waiting for completion
-        const prediction = await replicate.predictions.create({
-          version:
-            "66226b38d223f8ac7a81aa33b8519759e300c2f9818a215e32900827ad6d2db5", // WAN 2.5 i2v Fast (latest)
-          input: {
-            image: scene.imageUrl,
-            // Use the detailed visualPrompt (150-250 words) if available, otherwise fallback to description
-            prompt:
-              (scene.visualPrompt || scene.description) +
-              ", cinematic, smooth motion, professional video",
-            duration: validDuration,
-            resolution: "720p",
-            negative_prompt: "blur, distortion, jitter, artifacts, low quality",
-            prompt_expansion: true,
-          },
-        });
+        // Check if we should use mock data (no-cost mode)
+        let prediction;
+        if (shouldMock) {
+          flowTracker.trackDecision(
+            "Use mock prediction",
+            "true",
+            "No-cost mode active - using mock data",
+          );
+          await mockDelay(50); // Simulate minimal processing time
+          prediction = mockReplicatePrediction("video");
+        } else {
+          // Create prediction without waiting for completion
+          const predictionStart = Date.now();
+          prediction = await replicate.predictions.create({
+            version:
+              "66226b38d223f8ac7a81aa33b8519759e300c2f9818a215e32900827ad6d2db5", // WAN 2.5 i2v Fast (latest)
+            input: {
+              image: scene.imageUrl,
+              // Use the detailed visualPrompt (150-250 words) if available, otherwise fallback to description
+              prompt:
+                (scene.visualPrompt || scene.description) +
+                ", cinematic, smooth motion, professional video",
+              duration: validDuration,
+              resolution: "720p",
+              negative_prompt:
+                "blur, distortion, jitter, artifacts, low quality",
+              prompt_expansion: true,
+            },
+          });
 
-        console.log(
-          `Prediction created for scene ${scene.sceneNumber}: ${prediction.id}`,
-        );
+          flowTracker.trackTiming(
+            `Replicate create prediction (scene ${scene.sceneNumber})`,
+            Date.now() - predictionStart,
+            predictionStart,
+          );
+        }
 
         return {
           sceneNumber: scene.sceneNumber,
@@ -81,11 +129,14 @@ export async function POST(req: Request) {
     const successfulPredictions = predictions.filter((p) => p.predictionId);
     const failedPredictions = predictions.filter((p) => !p.predictionId);
 
-    console.log(
-      `Predictions created: ${successfulPredictions.length}/${predictions.length} successful`,
+    // Track total operation timing
+    flowTracker.trackTiming(
+      "Total video clip generation request",
+      Date.now() - startTime,
+      startTime,
     );
 
-    return NextResponse.json({
+    return apiResponse({
       success: failedPredictions.length === 0,
       predictions: predictions,
       summary: {
@@ -96,12 +147,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Error creating video predictions:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to create video predictions",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to create video predictions",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

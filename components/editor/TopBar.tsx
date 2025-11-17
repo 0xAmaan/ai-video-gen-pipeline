@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
   Play,
   Pause,
@@ -9,6 +9,9 @@ import {
   Download,
   Volume2,
   VolumeX,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Slider } from "../ui/slider";
@@ -28,6 +31,7 @@ interface TopBarProps {
   onToggleAudioTrack: () => void;
   selectedAudioClipVolume?: number;
   onAudioClipVolumeChange?: (value: number) => void;
+  onTitleChange?: (newTitle: string) => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -54,14 +58,86 @@ const TopBarComponent = ({
   onToggleAudioTrack,
   selectedAudioClipVolume,
   onAudioClipVolumeChange,
+  onTitleChange,
 }: TopBarProps) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(title);
+
+  const startEdit = () => {
+    setIsEditing(true);
+    setEditTitle(title);
+  };
+
+  const saveEdit = () => {
+    if (editTitle.trim() && onTitleChange) {
+      onTitleChange(editTitle.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setEditTitle(title);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEdit();
+    }
+  };
+
   return (
     <div className="flex items-center justify-between border-b border-border bg-card/80 px-4 py-2">
       <div className="flex items-center gap-2">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">
           Project
         </p>
-        <h1 className="text-sm font-semibold truncate max-w-md">{title}</h1>
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="px-2 py-1 text-sm bg-background border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary max-w-md"
+              autoFocus
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={saveEdit}
+              className="h-7 w-7"
+            >
+              <Check className="h-3.5 w-3.5 text-primary" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={cancelEdit}
+              className="h-7 w-7"
+            >
+              <X className="h-3.5 w-3.5 text-destructive" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-sm font-semibold truncate max-w-md">{title}</h1>
+            {onTitleChange && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={startEdit}
+                className="h-6 w-6 hover:bg-primary/20"
+              >
+                <Pencil className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -165,7 +241,8 @@ export const TopBar = memo(TopBarComponent, (prevProps, nextProps) => {
     prevProps.onExport === nextProps.onExport &&
     prevProps.masterVolume === nextProps.masterVolume &&
     prevProps.audioTrackMuted === nextProps.audioTrackMuted &&
-    prevProps.selectedAudioClipVolume === nextProps.selectedAudioClipVolume
+    prevProps.selectedAudioClipVolume === nextProps.selectedAudioClipVolume &&
+    prevProps.onTitleChange === nextProps.onTitleChange
     // Note: currentTime intentionally excluded to reduce re-renders
   );
 });

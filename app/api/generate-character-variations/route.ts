@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
 import Replicate from "replicate";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { mockCharacterVariations, mockDelay } from "@/lib/demo-mocks";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -77,19 +80,51 @@ async function generateWithModel(
 }
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+  const startTime = Date.now();
+
   try {
     const { projectId, scenePrompt, responses } = await req.json();
 
+    // Get demo mode from headers
+    const demoMode = getDemoModeFromHeaders(req.headers);
+    const shouldMock = demoMode === "no-cost";
+
+    // Track API call
+    flowTracker.trackAPICall("POST", "/api/generate-character-variations", {
+      projectId,
+      demoMode,
+    });
+
     if (!projectId || !scenePrompt) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 },
-      );
+      return apiError("Missing required fields", 400);
     }
 
-    console.log("🎨 Generating character variations for:", projectId);
-    console.log("📝 Scene prompt:", scenePrompt);
-    console.log("📋 User responses:", responses);
+    // If no-cost mode, return instant mock data
+    if (shouldMock) {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Using mock character generation - zero API costs",
+      );
+      await mockDelay(200);
+      const mockVariations = mockCharacterVariations();
+      flowTracker.trackTiming(
+        "Mock character generation",
+        Date.now() - startTime,
+        startTime,
+      );
+      return apiResponse({
+        success: true,
+        variations: mockVariations.map((v) => ({
+          model: v.seed,
+          modelName: `Mock Character ${v.id}`,
+          imageUrl: v.imageUrl,
+          cost: 0,
+        })),
+        totalCost: 0,
+      });
+    }
 
     // Build character prompt that respects user preferences
     let characterPrompt = `Create a detailed character portrait for this video: ${scenePrompt}. `;
@@ -156,15 +191,11 @@ export async function POST(req: Request) {
     characterPrompt +=
       "Focus on the main character with clear, consistent features. Professional quality, well-lit, clear details.";
 
-    console.log("🎭 Character prompt:", characterPrompt);
-
     // Generate variations with all models in parallel
     const variationPromises = Object.entries(CHARACTER_MODELS).map(
       async ([modelKey, config]) => {
         try {
-          console.log(`⏳ Starting ${config.name}...`);
           const imageUrl = await generateWithModel(config.id, characterPrompt);
-          console.log(`✅ ${config.name} complete:`, imageUrl);
 
           return {
             model: modelKey,
@@ -196,11 +227,13 @@ export async function POST(req: Request) {
       throw new Error("All model generations failed");
     }
 
-    console.log(
-      `✨ Generated ${successfulVariations.length} variations (${failedCount} failed)`,
+    flowTracker.trackTiming(
+      "Total character generation",
+      Date.now() - startTime,
+      startTime,
     );
 
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       variations: successfulVariations,
       totalCost: successfulVariations.reduce((sum, v) => sum + v.cost, 0),
@@ -212,13 +245,11 @@ export async function POST(req: Request) {
           : undefined,
     });
   } catch (error) {
-    console.error("❌ Error generating character variations:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to generate character variations",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    console.error("Error generating character variations:", error);
+    return apiError(
+      "Failed to generate character variations",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

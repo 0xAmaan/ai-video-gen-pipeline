@@ -1,20 +1,44 @@
-import { NextResponse } from "next/server";
 import Replicate from "replicate";
 import { IMAGE_MODELS } from "@/lib/image-models";
+import { apiResponse, apiError } from "@/lib/api-response";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { mockReplicatePrediction, mockDelay } from "@/lib/demo-mocks";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+  const demoMode = getDemoModeFromHeaders(req.headers);
+
   try {
     const { visualPrompt, responses, style } = await req.json();
 
+    flowTracker.trackAPICall("POST", "/api/regenerate-scene", {
+      visualPrompt: visualPrompt?.slice(0, 50),
+      style,
+      demoMode,
+    });
+
     if (!visualPrompt || typeof visualPrompt !== "string") {
-      return NextResponse.json(
-        { error: "Visual prompt is required" },
-        { status: 400 },
+      return apiError("Visual prompt is required", 400);
+    }
+
+    // Demo mode: Return mock image instantly
+    if (demoMode === "no-cost") {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Using mock image generation - zero API costs",
       );
+      await mockDelay(500);
+      const mockPrediction = mockReplicatePrediction("image");
+      return apiResponse({
+        success: true,
+        imageUrl: mockPrediction.output,
+      });
     }
 
     const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
@@ -52,10 +76,6 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(
-      `Regenerating scene with ${modelConfig.name} (style: ${phoenixStyle})`,
-    );
-
     const output = await replicate.run(
       modelConfig.id as `${string}/${string}`,
       {
@@ -84,20 +104,16 @@ export async function POST(req: Request) {
       throw new Error(`Unexpected output format: ${typeof output}`);
     }
 
-    console.log("Regenerated image URL:", imageUrl);
-
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       imageUrl: imageUrl,
     });
   } catch (error) {
     console.error("Error regenerating scene:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to regenerate scene",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to regenerate scene",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

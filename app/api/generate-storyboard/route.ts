@@ -1,8 +1,5 @@
 import { generateObject } from "ai";
-import { groq } from "@ai-sdk/groq";
-import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
-import { NextResponse } from "next/server";
 import Replicate from "replicate";
 import { STORYBOARD_SYSTEM_PROMPT, buildStoryboardPrompt } from "@/lib/prompts";
 import { IMAGE_MODELS } from "@/lib/image-models";
@@ -12,6 +9,15 @@ import { generateVoiceSelection } from "@/lib/server/voice-selection";
 import { getConvexClient } from "@/lib/server/convex";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { mockSceneGeneration, mockDelay } from "@/lib/demo-mocks";
+import {
+  selectImageModel,
+  explainModelSelection,
+} from "@/lib/select-image-model";
+import { apiResponse, apiError } from "@/lib/api-response";
+import { createLLMProvider, validateAPIKeys } from "@/lib/server/api-utils";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -22,30 +28,23 @@ async function generateSceneImage(
   modelConfig: ImageModelConfig,
   style: string,
 ) {
-  console.log(`🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`);
-  console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
-
-  const output = await replicate.run(
-    modelConfig.id as `${string}/${string}`,
-    {
-      input: {
-        prompt: scene.visualPrompt,
-        aspect_ratio: "16:9",
-        generation_mode: "quality",
-        contrast: "medium",
-        num_images: 1,
-        prompt_enhance: false,
-        style,
-      },
+  const output = await replicate.run(modelConfig.id as `${string}/${string}`, {
+    input: {
+      prompt: scene.visualPrompt,
+      aspect_ratio: "16:9",
+      generation_mode: "quality",
+      contrast: "medium",
+      num_images: 1,
+      prompt_enhance: false,
+      style,
     },
-  );
+  });
 
   const imageUrl = extractReplicateUrl(
     output,
     `scene-${scene.sceneNumber}-image`,
   );
 
-  console.log(`   ✅ Scene ${scene.sceneNumber} image URL:`, imageUrl);
   return imageUrl;
 }
 
@@ -69,53 +68,78 @@ type GeneratedScene = z.infer<typeof sceneSchema>["scenes"][number];
 type ImageModelConfig = (typeof IMAGE_MODELS)[keyof typeof IMAGE_MODELS];
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+  const startTime = Date.now();
+
   try {
     const { projectId, prompt, responses } = await req.json();
 
+    // Get demo mode from headers
+    const demoMode = getDemoModeFromHeaders(req.headers);
+    const shouldMock = demoMode === "no-cost";
+
+    // Track API call
+    flowTracker.trackAPICall("POST", "/api/generate-storyboard", {
+      projectId,
+      demoMode,
+    });
+
     if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json(
-        { error: "Invalid prompt provided" },
-        { status: 400 },
-      );
+      return apiError("Invalid prompt provided", 400);
     }
 
     if (!projectId || typeof projectId !== "string") {
-      return NextResponse.json(
-        { error: "projectId is required" },
-        { status: 400 },
-      );
+      return apiError("projectId is required", 400);
     }
 
     const projectConvexId = projectId as Id<"videoProjects">;
 
-    // Step 1: Generate scene descriptions using Groq
-    const hasGroqKey = !!process.env.GROQ_API_KEY;
-    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
-
-    if (!hasGroqKey && !hasOpenAIKey) {
-      console.error(
-        "❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local",
+    // If no-cost mode, return instant mock data
+    if (shouldMock) {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Using mock storyboard generation - zero API costs",
       );
-      return NextResponse.json(
-        {
-          error: "No API keys configured",
-          details:
-            "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file",
+      await mockDelay(300);
+      const mockScenes = mockSceneGeneration(prompt, 3);
+      flowTracker.trackTiming(
+        "Mock storyboard generation",
+        Date.now() - startTime,
+        startTime,
+      );
+      return apiResponse({
+        success: true,
+        scenes: mockScenes,
+        modelInfo: {
+          modelKey: "mock-model",
+          modelName: "Mock Image Generator",
+          style: "mock",
+          estimatedCost: 0,
+          reason: "Using mock data in no-cost mode",
         },
-        { status: 500 },
-      );
+        voiceSelection: {
+          voiceId: "mock-voice-id",
+          voiceName: "Mock Voice",
+          reasoning: "Mock voice for demo mode",
+          emotion: "neutral",
+          speed: 1.0,
+          pitch: 0,
+        },
+      });
     }
 
-    const modelToUse = hasGroqKey
-      ? groq("openai/gpt-oss-20b")
-      : openai("gpt-4o-mini");
+    // Validate API keys
+    const keyValidationError = validateAPIKeys();
+    if (keyValidationError) {
+      return keyValidationError;
+    }
 
-    console.log(
-      `🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o-mini) - SLOWER 🐌"}`,
-    );
+    // Generate scene descriptions using LLM provider
+    const { provider } = createLLMProvider();
 
     const { object: sceneData } = await generateObject({
-      model: modelToUse,
+      model: provider,
       schema: sceneSchema,
       system: STORYBOARD_SYSTEM_PROMPT,
       prompt: buildStoryboardPrompt(prompt, responses),
@@ -140,50 +164,73 @@ export async function POST(req: Request) {
       console.warn("Unable to persist voice selection to Convex:", error);
     }
 
-    // Step 2: Select style for Leonardo Phoenix
-    console.log("\n" + "=".repeat(80));
-    console.log("🔍 LEONARDO PHOENIX MODEL SELECTION");
-    console.log("=".repeat(80));
+    // Select image model based on demo mode
+    let modelConfig;
+    let phoenixStyle = "cinematic"; // Default style for Phoenix
+    let selectedModelKey;
 
-    const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
-    let phoenixStyle = "cinematic"; // Default style
+    // Check if we're in cheap mode - use FLUX Schnell for speed/cost
+    if (demoMode === "cheap") {
+      modelConfig = IMAGE_MODELS["flux-schnell"];
+      selectedModelKey = "flux-schnell";
+      phoenixStyle = ""; // FLUX doesn't use style parameter
 
-    if (responses && responses["visual-style"]) {
-      const visualStyle = responses["visual-style"].toLowerCase();
+      flowTracker.trackDecision(
+        "Image model selection",
+        "cheap mode",
+        "Using FLUX Schnell for fast/cheap image generation",
+      );
+    }
+    // Real/production mode - use sophisticated selector
+    else {
+      selectedModelKey = selectImageModel(responses || {});
+      modelConfig = IMAGE_MODELS[selectedModelKey];
+      const explanation = explainModelSelection(responses || {});
+
+      flowTracker.trackModelSelection(
+        modelConfig.name,
+        modelConfig.id,
+        modelConfig.estimatedCost,
+        explanation.reason,
+      );
+
+      // Apply Phoenix-specific style if Leonardo Phoenix was selected
       if (
-        visualStyle.includes("documentary") ||
-        visualStyle.includes("black and white")
+        selectedModelKey === "leonardo-phoenix" &&
+        responses &&
+        responses["visual-style"]
       ) {
-        phoenixStyle = "pro_bw_photography";
-      } else if (
-        visualStyle.includes("cinematic") ||
-        visualStyle.includes("film")
-      ) {
-        phoenixStyle = "cinematic";
-      } else if (
-        visualStyle.includes("photo") ||
-        visualStyle.includes("realistic")
-      ) {
-        phoenixStyle = "pro_color_photography";
-      } else if (
-        visualStyle.includes("animated") ||
-        visualStyle.includes("cartoon")
-      ) {
-        phoenixStyle = "illustration";
-      } else if (
-        visualStyle.includes("vintage") ||
-        visualStyle.includes("retro")
-      ) {
-        phoenixStyle = "pro_film_photography";
-      } else if (visualStyle.includes("portrait")) {
-        phoenixStyle = "portrait";
+        const visualStyle = responses["visual-style"].toLowerCase();
+        if (
+          visualStyle.includes("documentary") ||
+          visualStyle.includes("black and white")
+        ) {
+          phoenixStyle = "pro_bw_photography";
+        } else if (
+          visualStyle.includes("cinematic") ||
+          visualStyle.includes("film")
+        ) {
+          phoenixStyle = "cinematic";
+        } else if (
+          visualStyle.includes("photo") ||
+          visualStyle.includes("realistic")
+        ) {
+          phoenixStyle = "pro_color_photography";
+        } else if (
+          visualStyle.includes("animated") ||
+          visualStyle.includes("cartoon")
+        ) {
+          phoenixStyle = "illustration";
+        } else if (
+          visualStyle.includes("vintage") ||
+          visualStyle.includes("retro")
+        ) {
+          phoenixStyle = "pro_film_photography";
+        } else if (visualStyle.includes("portrait")) {
+          phoenixStyle = "portrait";
+        }
       }
     }
-
-    console.log(`   Model: ${modelConfig.name}`);
-    console.log(`   Style: ${phoenixStyle}`);
-    console.log(`   Cost: ~$${modelConfig.estimatedCost}/image`);
-    console.log("=".repeat(80) + "\n");
 
     // Step 3 & 4: Generate images and narration in parallel for each scene
     const scenesWithMedia = await Promise.all(
@@ -223,8 +270,7 @@ export async function POST(req: Request) {
           sceneNumber: scene.sceneNumber,
           description: scene.description,
           visualPrompt: scene.visualPrompt,
-          narrationText:
-            narrationResult?.sanitizedText ?? scene.narrationText,
+          narrationText: narrationResult?.sanitizedText ?? scene.narrationText,
           narrationUrl: narrationResult?.audioUrl,
           imageUrl,
           duration: scene.duration,
@@ -234,26 +280,33 @@ export async function POST(req: Request) {
       }),
     );
 
-    return NextResponse.json({
+    flowTracker.trackTiming(
+      "Total storyboard generation",
+      Date.now() - startTime,
+      startTime,
+    );
+
+    return apiResponse({
       success: true,
       scenes: scenesWithMedia,
       modelInfo: {
-        modelKey: "leonardo-phoenix",
+        modelKey: selectedModelKey,
         modelName: modelConfig.name,
         style: phoenixStyle,
         estimatedCost: modelConfig.estimatedCost,
-        reason: `Selected ${modelConfig.name} (${phoenixStyle}) based on project preferences.`,
+        reason:
+          demoMode === "cheap"
+            ? `Using FLUX Schnell for fast/cheap development mode`
+            : `Selected ${modelConfig.name}${phoenixStyle ? ` (${phoenixStyle})` : ""} based on project preferences.`,
       },
       voiceSelection,
     });
   } catch (error) {
     console.error("Error generating storyboard:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to generate storyboard",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to generate storyboard",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

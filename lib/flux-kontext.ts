@@ -54,12 +54,6 @@ export async function generateWithConsistentCharacter(
     envString(process.env.REPLICATE_CONSISTENT_CHARACTER_MODEL) ||
     modelConfig.id;
 
-  console.log(
-    `🎨 Calling Consistent Character (InstantID + IPAdapter) via ${modelId}`,
-  );
-  console.log(`   Reference: ${referenceImageUrl}`);
-  console.log(`   Prompt: ${prompt}`);
-
   // Build optimized prompt for consistent-character
   // This model works best with clear clothing/hairstyle descriptions
   const characterPrompt = prompt;
@@ -102,11 +96,8 @@ export async function generateWithKontextPro(
   const modelId =
     envString(process.env.REPLICATE_KONTEXT_MODEL) || modelConfig.id;
 
-  console.log(
-    `⚠️  Using FLUX Kontext Pro (DEPRECATED - use consistent-character for better results) via ${modelId}`,
-  );
-  console.log(`   Reference: ${referenceImageUrl}`);
-  console.log(`   Prompt: ${prompt}`);
+  // DEPRECATED: This function is kept as a fallback but should be replaced
+  // with generateWithConsistentCharacter in the future
 
   // Build the character consistency prompt
   // CRITICAL: Be extremely explicit about maintaining character identity

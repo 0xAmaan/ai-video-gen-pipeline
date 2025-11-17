@@ -1,16 +1,54 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Video } from "lucide-react";
+import { Video, Pencil, Check, X } from "lucide-react";
+import { useState } from "react";
+import { Id } from "@/convex/_generated/dataModel";
 
 const ProjectsPage = () => {
   const router = useRouter();
   const projects = useQuery(api.video.getUserProjects);
+  const updateProjectTitle = useMutation(api.video.updateProjectTitle);
 
-  const getProjectTitle = (prompt: string) => {
-    return prompt.length > 50 ? prompt.slice(0, 50) + "..." : prompt;
+  const [editingId, setEditingId] = useState<Id<"videoProjects"> | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  const getProjectTitle = (project: { title?: string; prompt: string }) => {
+    if (project.title) return project.title;
+    return project.prompt.length > 50 ? project.prompt.slice(0, 50) + "..." : project.prompt;
+  };
+
+  const startEditing = (e: React.MouseEvent, projectId: Id<"videoProjects">, currentTitle: string) => {
+    e.stopPropagation();
+    setEditingId(projectId);
+    setEditingTitle(currentTitle);
+  };
+
+  const cancelEditing = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(null);
+    setEditingTitle("");
+  };
+
+  const saveTitle = async (e: React.MouseEvent, projectId: Id<"videoProjects">) => {
+    e.stopPropagation();
+    if (editingTitle.trim()) {
+      await updateProjectTitle({ projectId, title: editingTitle.trim() });
+    }
+    setEditingId(null);
+    setEditingTitle("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, projectId: Id<"videoProjects">) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveTitle(e as any, projectId);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEditing(e as any);
+    }
   };
 
   const getPhaseBadge = (lastActivePhase: string | undefined) => {
@@ -65,7 +103,7 @@ const ProjectsPage = () => {
         {projects && projects.length > 0 && (
           <div className="space-y-3">
             {projects.map((project) => (
-              <button
+              <div
                 key={project._id}
                 onClick={() => router.push(`/${project._id}/prompt`)}
                 className="flex items-center gap-4 w-full p-4 bg-card hover:bg-accent rounded-lg transition-colors text-left cursor-pointer border border-border"
@@ -75,16 +113,49 @@ const ProjectsPage = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-foreground font-medium truncate">
-                      {getProjectTitle(project.prompt)}
-                    </span>
-                    {getPhaseBadge(project.lastActivePhase)}
+                    {editingId === project._id ? (
+                      <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, project._id)}
+                          className="flex-1 px-2 py-1 text-sm bg-background border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+                          autoFocus
+                        />
+                        <button
+                          onClick={(e) => saveTitle(e, project._id)}
+                          className="p-1 hover:bg-primary/20 rounded text-primary"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={cancelEditing}
+                          className="p-1 hover:bg-destructive/20 rounded text-destructive"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-foreground font-medium truncate">
+                          {getProjectTitle(project)}
+                        </span>
+                        <button
+                          onClick={(e) => startEditing(e, project._id, getProjectTitle(project))}
+                          className="p-1 hover:bg-primary/20 rounded text-muted-foreground hover:text-primary shrink-0"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {getPhaseBadge(project.lastActivePhase)}
+                      </>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {formatDate(project.createdAt)}
                   </p>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

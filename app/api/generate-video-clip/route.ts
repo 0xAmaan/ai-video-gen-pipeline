@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import Replicate from "replicate";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -15,20 +15,12 @@ export async function POST(req: Request) {
     } = await req.json();
 
     if (!imageUrl || typeof imageUrl !== "string") {
-      return NextResponse.json(
-        { error: "Image URL is required" },
-        { status: 400 },
-      );
+      return apiError("Image URL is required", 400);
     }
 
     if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json(
-        { error: "Prompt is required" },
-        { status: 400 },
-      );
+      return apiError("Prompt is required", 400);
     }
-
-    console.log(`Generating video clip: ${prompt.substring(0, 50)}...`);
 
     // Generate video using WAN 2.5 Image-to-Video Fast
     const output = await replicate.run("wan-video/wan-2.5-i2v-fast", {
@@ -88,20 +80,16 @@ export async function POST(req: Request) {
       throw new Error(`Unexpected output format: ${typeof output}`);
     }
 
-    console.log("Video generated successfully:", videoUrl);
-
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       videoUrl: videoUrl,
     });
   } catch (error) {
     console.error("Error generating video clip:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to generate video clip",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to generate video clip",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }
