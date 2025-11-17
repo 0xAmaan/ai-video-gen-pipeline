@@ -47,8 +47,32 @@ import {
 import { MINIMAX_VOICES } from "@/lib/voice-selection";
 import type { MiniMaxVoiceId } from "@/lib/voice-selection";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
+import type { MusicGenerationOptions } from "@/types/audio";
 
 type VoiceProvider = "replicate" | "elevenlabs";
+type MusicGenerationModel = "lyria-2" | "musicgen" | "bark";
+
+const MUSIC_MODEL_OPTIONS: Array<{
+  value: MusicGenerationModel;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "lyria-2",
+    label: "Google Lyria 2",
+    description: "48kHz stereo, supports negative prompts & seed control",
+  },
+  {
+    value: "musicgen",
+    label: "MusicGen Large",
+    description: "Adjust clip length and loop-friendly backgrounds",
+  },
+  {
+    value: "bark",
+    label: "Bark Hybrid",
+    description: "Speech + ambient cues with inline sound effect tags",
+  },
+];
 
 type AudioSearchResult = {
   id: string;
@@ -102,6 +126,15 @@ export const StoryboardPhase = ({
   const [musicPrompt, setMusicPrompt] = useState(
     project?.backgroundMusicPrompt || "",
   );
+  const [musicModel, setMusicModel] =
+    useState<MusicGenerationModel>("lyria-2");
+  const [musicNegativePrompt, setMusicNegativePrompt] = useState("");
+  const [musicSeed, setMusicSeed] = useState("");
+  const [musicDurationSeconds, setMusicDurationSeconds] = useState(30);
+  const [musicDurationLocked, setMusicDurationLocked] = useState(false);
+  const [barkHistoryPrompt, setBarkHistoryPrompt] = useState("");
+  const [barkTextTemp, setBarkTextTemp] = useState(0.7);
+  const [barkWaveformTemp, setBarkWaveformTemp] = useState(0.7);
   const [isGeneratingMusic, setIsGeneratingMusic] = useState(false);
   const [musicGenerationError, setMusicGenerationError] = useState<
     string | null
@@ -242,6 +275,47 @@ export const StoryboardPhase = ({
     setBgmSource(nextSource);
     setBgmPrompt(nextPrompt);
     setBgmAttribution(attribution);
+    if (
+      projectBgmAsset &&
+      projectBgmAsset.metadata &&
+      typeof projectBgmAsset.metadata === "object"
+    ) {
+      const metadata = projectBgmAsset.metadata as Record<string, unknown>;
+      if (
+        metadata.model === "lyria-2" ||
+        metadata.model === "musicgen" ||
+        metadata.model === "bark"
+      ) {
+        setMusicModel(metadata.model);
+      }
+      if (typeof metadata.negative_prompt === "string") {
+        setMusicNegativePrompt(metadata.negative_prompt);
+      }
+      if (
+        typeof metadata.seed === "number" ||
+        typeof metadata.seed === "string"
+      ) {
+        setMusicSeed(String(metadata.seed));
+      }
+      if (
+        typeof metadata.history_prompt === "string" ||
+        metadata.history_prompt === null
+      ) {
+        setBarkHistoryPrompt(metadata.history_prompt ?? "");
+      }
+      if (typeof metadata.text_temp === "number") {
+        setBarkTextTemp(metadata.text_temp);
+      }
+      if (typeof metadata.waveform_temp === "number") {
+        setBarkWaveformTemp(metadata.waveform_temp);
+      }
+    } else {
+      setMusicNegativePrompt("");
+      setMusicSeed("");
+      setBarkHistoryPrompt("");
+      setBarkTextTemp(0.7);
+      setBarkWaveformTemp(0.7);
+    }
   }, [
     project?.backgroundMusicUrl,
     project?.backgroundMusicSource,
@@ -250,6 +324,21 @@ export const StoryboardPhase = ({
   ]);
 
   const totalDuration = scenes.reduce((sum, scene) => sum + scene.duration, 0);
+  const recommendedMusicDuration = Math.min(
+    Math.max(totalDuration || 30, 15),
+    90,
+  );
+  useEffect(() => {
+    if (!musicDurationLocked) {
+      setMusicDurationSeconds(recommendedMusicDuration);
+    }
+  }, [recommendedMusicDuration, musicDurationLocked]);
+
+  useEffect(() => {
+    if (musicModel !== "musicgen") {
+      setMusicDurationLocked(false);
+    }
+  }, [musicModel]);
   const sampleAudioUrl = useMemo(
     () => scenes.find((scene) => scene.narrationUrl)?.narrationUrl,
     [scenes],
@@ -268,15 +357,24 @@ export const StoryboardPhase = ({
     MINIMAX_VOICES["Wise_Woman"].name;
   const currentVoiceProvider =
     (voiceSettings?.voiceProvider as VoiceProvider) ?? "replicate";
+  const barkVoiceSelected =
+    voiceSettings?.voiceModelKey === "bark-voice" ||
+    scenes.some((scene) => scene.voiceId?.startsWith("bark"));
   const currentVoiceProviderLabel =
     currentVoiceProvider === "elevenlabs"
       ? "ElevenLabs"
-      : "Replicate (MiniMax)";
+      : barkVoiceSelected
+        ? "Replicate (Bark)"
+        : "Replicate (MiniMax)";
   const currentVoiceReasoning =
     voiceSettings?.voiceReasoning ||
     (currentVoiceProvider === "elevenlabs"
       ? "Premium ElevenLabs narration."
       : "AI selected this voice for your prompt.");
+  const musicPromptPlaceholder =
+    musicModel === "bark"
+      ? "Hybrid narration prompt. Include tags like [music], [laughter], [sighs] for Bark."
+      : "Describe the mood, instruments, or tempo you want...";
 
   const handleDurationChange = async (id: string, duration: number) => {
     // Update local state immediately
@@ -350,6 +448,7 @@ export const StoryboardPhase = ({
     modelKey,
     freesoundId,
     tags,
+    metadata,
   }: {
     url: string;
     source: "generated" | "freesound" | "uploaded";
@@ -361,6 +460,7 @@ export const StoryboardPhase = ({
     modelKey?: string;
     freesoundId?: string;
     tags?: string[];
+    metadata?: Record<string, unknown>;
   }) => {
     if (!projectId || !url) return;
     try {
@@ -377,11 +477,12 @@ export const StoryboardPhase = ({
           : totalDuration > 0
             ? totalDuration
             : 30;
-      const metadata: Record<string, unknown> = {
+      const metadataPayload: Record<string, unknown> = {
         role: "project-bgm",
         ...(attribution ? { attribution } : {}),
         ...(freesoundId ? { freesoundId } : {}),
         ...(Array.isArray(tags) && tags.length > 0 ? { tags } : {}),
+        ...(metadata ?? {}),
       };
       if (projectBgmAsset) {
         await updateAudioAsset({
@@ -397,7 +498,7 @@ export const StoryboardPhase = ({
           timelineEnd: safeDuration,
           metadata: {
             ...(projectBgmAsset.metadata ?? {}),
-            ...metadata,
+            ...metadataPayload,
           },
         });
       } else {
@@ -413,7 +514,7 @@ export const StoryboardPhase = ({
           modelKey,
           timelineStart: 0,
           timelineEnd: safeDuration,
-          metadata,
+          metadata: metadataPayload,
         });
       }
       console.log("[StoryboardPhase] Background music applied", {
@@ -438,16 +539,73 @@ export const StoryboardPhase = ({
     const trimmedPrompt =
       musicPrompt.trim() || "cinematic uplifting background music";
     const durationHint = Math.min(Math.max(totalDuration, 15), 90);
+    const durationForMusicGen = Math.max(
+      10,
+      Math.round(
+        musicDurationSeconds > 0 ? musicDurationSeconds : durationHint,
+      ),
+    );
+    let negativePromptArg: string | undefined;
+    let seedArg: number | undefined;
+    let historyPromptArg: string | null | undefined;
+    let textTempArg: number | undefined;
+    let waveformTempArg: number | undefined;
+    const payload: MusicGenerationOptions = {
+      prompt: trimmedPrompt,
+      model: musicModel,
+    };
+    if (musicModel === "musicgen") {
+      payload.duration = durationForMusicGen;
+    } else if (musicModel === "lyria-2") {
+      const negative = musicNegativePrompt.trim();
+      if (negative.length > 0) {
+        payload.negative_prompt = negative;
+        negativePromptArg = negative;
+      }
+      const seedValue = Number(musicSeed);
+      if (
+        musicSeed.trim().length > 0 &&
+        Number.isFinite(seedValue)
+      ) {
+        payload.seed = seedValue;
+        seedArg = seedValue;
+      }
+    } else if (musicModel === "bark") {
+      const history = barkHistoryPrompt.trim();
+      historyPromptArg = history.length > 0 ? history : null;
+      payload.history_prompt = historyPromptArg;
+      textTempArg = Number.isFinite(barkTextTemp) ? barkTextTemp : 0.7;
+      payload.text_temp = textTempArg;
+      waveformTempArg = Number.isFinite(barkWaveformTemp)
+        ? barkWaveformTemp
+        : 0.7;
+      payload.waveform_temp = waveformTempArg;
+    }
+    const metadata: Record<string, unknown> = {
+      model: musicModel,
+    };
+    if (negativePromptArg) {
+      metadata.negative_prompt = negativePromptArg;
+    }
+    if (typeof seedArg === "number") {
+      metadata.seed = seedArg;
+    }
+    if (historyPromptArg !== undefined) {
+      metadata.history_prompt = historyPromptArg;
+    }
+    if (typeof textTempArg === "number") {
+      metadata.text_temp = textTempArg;
+    }
+    if (typeof waveformTempArg === "number") {
+      metadata.waveform_temp = waveformTempArg;
+    }
     setIsGeneratingMusic(true);
     setMusicGenerationError(null);
     try {
       const response = await fetch("/api/generate-music", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: trimmedPrompt,
-          durationSeconds: durationHint,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await response.json();
       if (!response.ok || !data.track?.audioUrl) {
@@ -466,6 +624,7 @@ export const StoryboardPhase = ({
         durationSeconds: trackDuration,
         provider: "replicate",
         modelKey: typeof data.modelKey === "string" ? data.modelKey : undefined,
+        metadata,
       });
     } catch (error) {
       setMusicGenerationError(
@@ -1124,11 +1283,127 @@ export const StoryboardPhase = ({
               <Sparkles className="w-4 h-4" />
               Generate with AI
             </h4>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Model</label>
+              <Select
+                value={musicModel}
+                onValueChange={(value) =>
+                  setMusicModel(value as MusicGenerationModel)
+                }
+              >
+                <SelectTrigger className="w-full sm:w-72">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MUSIC_MODEL_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex flex-col">
+                        <span>{option.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {option.description}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Textarea
               value={musicPrompt}
               onChange={(e) => setMusicPrompt(e.target.value)}
-              placeholder="Describe the mood, instruments, or tempo you want..."
+              placeholder={musicPromptPlaceholder}
             />
+            {musicModel === "lyria-2" && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Negative prompt
+                  </label>
+                  <Input
+                    value={musicNegativePrompt}
+                    onChange={(e) => setMusicNegativePrompt(e.target.value)}
+                    placeholder="e.g., vocals, busy drums"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Seed (optional)
+                  </label>
+                  <Input
+                    type="number"
+                    value={musicSeed}
+                    onChange={(e) => setMusicSeed(e.target.value)}
+                    placeholder="Randomized if blank"
+                  />
+                </div>
+              </div>
+            )}
+            {musicModel === "musicgen" && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Duration</span>
+                  <span className="text-muted-foreground">
+                    {musicDurationSeconds}s (recommended: {recommendedMusicDuration}s)
+                  </span>
+                </div>
+                <Slider
+                  value={[musicDurationSeconds]}
+                  min={10}
+                  max={90}
+                  step={5}
+                  onValueChange={(value) => {
+                    setMusicDurationLocked(true);
+                    setMusicDurationSeconds(value[0]);
+                  }}
+                />
+              </div>
+            )}
+            {musicModel === "bark" && (
+              <div className="grid gap-2">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    Voice preset (history prompt)
+                  </label>
+                  <Input
+                    value={barkHistoryPrompt}
+                    onChange={(e) => setBarkHistoryPrompt(e.target.value)}
+                    placeholder="Leave blank for default Bark voice"
+                  />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">
+                      Text temperature
+                    </label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      max={1.5}
+                      step={0.05}
+                      value={barkTextTemp}
+                      onChange={(e) =>
+                        setBarkTextTemp(Number(e.target.value) || 0.7)
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">
+                      Waveform temperature
+                    </label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      max={1.5}
+                      step={0.05}
+                      value={barkWaveformTemp}
+                      onChange={(e) =>
+                        setBarkWaveformTemp(Number(e.target.value) || 0.7)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
             {musicGenerationError && (
               <p className="text-xs text-destructive">{musicGenerationError}</p>
             )}

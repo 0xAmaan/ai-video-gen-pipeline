@@ -14,6 +14,9 @@ export type AudioCapability =
   | "music-generation"
   | "stem-output"
   | "prompt-audio"
+  | "text_to_audio"
+  | "negative_prompt"
+  | "high_fidelity"
   | "voice-cloning"
   | "ssml"
   | "emotion-control"
@@ -59,6 +62,7 @@ const withEnvOverride = (
 
 const MUSICGEN_DEFAULT_MODEL =
   "meta/musicgen:b05b1dff1d8c6dc63d14b0cdb42135378dcb87f6373b0d3d341ede46e59e2b38";
+const LYRIA2_DEFAULT_MODEL = "google/lyria-2";
 const RIFFUSION_DEFAULT_MODEL =
   "riffusion/riffusion:8cf61ea6c56afd61d8f5b9ffd14d7c216c0a93844ce2d82ac1c9ecc9c7f24e05";
 const BARK_DEFAULT_MODEL =
@@ -68,6 +72,40 @@ const MINIMAX_SPEECH_DEFAULT_MODEL =
 
 export const AUDIO_MODELS: Record<string, AudioModel> = {
   // --- Music generation (Replicate) ---
+  "lyria-2": {
+    id: withEnvOverride(
+      process.env.REPLICATE_LYRIA2_MODEL,
+      LYRIA2_DEFAULT_MODEL,
+    ),
+    name: "Google Lyria 2",
+    kind: "music_generation",
+    vendor: "replicate",
+    capabilities: [
+      "music-generation",
+      "prompt-audio",
+      "text_to_audio",
+      "negative_prompt",
+      "high_fidelity",
+    ],
+    bestFor: [
+      "high-fidelity underscores",
+      "premium product launches",
+      "music cues that require negative prompt control",
+    ],
+    estimatedCost: 0.0001,
+    costUnit: "per_second_output",
+    latencySeconds: 10,
+    maxDurationSeconds: 30,
+    outputFormats: ["wav"],
+    defaultParams: {
+      prompt: "",
+      negative_prompt: "",
+      seed: undefined,
+    },
+    notes:
+      "48kHz stereo output with SynthID watermarking. Best choice for polished background cues.",
+    docsUrl: "https://replicate.com/google/lyria-2",
+  },
   "musicgen-large": {
     id: withEnvOverride(
       process.env.REPLICATE_MUSICGEN_MODEL ??
@@ -138,7 +176,9 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     maxDurationSeconds: 20,
     outputFormats: ["wav"],
     defaultParams: {
-      temperature: 0.7,
+      history_prompt: null,
+      text_temp: 0.7,
+      waveform_temp: 0.7,
     },
     notes:
       "Hybrid speech + music model. Useful for creative audio beds or stylized narration with background layers.",
@@ -218,6 +258,34 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
       "Current production narrator. Runs on Replicate using MiniMax Speech HD for neutral English voices.",
     docsUrl: "https://replicate.com/minimax/speech-02-hd",
   },
+  "bark-voice": {
+    id: withEnvOverride(
+      process.env.REPLICATE_BARK_MODEL,
+      BARK_DEFAULT_MODEL,
+    ),
+    name: "Bark Hybrid Voice",
+    kind: "voice_synthesis",
+    vendor: "replicate",
+    capabilities: ["voice-cloning", "music-generation", "sound-effects"],
+    bestFor: [
+      "narration with sound effects",
+      "stylized dialogue",
+      "audio notes that blend speech and music",
+    ],
+    estimatedCost: 0.05,
+    costUnit: "per request",
+    latencySeconds: 12,
+    maxDurationSeconds: 20,
+    outputFormats: ["wav"],
+    defaultParams: {
+      history_prompt: null,
+      text_temp: 0.7,
+      waveform_temp: 0.7,
+    },
+    notes:
+      "Suno Bark via Replicate. Accepts inline audio direction tags like [music], [laughter], or [applause] for hybrid delivery.",
+    docsUrl: "https://replicate.com/suno-ai/bark",
+  },
 
   // --- Stock audio / sound effects (Freesound) ---
   "freesound-music-library": {
@@ -263,7 +331,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
 
 };
 
-export const DEFAULT_MUSIC_MODEL = "musicgen-large";
+export const DEFAULT_MUSIC_MODEL = "lyria-2";
 export const DEFAULT_VOICE_MODEL = "elevenlabs-multilingual-v2";
 
 export function getAudioModel(key: string): AudioModel {
@@ -299,6 +367,11 @@ export interface MusicGenerationRequest {
   referenceAudioUrl?: string;
   style?: string;
   tempo?: string;
+  negativePrompt?: string;
+  seed?: number;
+  historyPrompt?: string | null;
+  textTemperature?: number;
+  waveformTemperature?: number;
 }
 
 export interface AudioTrackResult {
@@ -323,6 +396,9 @@ export interface VoiceSynthesisRequest {
   pitch?: number;
   ssml?: string;
   outputFormat?: string;
+  historyPrompt?: string | null;
+  textTemp?: number;
+  waveformTemp?: number;
 }
 
 export interface VoiceSynthesisResult extends AudioTrackResult {

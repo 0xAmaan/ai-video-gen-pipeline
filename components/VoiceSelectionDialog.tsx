@@ -29,6 +29,9 @@ import { AudioPlayer } from "@/components/audio/AudioPlayer";
 
 type VoiceProvider = "replicate" | "elevenlabs";
 
+const DEFAULT_REPLICATE_MODEL_KEY = "replicate-minimax-tts";
+const BARK_MODEL_KEY = "bark-voice";
+
 const PROVIDER_OPTIONS: Array<{
   id: VoiceProvider;
   label: string;
@@ -36,8 +39,8 @@ const PROVIDER_OPTIONS: Array<{
 }> = [
   {
     id: "replicate",
-    label: "Replicate (MiniMax)",
-    defaultModel: "replicate-minimax-tts",
+    label: "Replicate Voices",
+    defaultModel: DEFAULT_REPLICATE_MODEL_KEY,
   },
   {
     id: "elevenlabs",
@@ -122,7 +125,7 @@ export const VoiceSelectionDialog = ({
     defaultVoiceModelKey ??
       PROVIDER_OPTIONS.find((option) => option.id === defaultVoiceProvider)
         ?.defaultModel ??
-      "replicate-minimax-tts",
+      DEFAULT_REPLICATE_MODEL_KEY,
   );
   const [voiceId, setVoiceId] = useState<string>(
     defaultVoiceId || initialReplicateVoice,
@@ -155,7 +158,7 @@ export const VoiceSelectionDialog = ({
           PROVIDER_OPTIONS.find(
             (option) => option.id === defaultVoiceProvider,
           )?.defaultModel ??
-          "replicate-minimax-tts",
+          DEFAULT_REPLICATE_MODEL_KEY,
       );
       setVoiceId(defaultVoiceId || initialReplicateVoice);
       setVoiceName(
@@ -302,6 +305,8 @@ export const VoiceSelectionDialog = ({
             emotion,
             speed,
             pitch,
+            voiceProvider,
+            voiceModelKey,
           }),
         });
         if (!response.ok) {
@@ -377,16 +382,47 @@ export const VoiceSelectionDialog = ({
       ));
     }
 
-    return Object.values(MINIMAX_VOICES).map((voice) => (
+    const barkSelected = voiceModelKey === BARK_MODEL_KEY;
+    const barkCard = (
+      <div
+        key="bark-hybrid"
+        className={cn(
+          "border rounded-lg p-4 transition-colors cursor-pointer",
+          barkSelected ? "border-primary bg-primary/5" : "border-border",
+        )}
+        onClick={() => {
+          setVoiceModelKey(BARK_MODEL_KEY);
+          setVoiceId("bark_en_default");
+          setVoiceName("Bark Hybrid Voice");
+        }}
+      >
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold">Bark Hybrid Voice</p>
+            <span className="text-xs text-muted-foreground">
+              Speech + ambient cues
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Ideal for narration that blends dialogue with subtle music beds or
+            foley. Use inline tags like <code>[music]</code>,{" "}
+            <code>[laughs]</code>, or <code>[sighs]</code> to steer the mix.
+          </p>
+        </div>
+      </div>
+    );
+
+    const minimaxCards = Object.values(MINIMAX_VOICES).map((voice) => (
       <div
         key={voice.id}
         className={cn(
           "border rounded-lg p-4 transition-colors cursor-pointer",
-          voiceId === voice.id
+          !barkSelected && voiceId === voice.id
             ? "border-primary bg-primary/5"
             : "border-border",
         )}
         onClick={() => {
+          setVoiceModelKey(DEFAULT_REPLICATE_MODEL_KEY);
           setVoiceId(voice.id);
           setVoiceName(voice.name);
         }}
@@ -404,6 +440,8 @@ export const VoiceSelectionDialog = ({
         </div>
       </div>
     ));
+
+    return [barkCard, ...minimaxCards];
   };
 
   return (
