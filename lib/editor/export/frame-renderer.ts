@@ -1,4 +1,7 @@
 import type { Clip, MediaAssetMeta, Sequence } from "../types";
+import { renderTransition } from "../transitions/renderer";
+import type { TransitionType } from "../transitions/presets";
+import { getEasingFunction } from "../transitions/presets";
 
 export type FrameCallback = (frameData: ImageData, timestamp: number) => void;
 
@@ -27,6 +30,7 @@ export class FrameRenderer {
     onFrame: FrameCallback,
     onProgress?: (progress: number) => void,
   ): Promise<void> {
+    this.currentSequence = sequence;
     const frameDuration = 1 / fps;
     const totalFrames = Math.ceil(sequence.duration * fps);
 
@@ -115,6 +119,28 @@ export class FrameRenderer {
 
     if (!clip) return;
 
+    // Check for transitions
+    const transitionInfo = this.getTransitionInfo(clip, timestamp);
+
+    if (transitionInfo) {
+      // Render transition between current and next clip
+      await this.drawTransitionFrame(
+        clip,
+        transitionInfo.nextClip,
+        transitionInfo.progress,
+        transitionInfo.type,
+        timestamp,
+      );
+    } else {
+      // Regular single-clip frame
+      await this.drawSingleClipFrame(clip, timestamp);
+    }
+  }
+
+  private async drawSingleClipFrame(
+    clip: Clip,
+    timestamp: number,
+  ): Promise<void> {
     const video = this.videoElements.get(clip.mediaId);
     if (!video) return;
 
@@ -138,6 +164,8 @@ export class FrameRenderer {
 
     // Draw with aspect ratio preservation (same as PreviewRenderer)
     if (video.videoWidth > 0 && video.videoHeight > 0) {
+      const canvasWidth = this.canvas.width;
+      const canvasHeight = this.canvas.height;
       const videoAspect = video.videoWidth / video.videoHeight;
       const canvasAspect = canvasWidth / canvasHeight;
 
@@ -159,6 +187,100 @@ export class FrameRenderer {
       this.ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
     }
   }
+
+  private async drawTransitionFrame(
+    currentClip: Clip,
+    nextClip: Clip,
+    progress: number,
+    transitionType: string,
+    timestamp: number,
+  ): Promise<void> {
+    const currentVideo = this.videoElements.get(currentClip.mediaId);
+    const nextVideo = this.videoElements.get(nextClip.mediaId);
+
+    if (!currentVideo || !nextVideo) {
+      // Fallback to single clip
+      await this.drawSingleClipFrame(currentClip, timestamp);
+      return;
+    }
+
+    // Seek both videos
+    const currentTime = timestamp - currentClip.start + currentClip.trimStart;
+    const nextTime = timestamp - nextClip.start + nextClip.trimStart;
+
+    await Promise.all([
+      this.seekVideo(currentVideo, currentTime),
+      this.seekVideo(nextVideo, Math.max(nextClip.trimStart, nextTime)),
+    ]);
+
+    // Use transition renderer
+    renderTransition(transitionType as TransitionType, {
+      ctx: this.ctx,
+      width: this.canvas.width,
+      height: this.canvas.height,
+      fromFrame: currentVideo,
+      toFrame: nextVideo,
+      progress,
+    });
+  }
+
+  private async seekVideo(
+    video: HTMLVideoElement,
+    targetTime: number,
+  ): Promise<void> {
+    if (Math.abs(video.currentTime - targetTime) > 0.001) {
+      video.currentTime = targetTime;
+      await new Promise<void>((resolve) => {
+        const onSeeked = () => {
+          video.removeEventListener("seeked", onSeeked);
+          resolve();
+        };
+        video.addEventListener("seeked", onSeeked);
+        setTimeout(resolve, 100);
+      });
+    }
+  }
+
+  private getTransitionInfo(
+    clip: Clip,
+    timestamp: number,
+  ): { nextClip: Clip; progress: number; type: string } | null {
+    if (!clip.transitions || clip.transitions.length === 0) return null;
+
+    const transition = clip.transitions[0];
+    const clipEnd = clip.start + clip.duration;
+    const transitionStart = clipEnd - transition.duration;
+
+    if (timestamp >= transitionStart && timestamp <= clipEnd) {
+      // Find next clip
+      const sequence = this.currentSequence;
+      if (!sequence) return null;
+
+      const videoTrack = sequence.tracks.find((t) => t.kind === "video");
+      if (!videoTrack) return null;
+
+      const clipIndex = videoTrack.clips.findIndex((c) => c.id === clip.id);
+      if (clipIndex < 0 || clipIndex >= videoTrack.clips.length - 1) return null;
+
+      const nextClip = videoTrack.clips[clipIndex + 1];
+      const elapsed = timestamp - transitionStart;
+      const rawProgress = elapsed / transition.duration;
+
+      // Apply easing function (reconstruct from string identifier)
+      const easingFn = getEasingFunction(transition.easing);
+      const progress = easingFn(rawProgress);
+
+      return {
+        nextClip,
+        progress: Math.max(0, Math.min(1, progress)),
+        type: transition.type,
+      };
+    }
+
+    return null;
+  }
+
+  private currentSequence?: Sequence;
 
   private resolveClip(sequence: Sequence, time: number): Clip | undefined {
     for (const track of sequence.tracks) {

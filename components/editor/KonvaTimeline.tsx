@@ -362,20 +362,26 @@ const KonvaTimelineComponent = ({
 
   const handleClipDragEnd = useCallback(
     (clipId: string) => {
+      // Calculate reordered clips outside of setState
+      let reorderedClips: Clip[] = [];
       setVirtualClipOrder((prevOrder) => {
         if (!draggingClipId) return prevOrder;
 
         // Reflow clips to be sequential
         let cumulativeTime = 0;
-        const reorderedClips = prevOrder.map((clip) => {
+        reorderedClips = prevOrder.map((clip) => {
           const reflowedClip = { ...clip, start: cumulativeTime };
           cumulativeTime += clip.duration;
           return reflowedClip;
         });
 
-        onClipReorder(reorderedClips);
         return prevOrder;
       });
+
+      // Call onClipReorder outside of setState to avoid update-during-render error
+      if (reorderedClips.length > 0) {
+        onClipReorder(reorderedClips);
+      }
 
       setDraggingClipId(null);
       setDraggedClipX(0);
