@@ -15,4 +15,8 @@ export interface Scene {
   lipsyncVideoUrl?: string;
   lipsyncStatus?: LipsyncStatus;
   lipsyncPredictionId?: string;
+  backgroundMusicUrl?: string;
+  backgroundMusicSource?: "generated" | "freesound" | "uploaded";
+  backgroundMusicPrompt?: string;
+  backgroundMusicMood?: string;
 }

@@ -54,6 +54,7 @@ const createTrack = (id: string, kind: Track["kind"]): Track => ({
   allowOverlap: kind !== "video",
   locked: false,
   muted: false,
+  volume: 1,
   clips: [],
 });
 
@@ -214,6 +215,7 @@ export interface ProjectStoreState {
     reorderClips: (clips: Clip[]) => void;
     setClipVolume: (clipId: string, volume: number) => void;
     toggleTrackMute: (trackId: string) => void;
+    setTrackVolume: (trackId: string, volume: number) => void;
     undo: () => void;
     redo: () => void;
   };
@@ -555,6 +557,22 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           const track = sequence.tracks.find((t) => t.id === trackId);
           if (!track) return state;
           track.muted = !track.muted;
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      setTrackVolume: (trackId, volume) => {
+        set((state) => {
+          if (!state.project) return state;
+          const nextVolume = Math.max(0, Math.min(1, volume));
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const track = sequence.tracks.find((t) => t.id === trackId);
+          if (!track) return state;
+          track.volume = nextVolume;
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
           persist(snapshot);

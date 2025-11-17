@@ -29,3 +29,14 @@ export interface AudioAsset {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface MusicGenerationOptions {
+  prompt: string;
+  model?: "musicgen" | "lyria-2" | "bark";
+  duration?: number;
+  negative_prompt?: string;
+  seed?: number;
+  history_prompt?: string | null;
+  text_temp?: number;
+  waveform_temp?: number;
+}

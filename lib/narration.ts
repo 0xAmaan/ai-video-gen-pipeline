@@ -7,6 +7,7 @@ import {
   type MiniMaxVoiceId,
 } from "./voice-selection";
 import { extractReplicateUrl } from "./replicate";
+import { getAudioModel } from "@/lib/audio-models";
 
 export const MAX_NARRATION_CHARACTERS = 10000;
 
@@ -109,7 +110,12 @@ export async function synthesizeNarrationAudio({
     pitch,
   });
 
-  const output = await getReplicateClient().run("minimax/speech-02-hd", {
+  const minimaxModel = getAudioModel("replicate-minimax-tts");
+  const minimaxModelId =
+    minimaxModel.id as
+      | `${string}/${string}`
+      | `${string}/${string}:${string}`;
+  const output = await getReplicateClient().run(minimaxModelId, {
     input: {
       text: safeText,
       voice_id: normalized.voiceId,

@@ -12,7 +12,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 const IntegratedStandaloneEditorPage = () => {
   const params = useParams();
   const projectId = params?.projectId as string;
-  const { project, scenes, clips, isLoading } = useProjectData(
+  const { project, scenes, clips, audioAssets, isLoading } = useProjectData(
     projectId as Id<"videoProjects">,
   );
   const actions = useProjectStore((state) => state.actions);
@@ -24,8 +24,9 @@ const IntegratedStandaloneEditorPage = () => {
       project,
       clips,
       scenes,
+      audioAssets,
     });
-  }, [project, clips, scenes]);
+  }, [project, clips, scenes, audioAssets]);
 
   useEffect(() => {
     actions.reset();
@@ -56,7 +57,10 @@ const IntegratedStandaloneEditorPage = () => {
           </p>
         </div>
       ) : (
-        <StandaloneEditorApp autoHydrate={false} />
+        <StandaloneEditorApp
+          autoHydrate={false}
+          projectId={projectId}
+        />
       )}
     </PhaseGuard>
   );

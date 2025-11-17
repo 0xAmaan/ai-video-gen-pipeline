@@ -1,21 +1,20 @@
 "use server";
 
-import { apiResponse, apiError } from "@/lib/api-response";
-import { getDemoModeFromHeaders } from "@/lib/demo-mode";
-import { getFlowTracker } from "@/lib/flow-tracker";
-import { AUDIO_MODELS, type AudioVendor } from "@/lib/audio-models";
+import { NextResponse } from "next/server";
+import {
+  AUDIO_MODELS,
+  type AudioVendor,
+} from "@/lib/audio-models";
 import { getVoiceAdapter } from "@/lib/audio-provider-factory";
-import { mockElevenLabsVoice, mockDelay } from "@/lib/demo-mocks/music";
 
-const isAudioModelKey = (value: unknown): value is keyof typeof AUDIO_MODELS =>
+const isAudioModelKey = (
+  value: unknown,
+): value is keyof typeof AUDIO_MODELS =>
   typeof value === "string" && value in AUDIO_MODELS;
 
 const ELEVENLABS_VENDOR: AudioVendor = "elevenlabs";
 
 export async function POST(req: Request) {
-  const flowTracker = getFlowTracker();
-  const demoMode = getDemoModeFromHeaders(req.headers);
-
   try {
     const {
       text,
@@ -28,47 +27,19 @@ export async function POST(req: Request) {
       modelKey,
     } = await req.json();
 
-    flowTracker.trackAPICall("POST", "/api/generate-voice-elevenlabs", {
-      textLength: text?.length,
-      voiceId,
-      emotion,
-      speed,
-      pitch,
-      demoMode,
-    });
-
     const hasText = typeof text === "string" && text.trim().length > 0;
     const hasSsml = typeof ssml === "string" && ssml.trim().length > 0;
     if (!hasText && !hasSsml) {
-      return apiError("text or ssml is required", 400);
-    }
-
-    // Demo mode check
-    if (demoMode === "no-cost") {
-      flowTracker.trackDecision(
-        "Check demo mode",
-        "no-cost",
-        "Using mock ElevenLabs voice",
+      return NextResponse.json(
+        { error: "text or ssml is required" },
+        { status: 400 },
       );
-      await mockDelay(600);
-      const mockVoice = mockElevenLabsVoice(text || ssml || "", voiceId);
-      return apiResponse({
-        success: true,
-        modelKey: "mock-elevenlabs",
-        ...mockVoice,
-      });
     }
 
     const adapter = getVoiceAdapter({
       vendor: ELEVENLABS_VENDOR,
       modelKey: isAudioModelKey(modelKey) ? modelKey : undefined,
     });
-
-    flowTracker.trackDecision(
-      "Select voice adapter",
-      adapter.providerKey,
-      `Using ${adapter.providerKey} for voice synthesis`,
-    );
 
     const result = await adapter.synthesizeVoice({
       text: hasText ? text.trim() : "",
@@ -80,7 +51,7 @@ export async function POST(req: Request) {
       outputFormat: typeof outputFormat === "string" ? outputFormat : undefined,
     });
 
-    return apiResponse({
+    return NextResponse.json({
       success: true,
       modelKey: adapter.providerKey,
       audioUrl: result.audioUrl,
@@ -91,10 +62,13 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("generate-voice-elevenlabs error:", error);
-    return apiError(
-      "Failed to generate voice via ElevenLabs",
-      500,
-      error instanceof Error ? error.message : "Unknown error",
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to generate voice via ElevenLabs",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
     );
   }
 }

@@ -1,76 +1,64 @@
 import { generateObject } from "ai";
+import { groq } from "@ai-sdk/groq";
+import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import Replicate from "replicate";
 import { STORYBOARD_SYSTEM_PROMPT, buildStoryboardPrompt } from "@/lib/prompts";
 import { IMAGE_MODELS } from "@/lib/image-models";
+import {
+  AUDIO_MODELS,
+  DEFAULT_VOICE_MODEL,
+  type AudioVendor,
+} from "@/lib/audio-models";
 import { extractReplicateUrl } from "@/lib/replicate";
-import { synthesizeNarrationAudio } from "@/lib/narration";
+import { sanitizeNarrationText } from "@/lib/narration";
 import { generateVoiceSelection } from "@/lib/server/voice-selection";
+import { getVoiceAdapter } from "@/lib/audio-provider-factory";
 import { getConvexClient } from "@/lib/server/convex";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { getFlowTracker } from "@/lib/flow-tracker";
-import { getDemoModeFromHeaders } from "@/lib/demo-mode";
-import { mockSceneGeneration, mockDelay } from "@/lib/demo-mocks";
-import {
-  selectImageModel,
-  explainModelSelection,
-} from "@/lib/select-image-model";
 import { apiResponse, apiError } from "@/lib/api-response";
-import { createLLMProvider, validateAPIKeys } from "@/lib/server/api-utils";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { getFlowTracker } from "@/lib/flow-tracker";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
 
+type VoiceVendor = Extract<AudioVendor, "replicate" | "elevenlabs">;
+
+const VOICE_VENDORS: VoiceVendor[] = ["replicate", "elevenlabs"];
+
+const isVoiceVendor = (value: unknown): value is VoiceVendor =>
+  typeof value === "string" && (VOICE_VENDORS as string[]).includes(value);
+
+const isAudioModelKey = (value: unknown): value is keyof typeof AUDIO_MODELS =>
+  typeof value === "string" && value in AUDIO_MODELS;
+
+const DEFAULT_REPLICATE_VOICE_MODEL =
+  "replicate-minimax-tts" as keyof typeof AUDIO_MODELS;
+
+const DEFAULT_ELEVENLABS_VOICE_MODEL = (DEFAULT_VOICE_MODEL ??
+  "elevenlabs-multilingual-v2") as keyof typeof AUDIO_MODELS;
+
 async function generateSceneImage(
   scene: GeneratedScene,
   modelConfig: ImageModelConfig,
-  style?: string,
+  style: string,
 ) {
   console.log(`🎬 Scene ${scene.sceneNumber}: Using ${modelConfig.name}`);
   console.log(`   Prompt: ${scene.visualPrompt.substring(0, 150)}...`);
 
-  // Prepare input parameters based on model
-  const input: any = {
-    prompt: scene.visualPrompt,
-    aspect_ratio: "16:9",
-    num_images: 1,
-  };
-
-  // Add Leonardo Phoenix specific parameters
-  if (modelConfig.id === "leonardoai/phoenix-1.0") {
-    input.generation_mode = "quality";
-    input.contrast = "medium";
-    input.prompt_enhance = false;
-    if (style) {
-      input.style = style;
-    }
-  }
-
-  // Add FLUX specific parameters
-  if (modelConfig.id.includes("flux")) {
-    input.num_outputs = 1;
-    if (modelConfig.id.includes("schnell")) {
-      input.num_inference_steps = 4;
-    }
-  }
-
-  // Add SDXL specific parameters
-  if (modelConfig.id.includes("sdxl")) {
-    input.num_inference_steps = 25;
-    input.guidance_scale = 7.5;
-  }
-
-  // Add consistent-character specific parameters
-  if (modelConfig.id.includes("consistent-character")) {
-    input.guidance_scale = 7.5;
-    input.num_inference_steps = 50;
-    input.seed = -1;
-  }
-
   const output = await replicate.run(modelConfig.id as `${string}/${string}`, {
-    input,
+    input: {
+      prompt: scene.visualPrompt,
+      aspect_ratio: "16:9",
+      generation_mode: "quality",
+      contrast: "medium",
+      num_images: 1,
+      prompt_enhance: false,
+      style,
+    },
   });
 
   const imageUrl = extractReplicateUrl(
@@ -78,6 +66,7 @@ async function generateSceneImage(
     `scene-${scene.sceneNumber}-image`,
   );
 
+  console.log(`   ✅ Scene ${scene.sceneNumber} image URL:`, imageUrl);
   return imageUrl;
 }
 
@@ -102,21 +91,13 @@ type ImageModelConfig = (typeof IMAGE_MODELS)[keyof typeof IMAGE_MODELS];
 
 export async function POST(req: Request) {
   const flowTracker = getFlowTracker();
-  const startTime = Date.now();
+  const demoMode = getDemoModeFromHeaders(req.headers);
 
   try {
-    const { projectId, prompt, responses, imageModel, textModel } =
-      await req.json();
+    const { projectId, prompt, responses } = await req.json();
 
-    // Get demo mode from headers
-    const demoMode = getDemoModeFromHeaders(req.headers);
-    const shouldMock = demoMode === "no-cost";
-
-    // Track API call
     flowTracker.trackAPICall("POST", "/api/generate-storyboard", {
       projectId,
-      textModel,
-      imageModel,
       demoMode,
     });
 
@@ -129,128 +110,149 @@ export async function POST(req: Request) {
     }
 
     const projectConvexId = projectId as Id<"videoProjects">;
+    const convex = await getConvexClient();
 
-    // If no-cost mode, return instant mock data
-    if (shouldMock) {
-      flowTracker.trackDecision(
-        "Check demo mode",
-        "no-cost",
-        "Using mock storyboard generation - zero API costs",
+    // Step 1: Generate scene descriptions using Groq
+    const hasGroqKey = !!process.env.GROQ_API_KEY;
+    const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
+
+    if (!hasGroqKey && !hasOpenAIKey) {
+      console.error(
+        "❌ No API keys found! Set GROQ_API_KEY or OPENAI_API_KEY in .env.local",
       );
-      await mockDelay(300);
-      const mockScenes = mockSceneGeneration(prompt, 3);
-      flowTracker.trackTiming(
-        "Mock storyboard generation",
-        Date.now() - startTime,
-        startTime,
+      return apiError(
+        "No API keys configured",
+        500,
+        "Please set GROQ_API_KEY or OPENAI_API_KEY in your .env.local file",
       );
-      return apiResponse({
-        success: true,
-        scenes: mockScenes,
-        modelInfo: {
-          modelKey: "mock-model",
-          modelName: "Mock Image Generator",
-          style: "mock",
-          estimatedCost: 0,
-          reason: "Using mock data in no-cost mode",
-        },
-        voiceSelection: {
-          voiceId: "mock-voice-id",
-          voiceName: "Mock Voice",
-          reasoning: "Mock voice for demo mode",
-          emotion: "neutral",
-          speed: 1.0,
-          pitch: 0,
-        },
-      });
     }
 
-    // Validate API keys
-    const keyValidationError = validateAPIKeys();
-    if (keyValidationError) {
-      return keyValidationError;
-    }
+    const modelToUse = hasGroqKey
+      ? groq("openai/gpt-oss-20b")
+      : openai("gpt-4o-mini");
 
-    // Generate scene descriptions using LLM provider (with optional model selection)
-    const { provider, providerName } = createLLMProvider(textModel);
-
-    flowTracker.trackDecision(
-      "Select text model",
-      providerName,
-      `Using ${providerName} for scene generation`,
+    console.log(
+      `🔧 Scene generation model: ${hasGroqKey ? "Groq (gpt-oss-20b) - FAST ⚡" : "OpenAI (gpt-4o-mini) - SLOWER 🐌"}`,
     );
 
     const { object: sceneData } = await generateObject({
-      model: provider,
+      model: modelToUse,
       schema: sceneSchema,
       system: STORYBOARD_SYSTEM_PROMPT,
       prompt: buildStoryboardPrompt(prompt, responses),
       maxRetries: 3,
     });
 
-    // Step 2: Select voice for narration
-    const voiceSelection = await generateVoiceSelection(prompt, responses);
-
-    try {
-      const convex = await getConvexClient();
-      await convex.mutation(api.video.saveProjectVoiceSettings, {
+    const existingVoiceSettings = await convex
+      .query(api.video.getProjectVoiceSettings, {
         projectId: projectConvexId,
-        selectedVoiceId: voiceSelection.voiceId,
-        selectedVoiceName: voiceSelection.voiceName,
-        voiceReasoning: voiceSelection.reasoning,
-        emotion: voiceSelection.emotion,
-        speed: voiceSelection.speed,
-        pitch: voiceSelection.pitch,
+      })
+      .catch((error) => {
+        console.warn("Unable to load project voice settings:", error);
+        return null;
       });
-    } catch (error) {
-      console.warn("Unable to persist voice selection to Convex:", error);
+
+    const resolvedProvider: VoiceVendor =
+      existingVoiceSettings &&
+      isVoiceVendor(existingVoiceSettings.voiceProvider)
+        ? existingVoiceSettings.voiceProvider
+        : "replicate";
+
+    const modelKeyHint =
+      existingVoiceSettings?.voiceModelKey &&
+      isAudioModelKey(existingVoiceSettings.voiceModelKey)
+        ? existingVoiceSettings.voiceModelKey
+        : resolvedProvider === "elevenlabs"
+          ? DEFAULT_ELEVENLABS_VOICE_MODEL
+          : DEFAULT_REPLICATE_VOICE_MODEL;
+
+    const voiceAdapter = getVoiceAdapter({
+      vendor: resolvedProvider,
+      modelKey: modelKeyHint,
+    });
+
+    const resolvedVoiceSelection = existingVoiceSettings
+      ? {
+          voiceId: existingVoiceSettings.selectedVoiceId,
+          voiceName: existingVoiceSettings.selectedVoiceName,
+          emotion: existingVoiceSettings.emotion ?? "auto",
+          speed: existingVoiceSettings.speed ?? 1,
+          pitch: existingVoiceSettings.pitch ?? 0,
+          reasoning:
+            existingVoiceSettings.voiceReasoning ??
+            "Voice previously selected for this project.",
+          providerVoiceId: existingVoiceSettings.providerVoiceId ?? undefined,
+        }
+      : {
+          ...(await generateVoiceSelection(prompt, responses)),
+          providerVoiceId: undefined,
+        };
+
+    if (!existingVoiceSettings) {
+      try {
+        await convex.mutation(api.video.saveProjectVoiceSettings, {
+          projectId: projectConvexId,
+          selectedVoiceId: resolvedVoiceSelection.voiceId,
+          selectedVoiceName: resolvedVoiceSelection.voiceName,
+          voiceReasoning: resolvedVoiceSelection.reasoning,
+          emotion: resolvedVoiceSelection.emotion,
+          speed: resolvedVoiceSelection.speed,
+          pitch: resolvedVoiceSelection.pitch,
+          voiceProvider: resolvedProvider,
+          voiceModelKey: voiceAdapter.providerKey,
+        });
+      } catch (error) {
+        console.warn("Unable to persist voice selection to Convex:", error);
+      }
+    } else if (
+      !existingVoiceSettings.voiceProvider ||
+      !existingVoiceSettings.voiceModelKey
+    ) {
+      try {
+        await convex.mutation(api.video.updateProjectVoiceSettings, {
+          projectId: projectConvexId,
+          selectedVoiceId: resolvedVoiceSelection.voiceId,
+          selectedVoiceName: resolvedVoiceSelection.voiceName,
+          voiceReasoning: resolvedVoiceSelection.reasoning,
+          emotion: resolvedVoiceSelection.emotion,
+          speed: resolvedVoiceSelection.speed,
+          pitch: resolvedVoiceSelection.pitch,
+          voiceProvider: resolvedProvider,
+          voiceModelKey: voiceAdapter.providerKey,
+          providerVoiceId: existingVoiceSettings.providerVoiceId,
+        });
+      } catch (error) {
+        console.warn("Unable to synchronize voice provider metadata:", error);
+      }
     }
 
-    // Step 3: Select image model
-    let modelConfig;
-    let phoenixStyle = "cinematic"; // Default style for Phoenix
-    let selectedModelKey;
+    const baseVoiceRequest = {
+      voiceId:
+        resolvedVoiceSelection.providerVoiceId ??
+        resolvedVoiceSelection.voiceId,
+      emotion: resolvedVoiceSelection.emotion,
+      speed: resolvedVoiceSelection.speed,
+      pitch: resolvedVoiceSelection.pitch,
+    };
 
-    // If imageModel is explicitly provided, use it
-    if (imageModel) {
-      selectedModelKey = imageModel;
-      modelConfig =
-        IMAGE_MODELS[imageModel] || IMAGE_MODELS["leonardo-phoenix"];
+    const responseVoiceSelection = {
+      voiceId: resolvedVoiceSelection.voiceId,
+      voiceName: resolvedVoiceSelection.voiceName,
+      emotion: resolvedVoiceSelection.emotion,
+      speed: resolvedVoiceSelection.speed,
+      pitch: resolvedVoiceSelection.pitch,
+      reasoning: resolvedVoiceSelection.reasoning,
+    };
 
-      flowTracker.trackDecision(
-        "Image model selection",
-        "user-specified",
-        `Using user-selected model: ${modelConfig.name}`,
-      );
-    }
-    // Check if we're in cheap mode - use FLUX Schnell for speed/cost
-    else if (demoMode === "cheap") {
-      selectedModelKey = "flux-schnell";
-      modelConfig = IMAGE_MODELS["flux-schnell"];
+    // Step 2: Select style for Leonardo Phoenix
+    console.log("\n" + "=".repeat(80));
+    console.log("🔍 LEONARDO PHOENIX MODEL SELECTION");
+    console.log("=".repeat(80));
 
-      flowTracker.trackDecision(
-        "Image model selection",
-        "cheap mode",
-        "Using FLUX Schnell for fast/cheap image generation",
-      );
-    }
-    // Real/production mode - use sophisticated selector
-    else {
-      selectedModelKey = selectImageModel(responses || {});
-      modelConfig = IMAGE_MODELS[selectedModelKey];
-      const explanation = explainModelSelection(responses || {});
+    const modelConfig = IMAGE_MODELS["leonardo-phoenix"];
+    let phoenixStyle = "cinematic"; // Default style
 
-      flowTracker.trackModelSelection(
-        modelConfig.name,
-        modelConfig.id,
-        modelConfig.estimatedCost,
-        explanation.reason,
-      );
-    }
-
-    // Apply Phoenix-specific style if Leonardo Phoenix was selected
-    const isLeonardoPhoenix = selectedModelKey === "leonardo-phoenix";
-    if (isLeonardoPhoenix && responses && responses["visual-style"]) {
+    if (responses && responses["visual-style"]) {
       const visualStyle = responses["visual-style"].toLowerCase();
       if (
         visualStyle.includes("documentary") ||
@@ -282,23 +284,18 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`\n${"=".repeat(80)}`);
-    console.log("🔍 IMAGE GENERATION MODEL SELECTION");
-    console.log("=".repeat(80));
     console.log(`   Model: ${modelConfig.name}`);
-    if (isLeonardoPhoenix) {
-      console.log(`   Style: ${phoenixStyle}`);
-    }
+    console.log(`   Style: ${phoenixStyle}`);
     console.log(`   Cost: ~$${modelConfig.estimatedCost}/image`);
-    console.log(`${"=".repeat(80)}\n`);
+    console.log("=".repeat(80) + "\n");
 
-    // Step 4 & 5: Generate images and narration in parallel for each scene
+    // Step 3 & 4: Generate images and narration in parallel for each scene
     const scenesWithMedia = await Promise.all(
       sceneData.scenes.map(async (scene) => {
         const imagePromise = generateSceneImage(
           scene,
           modelConfig,
-          isLeonardoPhoenix ? phoenixStyle : undefined,
+          phoenixStyle,
         ).catch((error) => {
           console.error(
             `Error generating image for scene ${scene.sceneNumber}:`,
@@ -307,60 +304,64 @@ export async function POST(req: Request) {
           return undefined;
         });
 
-        const narrationPromise = synthesizeNarrationAudio({
-          text: scene.narrationText,
-          voiceId: voiceSelection.voiceId,
-          emotion: voiceSelection.emotion,
-          speed: voiceSelection.speed,
-          pitch: voiceSelection.pitch,
-        }).catch((error) => {
-          console.error(
-            `Error generating narration for scene ${scene.sceneNumber}:`,
-            error,
-          );
-          return null;
-        });
+        const sanitizedNarration = sanitizeNarrationText(scene.narrationText);
+        const shouldGenerateNarration =
+          Boolean(sanitizedNarration.text) && Boolean(baseVoiceRequest.voiceId);
+
+        const narrationPromise = shouldGenerateNarration
+          ? voiceAdapter
+              .synthesizeVoice({
+                text: sanitizedNarration.text,
+                voiceId: baseVoiceRequest.voiceId,
+                emotion: baseVoiceRequest.emotion,
+                speed: baseVoiceRequest.speed,
+                pitch: baseVoiceRequest.pitch,
+              })
+              .catch((error) => {
+                console.error(
+                  `Error generating narration for scene ${scene.sceneNumber}:`,
+                  error,
+                );
+                return null;
+              })
+          : Promise.resolve(null);
 
         const [imageUrl, narrationResult] = await Promise.all([
           imagePromise,
           narrationPromise,
         ]);
 
+        const narrationText =
+          sanitizedNarration.text && sanitizedNarration.text.length > 0
+            ? sanitizedNarration.text
+            : scene.narrationText;
+
         return {
           sceneNumber: scene.sceneNumber,
           description: scene.description,
           visualPrompt: scene.visualPrompt,
-          narrationText: narrationResult?.sanitizedText ?? scene.narrationText,
+          narrationText,
           narrationUrl: narrationResult?.audioUrl,
           imageUrl,
           duration: scene.duration,
-          voiceId: narrationResult?.voiceId ?? voiceSelection.voiceId,
-          voiceName: narrationResult?.voiceName ?? voiceSelection.voiceName,
+          voiceId: narrationResult?.voiceId ?? resolvedVoiceSelection.voiceId,
+          voiceName:
+            narrationResult?.voiceName ?? resolvedVoiceSelection.voiceName,
         };
       }),
-    );
-
-    flowTracker.trackTiming(
-      "Total storyboard generation",
-      Date.now() - startTime,
-      startTime,
     );
 
     return apiResponse({
       success: true,
       scenes: scenesWithMedia,
       modelInfo: {
-        modelKey: selectedModelKey,
+        modelKey: "leonardo-phoenix",
         modelName: modelConfig.name,
         style: phoenixStyle,
         estimatedCost: modelConfig.estimatedCost,
-        reason: imageModel
-          ? `Using user-selected ${modelConfig.name}`
-          : demoMode === "cheap"
-            ? `Using FLUX Schnell for fast/cheap development mode`
-            : `Selected ${modelConfig.name}${phoenixStyle ? ` (${phoenixStyle})` : ""} based on project preferences.`,
+        reason: `Selected ${modelConfig.name} (${phoenixStyle}) based on project preferences.`,
       },
-      voiceSelection,
+      voiceSelection: responseVoiceSelection,
     });
   } catch (error) {
     console.error("Error generating storyboard:", error);

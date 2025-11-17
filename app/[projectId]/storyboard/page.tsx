@@ -1,17 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PhaseGuard } from "../_components/PhaseGuard";
 import { useProjectData } from "../_components/useProjectData";
 import { StoryboardPhase } from "@/components/StoryboardPhase";
 import { StoryboardGeneratingPhase } from "@/components/StoryboardGeneratingPhase";
-import { useTextToImageModel, useModelSelectionEnabled } from "@/lib/stores/modelStore";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { Scene } from "@/types/scene";
-import { apiFetch } from "@/lib/api-fetch";
 
 type StoryboardStage =
   | "parsing_prompt"
@@ -26,8 +24,6 @@ const StoryboardPage = () => {
   const router = useRouter();
   const params = useParams();
   const projectId = params?.projectId as string;
-  const selectedImageModel = useTextToImageModel();
-  const modelSelectionEnabled = useModelSelectionEnabled();
 
   const {
     project,
@@ -50,80 +46,24 @@ const StoryboardPage = () => {
     reason: "Analyzing your preferences to choose the best image model",
   });
   const [generatingScenes, setGeneratingScenes] = useState<any[]>([]);
-  const [isResettingStoryboardModel, setIsResettingStoryboardModel] = useState(false);
 
   const saveScenes = useMutation(api.video.saveScenes);
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
   const updateLastActivePhase = useMutation(api.video.updateLastActivePhase);
-  const resetPhaseMutation = useMutation(api.video.resetProjectPhase);
-
-  // Ref to track if generation has been initiated (prevents duplicate calls)
-  const hasInitiatedGeneration = useRef(false);
 
   // Check if we need to generate storyboard
   useEffect(() => {
     if (
-      !hasInitiatedGeneration.current &&
       project &&
       questions?.answers &&
       convexScenes.length === 0 &&
       !isGenerating
     ) {
       // Need to generate storyboard
-      hasInitiatedGeneration.current = true;
       setIsGenerating(true);
       generateStoryboard();
     }
-  }, [project, questions?.answers, convexScenes.length, isGenerating]);
-
-  const shouldResetStoryboardPhase =
-    Boolean(projectId) &&
-    modelSelectionEnabled &&
-    Boolean(selectedImageModel) &&
-    Boolean(project?.imageModelId) &&
-    project?.imageModelId !== selectedImageModel &&
-    convexScenes.length > 0;
-
-  useEffect(() => {
-    if (!shouldResetStoryboardPhase || isResettingStoryboardModel) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const resetStoryboardPhase = async () => {
-      try {
-        setIsResettingStoryboardModel(true);
-        await resetPhaseMutation({
-          projectId: projectId as Id<"videoProjects">,
-          stage: "image",
-        });
-        setIsGenerating(false);
-        setGeneratingScenes([]);
-        setStoryboardStatus({
-          stage: "parsing_prompt",
-          currentScene: 0,
-        });
-      } catch (error) {
-        console.error("Failed to reset storyboard phase:", error);
-      } finally {
-        if (!cancelled) {
-          setIsResettingStoryboardModel(false);
-        }
-      }
-    };
-
-    resetStoryboardPhase();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    shouldResetStoryboardPhase,
-    isResettingStoryboardModel,
-    resetPhaseMutation,
-    projectId,
-  ]);
+  }, [project, questions, convexScenes]);
 
   const generateStoryboard = async () => {
     if (!project || !questions?.answers) return;
@@ -160,7 +100,6 @@ const StoryboardPage = () => {
         ? JSON.parse(characterData).referenceImageUrl
         : undefined;
 
-      // Get demo mode from localStorage
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -168,14 +107,13 @@ const StoryboardPage = () => {
         headers["x-character-reference"] = characterReference;
       }
 
-      const response = await apiFetch("/api/generate-storyboard", {
+      const response = await fetch("/api/generate-storyboard", {
         method: "POST",
         headers,
         body: JSON.stringify({
           projectId: projectId,
           prompt: questions.answers.prompt,
           responses: questions.answers.responses,
-          imageModel: selectedImageModel,
         }),
       });
 
@@ -189,11 +127,16 @@ const StoryboardPage = () => {
 
       // Update model info immediately when we get the response
       if (result.modelInfo) {
+        console.log("✅ Model info received from API:", result.modelInfo);
         setModelInfo({
           modelName: result.modelInfo.modelName,
           estimatedCost: result.modelInfo.estimatedCost,
           reason: result.modelInfo.reason,
         });
+        console.log(
+          "✅ UI updated with actual model:",
+          result.modelInfo.modelName,
+        );
       }
 
       // Selecting voice completed server-side
@@ -237,10 +180,6 @@ const StoryboardPage = () => {
       await saveScenes({
         projectId: projectId as Id<"videoProjects">,
         scenes: result.scenes,
-        modelId:
-          modelSelectionEnabled && selectedImageModel
-            ? selectedImageModel
-            : undefined,
       });
 
       setStoryboardStatus({
@@ -281,11 +220,7 @@ const StoryboardPage = () => {
         image: scene.imageUrl || "",
         description: scene.description,
         visualPrompt: scene.visualPrompt,
-        // Default to 5 seconds if duration is missing or invalid
-        duration:
-          typeof scene.duration === "number" && scene.duration > 0
-            ? scene.duration
-            : 5,
+        duration: scene.duration,
         sceneNumber: scene.sceneNumber,
         narrationUrl: scene.narrationUrl,
         narrationText: scene.narrationText,
@@ -297,11 +232,7 @@ const StoryboardPage = () => {
         image: scene.imageUrl || "",
         description: scene.description,
         visualPrompt: scene.visualPrompt,
-        // Default to 5 seconds if duration is missing or invalid
-        duration:
-          typeof scene.duration === "number" && scene.duration > 0
-            ? scene.duration
-            : 5,
+        duration: scene.duration,
         sceneNumber: scene.sceneNumber,
         narrationUrl: scene.narrationUrl || undefined,
         narrationText: scene.narrationText || undefined,
@@ -310,29 +241,27 @@ const StoryboardPage = () => {
       }));
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-
-      <PhaseGuard requiredPhase="storyboard">
-        {isGenerating ? (
-          <StoryboardGeneratingPhase
-            scenes={scenesForComponent}
-            totalScenes={5}
-            currentStage={storyboardStatus.stage}
-            currentSceneNumber={storyboardStatus.currentScene}
-            modelName={modelInfo.modelName}
-            estimatedCostPerImage={modelInfo.estimatedCost}
-            modelReason={modelInfo.reason}
-          />
-        ) : (
-          <StoryboardPhase
-            prompt={questions?.answers?.prompt || project?.prompt || ""}
-            scenes={scenesForComponent}
-            onGenerateVideo={handleGenerateVideo}
-            projectId={projectId as Id<"videoProjects">}
-          />
-        )}
-      </PhaseGuard>
-    </div>
+    <PhaseGuard requiredPhase="storyboard">
+      {isGenerating ? (
+        <StoryboardGeneratingPhase
+          scenes={scenesForComponent}
+          totalScenes={5}
+          currentStage={storyboardStatus.stage}
+          currentSceneNumber={storyboardStatus.currentScene}
+          modelName={modelInfo.modelName}
+          estimatedCostPerImage={modelInfo.estimatedCost}
+          modelReason={modelInfo.reason}
+        />
+      ) : (
+        <StoryboardPhase
+          prompt={questions?.answers?.prompt || project?.prompt || ""}
+          scenes={scenesForComponent}
+          onGenerateVideo={handleGenerateVideo}
+          projectId={projectId as Id<"videoProjects">}
+          project={project}
+        />
+      )}
+    </PhaseGuard>
   );
 };
 

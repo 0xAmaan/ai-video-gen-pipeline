@@ -63,6 +63,53 @@ export class ReplicateVoiceAdapter implements VoiceSynthesisAdapter {
       throw new Error("Voice synthesis text must not be empty.");
     }
 
+    const model = getAudioModel(this.providerKey);
+    const isBarkModel = /bark/i.test(model.id);
+
+    if (isBarkModel) {
+      const historyPrompt =
+        typeof request.historyPrompt === "string"
+          ? request.historyPrompt
+          : typeof request.voiceId === "string" && request.voiceId.length > 0
+            ? request.voiceId
+            : ((model.defaultParams?.history_prompt as string | null) ?? null);
+      const textTemp =
+        typeof request.textTemp === "number"
+          ? request.textTemp
+          : (model.defaultParams?.text_temp as number) ?? 0.7;
+      const waveformTemp =
+        typeof request.waveformTemp === "number"
+          ? request.waveformTemp
+          : (model.defaultParams?.waveform_temp as number) ?? 0.7;
+
+      const output = await this.client.run(
+        model.id as `${string}/${string}`,
+        {
+          input: {
+            prompt: text,
+            history_prompt: historyPrompt,
+            text_temp: textTemp,
+            waveform_temp: waveformTemp,
+          },
+        },
+      );
+
+      const audioUrl = extractReplicateUrl(output, model.name);
+
+      return {
+        audioUrl,
+        format: model.outputFormats?.[0] ?? "wav",
+        durationSeconds: estimateSpeechDuration(text),
+        voiceId: historyPrompt ?? "bark_default",
+        voiceName: model.name,
+        metadata: {
+          historyPrompt: historyPrompt ?? undefined,
+          textTemp,
+          waveformTemp,
+        },
+      };
+    }
+
     const requestedVoiceId =
       typeof request.voiceId === "string" && request.voiceId.length > 0
         ? request.voiceId
@@ -76,7 +123,6 @@ export class ReplicateVoiceAdapter implements VoiceSynthesisAdapter {
       pitch: request.pitch,
     });
 
-    const model = getAudioModel(this.providerKey);
     const output = await this.client.run(model.id as `${string}/${string}`, {
       input: {
         text,

@@ -86,11 +86,10 @@ export class FreesoundAudioAdapter implements SoundLibraryAdapter {
 
   private mapHit(hit: FreesoundHit): SoundLibraryResult {
     const tags = Array.isArray(hit.tags)
-      ? hit.tags
-          .map((tag) => (typeof tag === "string" ? tag : ""))
-          .filter(Boolean)
+      ? hit.tags.map((tag) => (typeof tag === "string" ? tag : "")).filter(Boolean)
       : [];
-    const durationSeconds = typeof hit.duration === "number" ? hit.duration : 0;
+    const durationSeconds =
+      typeof hit.duration === "number" ? hit.duration : 0;
     const hqPreview = sanitizeUrl(hit.previews?.["preview-hq-mp3"]);
     const lqPreview = sanitizeUrl(hit.previews?.["preview-lq-mp3"]);
     const fallbackUrl = hqPreview || lqPreview;
@@ -115,14 +114,21 @@ export class FreesoundAudioAdapter implements SoundLibraryAdapter {
   ): Promise<SoundLibraryResult[]> {
     const params = this.buildParams(request);
     const requestUrl = `${API_BASE}?${params.toString()}`;
-
+    console.log("[FreesoundAudioAdapter] Executing search", {
+      providerKey: this.providerKey,
+      request,
+      url: requestUrl,
+    });
     try {
       const response = await fetch(requestUrl, {
         headers: {
           Authorization: `Token ${this.apiKey}`,
         },
       });
-
+      console.log("[FreesoundAudioAdapter] HTTP response", {
+        status: response.status,
+        ok: response.ok,
+      });
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(
@@ -131,12 +137,18 @@ export class FreesoundAudioAdapter implements SoundLibraryAdapter {
       }
 
       const data = (await response.json()) as FreesoundResponse;
+      console.log("[FreesoundAudioAdapter] Raw API response", data);
 
       if (!Array.isArray(data.results)) {
+        console.warn("[FreesoundAudioAdapter] Response missing results array");
         return [];
       }
 
       const results = data.results.map((hit) => this.mapHit(hit));
+      console.log("[FreesoundAudioAdapter] Returning results", {
+        count: results.length,
+        ids: results.slice(0, 5).map((result) => result.id),
+      });
       return results;
     } catch (error) {
       console.error("[FreesoundAudioAdapter] searchLibrary failed", {

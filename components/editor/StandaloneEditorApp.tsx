@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { getMediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
 import { PreviewRenderer } from "@/lib/editor/playback/preview-renderer";
@@ -14,18 +15,177 @@ import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { KonvaTimeline } from "@/components/editor/KonvaTimeline";
 import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
+import { Card } from "@/components/ui/card";
+import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { Loader2, Waves } from "lucide-react";
+import type { BeatMarker } from "@/types/audio";
+
+const NARRATION_TRACK_ID = "audio-narration";
+const BGM_TRACK_ID = "audio-bgm";
+const SFX_TRACK_ID = "audio-sfx";
+const TRACK_LABELS: Record<string, string> = {
+  [NARRATION_TRACK_ID]: "Narration",
+  [BGM_TRACK_ID]: "Background Music",
+  [SFX_TRACK_ID]: "Sound Effects",
+};
+const PERSISTABLE_AUDIO_TRACK_IDS = [
+  NARRATION_TRACK_ID,
+  BGM_TRACK_ID,
+  SFX_TRACK_ID,
+] as const;
+type PersistableAudioTrackId =
+  (typeof PERSISTABLE_AUDIO_TRACK_IDS)[number];
+const isPersistableAudioTrack = (
+  trackId: string,
+): trackId is PersistableAudioTrackId =>
+  (PERSISTABLE_AUDIO_TRACK_IDS as readonly string[]).includes(trackId);
+
+const MAX_ANALYSIS_DURATION_SECONDS = 300;
+const ENERGY_HISTORY_SIZE = 43;
+const ENERGY_SENSITIVITY = 1.35;
+const MAX_BEATS_TRACKED = 512;
+const MIN_BEAT_INTERVAL = 0.2;
+const MAX_BEAT_INTERVAL = 2.5;
+
+type AudioContextConstructor = typeof window.AudioContext;
+
+const getAudioContextConstructor = (): AudioContextConstructor | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const win = window as typeof window & {
+    webkitAudioContext?: AudioContextConstructor;
+  };
+  return win.AudioContext ?? win.webkitAudioContext ?? null;
+};
+
+const median = (values: number[]) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+};
+
+const deriveBpmFromBeats = (beats: BeatMarker[]) => {
+  if (beats.length < 2) return undefined;
+  const intervals: number[] = [];
+  for (let i = 1; i < beats.length; i++) {
+    const delta = beats[i].time - beats[i - 1].time;
+    if (delta >= MIN_BEAT_INTERVAL && delta <= MAX_BEAT_INTERVAL) {
+      intervals.push(delta);
+    }
+  }
+  if (intervals.length === 0) return undefined;
+  const medianInterval = median(intervals);
+  const bpm = 60 / medianInterval;
+  return Number.isFinite(bpm) && bpm > 0 ? bpm : undefined;
+};
+
+const extractBeatMarkers = (buffer: AudioBuffer) => {
+  const sampleRate = buffer.sampleRate || 44100;
+  const maxSamples = Math.min(
+    buffer.length,
+    Math.round(sampleRate * MAX_ANALYSIS_DURATION_SECONDS),
+  );
+  const channelData =
+    buffer.numberOfChannels > 1
+      ? (() => {
+          const merged = new Float32Array(maxSamples);
+          for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            const source = buffer.getChannelData(channel);
+            for (let i = 0; i < maxSamples; i++) {
+              merged[i] += source[i] ?? 0;
+            }
+          }
+          for (let i = 0; i < maxSamples; i++) {
+            merged[i] /= buffer.numberOfChannels;
+          }
+          return merged;
+        })()
+      : buffer.getChannelData(0).slice(0, maxSamples);
+
+  const history = new Array<number>(ENERGY_HISTORY_SIZE).fill(0);
+  let historyIndex = 0;
+  let lastBeatTime = -Infinity;
+  const beats: BeatMarker[] = [];
+  const blockSize = 1024;
+
+  for (let index = 0; index < maxSamples; index += blockSize) {
+    let sum = 0;
+    for (
+      let offset = 0;
+      offset < blockSize && index + offset < maxSamples;
+      offset++
+    ) {
+      const sample = channelData[index + offset];
+      sum += sample * sample;
+    }
+    const energy = sum / blockSize;
+    const avgEnergy =
+      history.reduce((acc, value) => acc + value, 0) / ENERGY_HISTORY_SIZE;
+    const threshold = avgEnergy * ENERGY_SENSITIVITY;
+    const beatTime = index / sampleRate;
+
+    if (
+      avgEnergy > 0 &&
+      energy > threshold &&
+      beatTime - lastBeatTime >= MIN_BEAT_INTERVAL
+    ) {
+      if (beats.length < MAX_BEATS_TRACKED) {
+        beats.push({ time: beatTime, strength: energy });
+      }
+      lastBeatTime = beatTime;
+    }
+
+    history[historyIndex] = energy;
+    historyIndex = (historyIndex + 1) % ENERGY_HISTORY_SIZE;
+  }
+
+  return {
+    beats,
+    bpm: deriveBpmFromBeats(beats),
+  };
+};
+
+const analyzeBeatsFromUrl = async (url: string) => {
+  const AudioContextClass = getAudioContextConstructor();
+  if (!AudioContextClass) {
+    throw new Error("Web Audio API is not supported in this browser.");
+  }
+  const response = await fetch(url, { mode: "cors" });
+  if (!response.ok) {
+    throw new Error(`Failed to load audio (${response.status}).`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const audioContext = new AudioContextClass();
+
+  try {
+    const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+      audioContext.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+    });
+    return extractBeatMarkers(audioBuffer);
+  } finally {
+    audioContext.close().catch(() => undefined);
+  }
+};
 
 interface StandaloneEditorAppProps {
   autoHydrate?: boolean;
+  projectId?: string | null;
 }
 
 export const StandaloneEditorApp = ({
   autoHydrate = true,
+  projectId = null,
 }: StandaloneEditorAppProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
   const thumbnailAttemptsRef = useRef<Set<string>>(new Set());
+  const trackVolumeDebounceRef = useRef<Record<string, number>>({});
   const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{
@@ -33,6 +193,13 @@ export const StandaloneEditorApp = ({
     status: string;
   } | null>(null);
   const [masterVolume, setMasterVolume] = useState(1);
+  const [beatMarkers, setBeatMarkers] = useState<BeatMarker[]>([]);
+  const [snapToBeats, setSnapToBeats] = useState(false);
+  const [analysisMeta, setAnalysisMeta] = useState<{ bpm?: number } | null>(
+    null,
+  );
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isAnalyzingBeatTrack, setIsAnalyzingBeatTrack] = useState(false);
 
   // Convex hooks for project persistence
   const saveProject = useMutation(api.editor.saveProject);
@@ -40,6 +207,9 @@ export const StandaloneEditorApp = ({
   const clearFutureHistory = useMutation(api.editor.clearFutureHistory);
   const loadProject = useQuery(api.editor.loadProject, {});
   const loadProjectHistory = useMutation(api.editor.loadProjectHistory);
+  const updateAudioTrackSettings = useMutation(
+    api.video.updateProjectAudioTrackSettings,
+  );
 
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
@@ -86,7 +256,6 @@ export const StandaloneEditorApp = ({
       return null;
     }
   }, []);
-
   useEffect(() => {
     const handleKeyDelete = (event: KeyboardEvent) => {
       if (event.key !== "Delete" && event.key !== "Backspace") {
@@ -139,6 +308,19 @@ export const StandaloneEditorApp = ({
       actions.hydrate();
     }
   }, [actions, autoHydrate]);
+  useEffect(() => {
+    setBeatMarkers([]);
+    setAnalysisMeta(null);
+    setSnapToBeats(false);
+    setAnalysisError(null);
+  }, [projectId]);
+  useEffect(() => {
+    return () => {
+      Object.values(trackVolumeDebounceRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+    };
+  }, []);
 
   // Track timeline container width for responsive Konva canvas
   useEffect(() => {
@@ -409,9 +591,15 @@ export const StandaloneEditorApp = ({
   );
   const zoom = project?.settings.zoom ?? 1;
 
-  const audioTrack = sequence?.tracks.find((track) => track.kind === "audio");
-  const audioTrackMuted = audioTrack?.muted ?? false;
-  const audioTrackId = audioTrack?.id ?? null;
+  const narrationTrackRef = sequence?.tracks.find(
+    (track) => track.id === NARRATION_TRACK_ID,
+  );
+  const fallbackAudioTrack = sequence?.tracks.find(
+    (track) => track.kind === "audio",
+  );
+  const primaryAudioTrack = narrationTrackRef ?? fallbackAudioTrack ?? null;
+  const audioTrackMuted = primaryAudioTrack?.muted ?? false;
+  const audioTrackId = primaryAudioTrack?.id ?? null;
   const selectedClipId = selection.clipIds[0] ?? null;
   const selectedClip =
     selectedClipId && sequence
@@ -425,6 +613,71 @@ export const StandaloneEditorApp = ({
     selectedClip && selectedClip.kind === "audio"
       ? selectedClip.volume ?? 1
       : 1;
+  const audioTracks =
+    sequence?.tracks.filter((track) => track.kind === "audio") ?? [];
+  const bgmTrack = sequence?.tracks.find((track) => track.id === BGM_TRACK_ID);
+  const bgmAsset = useMemo(() => {
+    if (!project || !bgmTrack) return null;
+    const firstClip = bgmTrack.clips[0];
+    if (!firstClip) return null;
+    return project.mediaAssets[firstClip.mediaId] ?? null;
+  }, [project, bgmTrack]);
+  const persistTrackSettings = useCallback(
+    (
+      trackId: PersistableAudioTrackId,
+      payload: { volume?: number; muted?: boolean },
+    ) => {
+      if (!projectId) return;
+      void updateAudioTrackSettings({
+        projectId: projectId as Id<"videoProjects">,
+        trackId,
+        ...payload,
+      });
+    },
+    [projectId, updateAudioTrackSettings],
+  );
+  const analyzeBackgroundTrack = useCallback(async () => {
+    if (!bgmAsset?.url) {
+      setAnalysisError("No background music track available to analyze.");
+      return;
+    }
+    setIsAnalyzingBeatTrack(true);
+    setAnalysisError(null);
+    try {
+      console.log("[Editor] Starting beat analysis", {
+        assetId: bgmAsset.id,
+        url: bgmAsset.url,
+      });
+      const analysis = await analyzeBeatsFromUrl(bgmAsset.url);
+      setBeatMarkers(analysis.beats);
+      setAnalysisMeta(
+        typeof analysis.bpm === "number" ? { bpm: analysis.bpm } : null,
+      );
+      if (analysis.beats.length === 0) {
+        setAnalysisError("No clear beats detected in this track.");
+      } else {
+        setAnalysisError(null);
+        if (!snapToBeats) {
+          setSnapToBeats(true);
+        }
+      }
+      console.log("[Editor] Beat analysis complete", {
+        beatCount: analysis.beats.length,
+        bpm: analysis.bpm,
+      });
+    } catch (error) {
+      console.error("[Editor] Beat analysis error", {
+        error,
+        assetId: bgmAsset.id,
+        url: bgmAsset.url,
+      });
+      setAnalysisError(
+        error instanceof Error ? error.message : "Unable to analyze audio.",
+      );
+    } finally {
+      setIsAnalyzingBeatTrack(false);
+    }
+  }, [bgmAsset, snapToBeats]);
 
   const handleMasterVolumeChange = useCallback((value: number) => {
     const nextVolume = Math.max(0, Math.min(1, value));
@@ -433,10 +686,16 @@ export const StandaloneEditorApp = ({
   }, []);
 
   const handleToggleAudioTrackMute = useCallback(() => {
-    if (audioTrackId) {
-      actions.toggleTrackMute(audioTrackId);
+    if (!audioTrackId || !sequence) return;
+    const currentTrack = sequence.tracks.find(
+      (track) => track.id === audioTrackId,
+    );
+    const nextMuted = !(currentTrack?.muted ?? false);
+    actions.toggleTrackMute(audioTrackId);
+    if (isPersistableAudioTrack(audioTrackId)) {
+      persistTrackSettings(audioTrackId, { muted: nextMuted });
     }
-  }, [actions, audioTrackId]);
+  }, [actions, audioTrackId, persistTrackSettings, sequence]);
 
   const handleAudioClipVolumeChange = useCallback(
     (value: number) => {
@@ -449,6 +708,25 @@ export const StandaloneEditorApp = ({
     [actions, selectedAudioClipId],
   );
 
+  const handleTrackVolumeChange = useCallback(
+    (trackId: string, value: number) => {
+      const clamped = Math.max(0, Math.min(1, value));
+      actions.setTrackVolume(trackId, clamped);
+      if (!projectId || !isPersistableAudioTrack(trackId)) {
+        return;
+      }
+      const timers = trackVolumeDebounceRef.current;
+      if (timers[trackId]) {
+        window.clearTimeout(timers[trackId]);
+      }
+      timers[trackId] = window.setTimeout(() => {
+        persistTrackSettings(trackId, { volume: clamped });
+        delete timers[trackId];
+      }, 250);
+    },
+    [actions, persistTrackSettings, projectId],
+  );
+
   if (!ready || !project || !sequence) {
     return (
       <div className="flex h-screen items-center justify-center text-muted-foreground">
@@ -456,6 +734,7 @@ export const StandaloneEditorApp = ({
       </div>
     );
   }
+
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -479,6 +758,88 @@ export const StandaloneEditorApp = ({
           selectedAudioClipId ? handleAudioClipVolumeChange : undefined
         }
       />
+      {audioTracks.length > 0 && (
+        <div className="border-b border-border bg-muted/30 px-4 py-3">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Audio Mixer</p>
+              <p className="text-xs text-muted-foreground">
+                Adjust overall levels for each audio layer
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {audioTracks.map((track) => {
+                const label = TRACK_LABELS[track.id] || track.id;
+                const volume = track.volume ?? 1;
+                const isBgmTrack = track.id === BGM_TRACK_ID;
+                return (
+                  <Card key={track.id} className="p-3">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                      <span>{label}</span>
+                      <span>{Math.round(volume * 100)}%</span>
+                    </div>
+                    <Slider
+                      value={[volume]}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      onValueChange={([value]) =>
+                        handleTrackVolumeChange(
+                          track.id,
+                          value ?? volume,
+                        )
+                      }
+                    />
+                    {isBgmTrack && (
+                      <>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={analyzeBackgroundTrack}
+                            disabled={
+                              !bgmAsset?.url || isAnalyzingBeatTrack
+                            }
+                          >
+                            {isAnalyzingBeatTrack ? (
+                              <>
+                                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                Analyzing…
+                              </>
+                            ) : (
+                              <>
+                                <Waves className="mr-2 h-3.5 w-3.5" />
+                                Analyze Audio
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={snapToBeats ? "default" : "outline"}
+                            onClick={() => setSnapToBeats((prev) => !prev)}
+                            disabled={!beatMarkers.length}
+                          >
+                            {snapToBeats ? "Snap On" : "Snap to Beat"}
+                          </Button>
+                          {analysisMeta?.bpm && (
+                            <span className="text-xs text-muted-foreground">
+                              BPM: {Math.round(analysisMeta.bpm)}
+                            </span>
+                          )}
+                        </div>
+                        {analysisError && (
+                          <p className="mt-2 text-xs text-destructive">
+                            {analysisError}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {/* 2-row layout: Top row (media + preview) and bottom row (timeline) */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top row: Media (1/3) + Preview (2/3) */}
@@ -543,6 +904,8 @@ export const StandaloneEditorApp = ({
                 rendererRef.current.endScrubbing();
               }
             }}
+            beatMarkers={beatMarkers}
+            snapToBeats={snapToBeats}
           />
         </div>
       </div>

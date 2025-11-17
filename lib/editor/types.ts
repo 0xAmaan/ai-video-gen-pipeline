@@ -45,6 +45,7 @@ export interface Track {
   clips: Clip[];
   locked: boolean;
   muted: boolean;
+  volume: number;
 }
 
 export interface Sequence {

@@ -7,6 +7,8 @@ import type { Sequence, Clip, MediaAssetMeta } from "@/lib/editor/types";
 import { formatTime } from "@/lib/editor/utils/time-format";
 import { KonvaClipItem } from "./KonvaClipItem";
 import type Konva from "konva";
+import { snapTimeToBeatMarkers } from "@/lib/editor/audio-beat-helpers";
+import type { BeatMarker } from "@/types/audio";
 
 interface KonvaTimelineProps {
   sequence: Sequence;
@@ -28,6 +30,8 @@ interface KonvaTimelineProps {
   onScrub?: (time: number) => void;
   onScrubStart?: () => void;
   onScrubEnd?: () => void;
+  beatMarkers?: BeatMarker[];
+  snapToBeats?: boolean;
 }
 
 const CLIP_HEIGHT = 120;
@@ -93,6 +97,8 @@ const KonvaTimelineComponent = ({
   onScrub,
   onScrubStart,
   onScrubEnd,
+  beatMarkers = [],
+  snapToBeats = false,
 }: KonvaTimelineProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const playheadLineRef = useRef<Konva.Line>(null);
@@ -112,6 +118,7 @@ const KonvaTimelineComponent = ({
   const clips = videoTrack?.clips ?? [];
   const audioClips = audioTrack?.clips ?? [];
   const hasAudioTrack = audioClips.length > 0;
+  const snapEnabled = snapToBeats && beatMarkers.length > 0;
 
   // Create asset lookup Map for O(1) access instead of O(n) find
   const assetMap = useMemo(() => {
@@ -124,6 +131,13 @@ const KonvaTimelineComponent = ({
   const effectiveDuration = Math.max(
     sequence.duration || DEFAULT_TIMELINE_DURATION,
     DEFAULT_TIMELINE_DURATION,
+  );
+  const visibleBeatMarkers = useMemo(
+    () =>
+      beatMarkers.filter(
+        (marker) => marker.time >= 0 && marker.time <= effectiveDuration + 1,
+      ),
+    [beatMarkers, effectiveDuration],
   );
 
   // Smart default zoom based on content duration
@@ -152,6 +166,11 @@ const KonvaTimelineComponent = ({
   const TIMELINE_WIDTH = effectiveDuration * PIXELS_PER_SECOND + 50;
   const timelineHeight =
     containerHeight + (hasAudioTrack ? AUDIO_TRACK_HEIGHT + AUDIO_TRACK_GAP : 0);
+  const snapTime = useCallback(
+    (value: number) =>
+      snapEnabled ? snapTimeToBeatMarkers(value, beatMarkers) : value,
+    [snapEnabled, beatMarkers],
+  );
 
   // Time <-> Pixel conversion
   const timeToPixels = useCallback(
@@ -236,7 +255,8 @@ const KonvaTimelineComponent = ({
     if (pointerPosition) {
       const clickedTime = pixelsToTime(pointerPosition.x - X_OFFSET);
       const clampedTime = Math.max(0, Math.min(effectiveDuration, clickedTime));
-      onSeek(clampedTime);
+      const snappedTime = snapTime(clampedTime);
+      onSeek(snappedTime);
     }
   };
 
@@ -249,8 +269,9 @@ const KonvaTimelineComponent = ({
     if (pointerPosition) {
       const hoveredTime = pixelsToTime(pointerPosition.x - X_OFFSET);
       const clampedTime = Math.max(0, Math.min(effectiveDuration, hoveredTime));
+      const snappedTime = snapTime(clampedTime);
 
-      setScrubberTime(clampedTime);
+      setScrubberTime(snappedTime);
       setIsHovering(true);
 
       // Signal scrub start on first hover
@@ -261,7 +282,7 @@ const KonvaTimelineComponent = ({
 
       // Throttle scrub calls using requestAnimationFrame
       if (onScrub) {
-        pendingScrubTimeRef.current = clampedTime;
+        pendingScrubTimeRef.current = snappedTime;
 
         if (scrubRafRef.current === null) {
           scrubRafRef.current = requestAnimationFrame(() => {
@@ -545,6 +566,25 @@ const KonvaTimelineComponent = ({
                 })}
               </>
             )}
+
+            {/* Beat markers */}
+            {visibleBeatMarkers.map((beat, index) => {
+              const x = timeToPixels(beat.time) + X_OFFSET;
+              const isStrong =
+                typeof beat.strength === "number"
+                  ? beat.strength >= 0.75
+                  : index % 4 === 0;
+              return (
+                <Line
+                  key={`beat-${index}`}
+                  points={[x, 0, x, timelineHeight]}
+                  stroke={isStrong ? "#10B981" : "rgba(16,185,129,0.4)"}
+                  strokeWidth={isStrong ? 1.5 : 1}
+                  dash={isStrong ? [] : [4, 6]}
+                  listening={false}
+                />
+              );
+            })}
 
             {/* Clips */}
             {clipsToRender.map((clip) => {

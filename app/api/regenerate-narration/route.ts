@@ -1,16 +1,14 @@
+"use server";
+
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { getConvexClient } from "@/lib/server/convex";
-import {
-  synthesizeNarrationAudio,
-  sanitizeNarrationText,
-} from "@/lib/narration";
 import { AUDIO_MODELS, type AudioVendor } from "@/lib/audio-models";
+import { sanitizeNarrationText } from "@/lib/narration";
 import { getVoiceAdapter } from "@/lib/audio-provider-factory";
+import { getConvexClient } from "@/lib/server/convex";
 import { apiResponse, apiError } from "@/lib/api-response";
 import { getDemoModeFromHeaders } from "@/lib/demo-mode";
 import { getFlowTracker } from "@/lib/flow-tracker";
-import { mockNarrationSynthesis, mockDelay } from "@/lib/demo-mocks";
 
 const isAudioVendor = (value: unknown): value is AudioVendor =>
   typeof value === "string" &&
@@ -31,16 +29,13 @@ export async function POST(req: Request) {
       newSpeed,
       newPitch,
       customText,
-      provider,
+      voiceProvider,
       voiceModelKey,
-      ssml,
-      outputFormat,
     } = await req.json();
 
     flowTracker.trackAPICall("POST", "/api/regenerate-narration", {
       sceneId,
-      voiceId: newVoiceId,
-      provider,
+      voiceProvider,
       demoMode,
     });
 
@@ -76,6 +71,11 @@ export async function POST(req: Request) {
       },
     );
 
+    const resolvedProvider =
+      (isAudioVendor(voiceProvider) ? voiceProvider : undefined) ??
+      (projectVoiceSettings?.voiceProvider as AudioVendor | undefined) ??
+      "replicate";
+
     const voiceId =
       newVoiceId ||
       scene.voiceId ||
@@ -94,120 +94,48 @@ export async function POST(req: Request) {
         ? newPitch
         : (projectVoiceSettings?.pitch ?? 0);
 
-    // Demo mode: Return mock narration instantly
-    if (demoMode === "no-cost") {
-      flowTracker.trackDecision(
-        "Check demo mode",
-        "no-cost",
-        "Using mock narration synthesis - zero API costs",
-      );
-      await mockDelay(200);
-      const mockNarration = mockNarrationSynthesis();
+    const adapter = getVoiceAdapter({
+      vendor: resolvedProvider,
+      modelKey: isAudioModelKey(voiceModelKey)
+        ? voiceModelKey
+        : projectVoiceSettings?.voiceModelKey,
+    });
 
-      await convex.mutation(api.video.updateSceneNarration, {
-        sceneId: sceneId as Id<"scenes">,
-        narrationUrl: mockNarration.audio_url,
-        narrationText: baseText,
-        voiceId,
-        voiceName: "Demo Voice",
-      });
+    flowTracker.trackDecision(
+      "Select voice provider",
+      adapter.vendor,
+      `Using ${adapter.vendor} for narration regeneration`,
+    );
 
-      return apiResponse({
-        success: true,
-        audioUrl: mockNarration.audio_url,
-        truncated: false,
-        voiceId,
-        voiceName: "Demo Voice",
-        narrationText: baseText,
-      });
-    }
+    const { text: sanitizedText, truncated } = sanitizeNarrationText(baseText);
 
-    // Determine which provider to use
-    const resolvedVendor = isAudioVendor(provider) ? provider : undefined;
-    const useElevenLabs = resolvedVendor === "elevenlabs";
+    const voiceResult = await adapter.synthesizeVoice({
+      text: sanitizedText,
+      voiceId,
+      emotion,
+      speed,
+      pitch,
+    });
 
-    if (useElevenLabs) {
-      // Use ElevenLabs adapter
-      flowTracker.trackDecision(
-        "Select voice provider",
-        "elevenlabs",
-        "Using ElevenLabs for premium voice synthesis",
-      );
+    await convex.mutation(api.video.updateSceneNarration, {
+      sceneId: sceneId as Id<"scenes">,
+      narrationUrl: voiceResult.audioUrl,
+      narrationText: sanitizedText,
+      voiceId: voiceResult.voiceId,
+      voiceName: voiceResult.voiceName,
+    });
 
-      const adapter = getVoiceAdapter({
-        vendor: resolvedVendor,
-        modelKey: isAudioModelKey(voiceModelKey) ? voiceModelKey : undefined,
-      });
-
-      const { text: sanitizedText, truncated } =
-        sanitizeNarrationText(baseText);
-
-      const voiceResult = await adapter.synthesizeVoice({
-        text: sanitizedText,
-        ssml: typeof ssml === "string" ? ssml : undefined,
-        voiceId: voiceId,
-        emotion: emotion,
-        speed: speed,
-        pitch: pitch,
-        outputFormat:
-          typeof outputFormat === "string" ? outputFormat : undefined,
-      });
-
-      await convex.mutation(api.video.updateSceneNarration, {
-        sceneId: sceneId as Id<"scenes">,
-        narrationUrl: voiceResult.audioUrl,
-        narrationText: sanitizedText,
-        voiceId: voiceResult.voiceId,
-        voiceName: voiceResult.voiceName,
-      });
-
-      return apiResponse({
-        success: true,
-        audioUrl: voiceResult.audioUrl,
-        truncated,
-        voiceId: voiceResult.voiceId,
-        voiceName: voiceResult.voiceName,
-        narrationText: sanitizedText,
-      });
-    } else {
-      // Use default Replicate/MiniMax narration
-      flowTracker.trackDecision(
-        "Select voice provider",
-        "replicate",
-        "Using Replicate/MiniMax for voice synthesis",
-      );
-
-      const {
-        audioUrl,
-        sanitizedText,
-        truncated,
-        voiceId: normalizedVoiceId,
-        voiceName,
-      } = await synthesizeNarrationAudio({
-        text: baseText,
-        voiceId,
-        emotion,
-        speed,
-        pitch,
-      });
-
-      await convex.mutation(api.video.updateSceneNarration, {
-        sceneId: sceneId as Id<"scenes">,
-        narrationUrl: audioUrl,
-        narrationText: sanitizedText,
-        voiceId: normalizedVoiceId,
-        voiceName,
-      });
-
-      return apiResponse({
-        success: true,
-        audioUrl,
-        truncated,
-        voiceId: normalizedVoiceId,
-        voiceName,
-        narrationText: sanitizedText,
-      });
-    }
+    return apiResponse({
+      success: true,
+      audioUrl: voiceResult.audioUrl,
+      truncated,
+      voiceId: voiceResult.voiceId,
+      voiceName: voiceResult.voiceName,
+      narrationText: sanitizedText,
+      provider: resolvedProvider,
+      modelKey: adapter.providerKey,
+      format: voiceResult.format,
+    });
   } catch (error) {
     console.error("Failed to regenerate narration:", error);
     return apiError(
