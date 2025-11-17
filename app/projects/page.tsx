@@ -17,10 +17,16 @@ const ProjectsPage = () => {
 
   const getProjectTitle = (project: { title?: string; prompt: string }) => {
     if (project.title) return project.title;
-    return project.prompt.length > 50 ? project.prompt.slice(0, 50) + "..." : project.prompt;
+    return project.prompt.length > 50
+      ? project.prompt.slice(0, 50) + "..."
+      : project.prompt;
   };
 
-  const startEditing = (e: React.MouseEvent, projectId: Id<"videoProjects">, currentTitle: string) => {
+  const startEditing = (
+    e: React.MouseEvent,
+    projectId: Id<"videoProjects">,
+    currentTitle: string,
+  ) => {
     e.stopPropagation();
     setEditingId(projectId);
     setEditingTitle(currentTitle);
@@ -32,7 +38,10 @@ const ProjectsPage = () => {
     setEditingTitle("");
   };
 
-  const saveTitle = async (e: React.MouseEvent, projectId: Id<"videoProjects">) => {
+  const saveTitle = async (
+    e: React.MouseEvent,
+    projectId: Id<"videoProjects">,
+  ) => {
     e.stopPropagation();
     if (editingTitle.trim()) {
       await updateProjectTitle({ projectId, title: editingTitle.trim() });
@@ -41,7 +50,10 @@ const ProjectsPage = () => {
     setEditingTitle("");
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent, projectId: Id<"videoProjects">) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent,
+    projectId: Id<"videoProjects">,
+  ) => {
     if (e.key === "Enter") {
       e.preventDefault();
       saveTitle(e as any, projectId);
@@ -114,7 +126,10 @@ const ProjectsPage = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     {editingId === project._id ? (
-                      <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                      <div
+                        className="flex items-center gap-2 flex-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="text"
                           value={editingTitle}
@@ -142,7 +157,13 @@ const ProjectsPage = () => {
                           {getProjectTitle(project)}
                         </span>
                         <button
-                          onClick={(e) => startEditing(e, project._id, getProjectTitle(project))}
+                          onClick={(e) =>
+                            startEditing(
+                              e,
+                              project._id,
+                              getProjectTitle(project),
+                            )
+                          }
                           className="p-1 hover:bg-primary/20 rounded text-muted-foreground hover:text-primary shrink-0"
                         >
                           <Pencil className="w-3.5 h-3.5" />
