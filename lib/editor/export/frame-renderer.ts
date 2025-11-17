@@ -2,6 +2,7 @@ import type { Clip, MediaAssetMeta, Sequence } from "../types";
 import { renderTransition } from "../transitions/renderer";
 import type { TransitionType } from "../transitions/presets";
 import { getEasingFunction } from "../transitions/presets";
+import { applyClipEffects } from "../effects";
 
 export type FrameCallback = (frameData: ImageData, timestamp: number) => void;
 
@@ -185,6 +186,13 @@ export class FrameRenderer {
       }
 
       this.ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+
+      // Apply clip effects if present
+      if (clip.effects && clip.effects.length > 0) {
+        // Use frame number based on timestamp for temporal consistency
+        const frameNumber = Math.floor(timestamp * 30); // Assume 30fps for seed
+        applyClipEffects(this.ctx, clip, frameNumber);
+      }
     }
   }
 
@@ -213,15 +221,97 @@ export class FrameRenderer {
       this.seekVideo(nextVideo, Math.max(nextClip.trimStart, nextTime)),
     ]);
 
-    // Use transition renderer
+    // Create temporary canvases for applying effects before transition
+    const fromCanvas = document.createElement('canvas');
+    fromCanvas.width = this.canvas.width;
+    fromCanvas.height = this.canvas.height;
+    const fromCtx = fromCanvas.getContext('2d');
+
+    const toCanvas = document.createElement('canvas');
+    toCanvas.width = this.canvas.width;
+    toCanvas.height = this.canvas.height;
+    const toCtx = toCanvas.getContext('2d');
+
+    if (!fromCtx || !toCtx) {
+      // Fallback if context creation fails
+      renderTransition(transitionType as TransitionType, {
+        ctx: this.ctx,
+        width: this.canvas.width,
+        height: this.canvas.height,
+        fromFrame: currentVideo,
+        toFrame: nextVideo,
+        progress,
+      });
+      return;
+    }
+
+    // Draw current clip to fromCanvas with aspect ratio
+    this.drawVideoWithAspectRatio(fromCtx, currentVideo, this.canvas.width, this.canvas.height);
+
+    // Apply effects to current clip if present
+    if (currentClip.effects && currentClip.effects.length > 0) {
+      const frameNumber = Math.floor(timestamp * 30);
+      applyClipEffects(fromCtx, currentClip, frameNumber);
+    }
+
+    // Draw next clip to toCanvas with aspect ratio
+    this.drawVideoWithAspectRatio(toCtx, nextVideo, this.canvas.width, this.canvas.height);
+
+    // Apply effects to next clip if present
+    if (nextClip.effects && nextClip.effects.length > 0) {
+      const frameNumber = Math.floor(timestamp * 30);
+      applyClipEffects(toCtx, nextClip, frameNumber);
+    }
+
+    // Use transition renderer with effect-applied canvases
     renderTransition(transitionType as TransitionType, {
       ctx: this.ctx,
       width: this.canvas.width,
       height: this.canvas.height,
-      fromFrame: currentVideo,
-      toFrame: nextVideo,
+      fromFrame: fromCanvas,
+      toFrame: toCanvas,
       progress,
     });
+  }
+
+  /**
+   * Helper to draw video with aspect ratio preservation (letterbox/pillarbox)
+   */
+  private drawVideoWithAspectRatio(
+    ctx: CanvasRenderingContext2D,
+    video: HTMLVideoElement,
+    canvasWidth: number,
+    canvasHeight: number,
+  ): void {
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      return; // Video not ready
+    }
+
+    // Fill with black background
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const canvasAspect = canvasWidth / canvasHeight;
+
+    let drawWidth: number;
+    let drawHeight: number;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (videoAspect > canvasAspect) {
+      // Video is wider - fit to width, letterbox top/bottom
+      drawWidth = canvasWidth;
+      drawHeight = canvasWidth / videoAspect;
+      offsetY = (canvasHeight - drawHeight) / 2;
+    } else {
+      // Video is taller - fit to height, pillarbox left/right
+      drawHeight = canvasHeight;
+      drawWidth = canvasHeight * videoAspect;
+      offsetX = (canvasWidth - drawWidth) / 2;
+    }
+
+    ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
   }
 
   private async seekVideo(

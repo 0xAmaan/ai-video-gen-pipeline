@@ -8,6 +8,7 @@
 import type { Effect, Clip } from "../types";
 import { applyGrainEffect } from "./grain-filter";
 import { applyColorGradeEffect } from "./color-grading";
+import { applyVintage, applyVignette } from "./artistic-filters";
 
 /**
  * Apply all enabled effects from a clip to a canvas context
@@ -59,13 +60,11 @@ export function applyEffect(
       break;
 
     case "vintage":
-      // TODO: Implement vintage effect
-      console.warn("[Effects] Vintage effect not yet implemented");
+      applyVintage(ctx, effect.params);
       break;
 
     case "vignette":
-      // TODO: Implement vignette
-      console.warn("[Effects] Vignette not yet implemented");
+      applyVignette(ctx, effect.params);
       break;
 
     case "filmLook":
@@ -88,3 +87,4 @@ export function applyEffect(
 
 export { applyGrainEffect } from "./grain-filter";
 export { applyColorGradeEffect } from "./color-grading";
+export { applyVintage, applyVignette, applyVignettePixelBased } from "./artistic-filters";
