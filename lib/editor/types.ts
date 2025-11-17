@@ -14,11 +14,13 @@ export interface Effect {
   enabled: boolean;
 }
 
+export type EasingFunction = "linear" | "ease-in" | "ease-out" | "ease-in-out";
+
 export interface TransitionSpec {
   id: string;
-  type: string;
-  duration: number;
-  easing: number;
+  type: string; // TransitionType from transitions/presets
+  duration: number; // in seconds
+  easing: EasingFunction; // easing function identifier (string instead of function for serialization)
 }
 
 export type ClipKind = "video" | "audio" | "image";

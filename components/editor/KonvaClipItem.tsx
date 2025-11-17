@@ -281,6 +281,30 @@ const KonvaClipItemComponent = ({
             fill="rgba(255, 255, 255, 0.8)"
             listening={false}
           />
+
+          {/* Transition badge */}
+          {clip.transitions && clip.transitions.length > 0 && (
+            <>
+              <Rect
+                x={clipX + clipWidth - 50}
+                y={CLIP_Y + 8}
+                width={42}
+                height={18}
+                fill="rgba(139, 92, 246, 0.9)"
+                cornerRadius={4}
+                listening={false}
+              />
+              <Text
+                x={clipX + clipWidth - 46}
+                y={CLIP_Y + 12}
+                text={`↔ ${clip.transitions.length}`}
+                fontSize={10}
+                fill="#FFFFFF"
+                fontStyle="bold"
+                listening={false}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -293,6 +317,7 @@ const KonvaClipItemComponent = ({
           height={CLIP_HEIGHT}
           fill="transparent"
           draggable
+          onClick={onSelect}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
           onDragEnd={handleDragEndHandler}
@@ -415,6 +440,7 @@ export const KonvaClipItem = memo(
       prevProps.clip.duration === nextProps.clip.duration &&
       prevProps.clip.trimStart === nextProps.clip.trimStart &&
       prevProps.clip.trimEnd === nextProps.clip.trimEnd &&
+      prevProps.clip.transitions.length === nextProps.clip.transitions.length &&
       prevProps.isSelected === nextProps.isSelected &&
       prevProps.isDragging === nextProps.isDragging &&
       prevProps.dragX === nextProps.dragX &&
