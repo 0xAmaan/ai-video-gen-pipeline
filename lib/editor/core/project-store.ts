@@ -231,6 +231,9 @@ export interface ProjectStoreState {
     setClipVolume: (clipId: string, volume: number) => void;
     toggleTrackMute: (trackId: string) => void;
     setTrackVolume: (trackId: string, volume: number) => void;
+    updateTrack: (trackId: string, updates: Partial<Track>) => void;
+    deleteTrack: (trackId: string) => void;
+    addTrack: (kind: Track["kind"], name?: string) => void;
     addTransitionToClip: (clipId: string, transition: import("../types").TransitionSpec) => void;
     removeTransitionFromClip: (clipId: string, transitionId: string) => void;
     addEffectToClip: (clipId: string, effect: import("../types").Effect) => void;
@@ -677,6 +680,96 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           const track = sequence.tracks.find((t) => t.id === trackId);
           if (!track) return state;
           track.volume = nextVolume;
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      updateTrack: (trackId, updates) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const track = sequence.tracks.find((t) => t.id === trackId);
+          if (!track) return state;
+          
+          // Apply updates (validate certain fields)
+          if (updates.name !== undefined) track.name = updates.name;
+          if (updates.opacity !== undefined) track.opacity = Math.max(0, Math.min(1, updates.opacity));
+          if (updates.volume !== undefined) track.volume = Math.max(0, Math.min(1, updates.volume));
+          if (updates.muted !== undefined) track.muted = updates.muted;
+          if (updates.solo !== undefined) track.solo = updates.solo;
+          if (updates.locked !== undefined) track.locked = updates.locked;
+          if (updates.visible !== undefined) track.visible = updates.visible;
+          if (updates.allowOverlap !== undefined) track.allowOverlap = updates.allowOverlap;
+          if (updates.order !== undefined) track.order = updates.order;
+          if (updates.effects !== undefined) track.effects = updates.effects;
+          
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          return { ...state, project: snapshot, history };
+        });
+      },
+      deleteTrack: (trackId) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          const trackIndex = sequence.tracks.findIndex((t) => t.id === trackId);
+          if (trackIndex === -1) return state;
+          
+          // Remove the track
+          sequence.tracks.splice(trackIndex, 1);
+          
+          // Recalculate duration
+          recalculateSequenceDuration(sequence);
+          
+          snapshot.updatedAt = Date.now();
+          const history = historyAfterPush(state, state.project);
+          persist(snapshot);
+          persistHistorySnapshot(snapshot.id, state.project, "past");
+          
+          // Clear selection if track was selected
+          const newSelection = { ...state.selection };
+          newSelection.trackIds = newSelection.trackIds.filter((id) => id !== trackId);
+          
+          return { ...state, project: snapshot, history, selection: newSelection };
+        });
+      },
+      addTrack: (kind, name) => {
+        set((state) => {
+          if (!state.project) return state;
+          const snapshot = deepClone(state.project);
+          const sequence = getSequence(snapshot);
+          
+          // Generate unique track ID
+          const trackId = `${kind}-${crypto.randomUUID?.() ?? Date.now().toString(36)}`;
+          
+          // Determine next order number
+          const maxOrder = sequence.tracks.reduce((max, t) => Math.max(max, t.order), -1);
+          
+          // Auto-generate name if not provided
+          const existingNames = sequence.tracks.map((t) => t.name);
+          let trackName = name;
+          if (!trackName) {
+            const prefix = kind === "video" ? "Video" : "Audio";
+            let counter = 1;
+            while (existingNames.includes(`${prefix} ${counter}`)) {
+              counter++;
+            }
+            trackName = `${prefix} ${counter}`;
+          }
+          
+          // Create new track
+          const newTrack = createTrack(trackId, kind, trackName);
+          newTrack.order = maxOrder + 1;
+          
+          sequence.tracks.push(newTrack);
+          
           snapshot.updatedAt = Date.now();
           const history = historyAfterPush(state, state.project);
           persist(snapshot);

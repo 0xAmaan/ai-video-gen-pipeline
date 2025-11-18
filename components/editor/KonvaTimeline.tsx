@@ -2,10 +2,18 @@
 
 import { useRef, useState, useEffect, useCallback, useMemo, memo } from "react";
 import { Stage, Layer, Rect, Line, Text, Group } from "react-konva";
-import { ChevronsDown } from "lucide-react";
+import { ChevronsDown, Plus, Video, AudioWaveform } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { Sequence, Clip, MediaAssetMeta } from "@/lib/editor/types";
 import { formatTime } from "@/lib/editor/utils/time-format";
 import { KonvaClipItem } from "./KonvaClipItem";
+import { TrackHeader } from "./TrackHeader";
 import type Konva from "konva";
 import { snapTimeToBeatMarkers } from "@/lib/editor/audio-beat-helpers";
 import type { BeatMarker } from "@/types/audio";
@@ -37,6 +45,9 @@ interface KonvaTimelineProps {
   magneticSnapEnabled?: boolean; // Enable magnetic snapping to clip edges/playhead
   magneticSnapThreshold?: number; // Snap distance threshold in seconds (default: 0.1)
   slipSlideSensitivity?: number; // Multiplier for slip/slide drag sensitivity (default: 1.0)
+  onTrackUpdate?: (trackId: string, updates: Partial<import("@/lib/editor/types").Track>) => void;
+  onTrackDelete?: (trackId: string) => void;
+  onTrackAdd?: (kind: "video" | "audio", name?: string) => void;
 }
 
 const CLIP_HEIGHT = 120;
@@ -57,6 +68,7 @@ const AUDIO_TRACK_BG = "#0b0b0b";
 const AUDIO_WAVEFORM_COLOR = "#A5B4FC";
 const AUDIO_VOLUME_COLOR = "#FBBF24";
 const AUDIO_TRACK_Y = CLIP_Y + CLIP_HEIGHT + 20; // Legacy: Y position for audio track in single-track mode
+const MAX_TRACKS = 20; // Maximum number of tracks allowed
 
 const generateWaveformPoints = (
   waveform: Float32Array,
@@ -111,6 +123,9 @@ const KonvaTimelineComponent = ({
   magneticSnapEnabled = true,
   magneticSnapThreshold = 0.1, // Default 100ms snap threshold
   slipSlideSensitivity = 1.0, // Default sensitivity multiplier
+  onTrackUpdate,
+  onTrackDelete,
+  onTrackAdd,
 }: KonvaTimelineProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const playheadLineRef = useRef<Konva.Line>(null);
@@ -619,6 +634,13 @@ const KonvaTimelineComponent = ({
   const handleClipDragStart = useCallback(
     (clipId: string, startX: number, altKey: boolean, metaKey: boolean) => {
       const clip = clips.find((c) => c.id === clipId);
+      
+      // Check if clip's track is locked
+      const track = findTrackByClipId(clipId);
+      if (track?.locked) {
+        console.warn(`Cannot drag clip on locked track: ${track.name}`);
+        return;
+      }
 
       // Set editing mode based on keyboard modifiers
       if (altKey && metaKey) {
@@ -637,7 +659,7 @@ const KonvaTimelineComponent = ({
       setDraggedClipX(startX);
       setVirtualClipOrder((prev) => [...clips]);
     },
-    [clips],
+    [clips, findTrackByClipId],
   );
 
   const handleClipDragMove = useCallback(
@@ -789,13 +811,35 @@ const KonvaTimelineComponent = ({
     [draggingClipId, onClipReorder],
   );
 
+  // Handle adding a new track
+  const handleAddTrack = useCallback(
+    (kind: "video" | "audio") => {
+      if (sortedTracks.length >= MAX_TRACKS) {
+        console.warn(`Maximum tracks reached: ${MAX_TRACKS}`);
+        return;
+      }
+
+      if (onTrackAdd) {
+        onTrackAdd(kind);
+        // Auto-scroll to new track (would need a ref to the track headers container)
+        // For now, the track will appear at the bottom
+      }
+    },
+    [sortedTracks.length, onTrackAdd]
+  );
+
   // Render clips
   const clipsToRender = draggingClipId ? virtualClipOrder : clips;
 
   return (
     <div className="relative w-full h-full flex flex-col border-t border-border bg-background">
       {/* Time ruler */}
-      <div className="flex-none h-8 bg-muted/30 border-b border-border relative overflow-x-auto scrollbar-hide">
+      <div className="flex-none h-8 bg-muted/30 border-b border-border relative flex">
+        {/* Left spacer for track headers */}
+        <div className="w-[200px] flex-shrink-0 border-r border-border" />
+        
+        {/* Ruler content */}
+        <div className="flex-1 overflow-x-auto scrollbar-hide relative">
         <div style={{ width: `${TIMELINE_WIDTH}px`, height: "100%" }}>
           {(() => {
             // Adaptive marker interval based on zoom and duration
@@ -841,19 +885,66 @@ const KonvaTimelineComponent = ({
             <ChevronsDown className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
         </div>
+        </div>
       </div>
 
-      {/* Canvas timeline */}
-      <div
-        ref={containerRef}
-        className="overflow-x-auto overflow-y-hidden flex-1"
-        style={{
-          height: `${timelineHeight}px`,
-          cursor: editingMode === 'slip' ? 'ew-resize' :
-                  editingMode === 'slide' ? 'move' :
-                  draggingClipId ? 'grabbing' : 'default'
-        }}
-      >
+      {/* Canvas timeline with track headers */}
+      <div className="flex-1 flex" style={{ height: `${timelineHeight}px` }}>
+        {/* Track Headers Column */}
+        <div className="w-[200px] flex-shrink-0 border-r border-border flex flex-col bg-zinc-900">
+          <div className="flex-1 overflow-y-auto">
+            {sortedTracks.map((track) => (
+              <TrackHeader
+                key={track.id}
+                track={track}
+                onTrackUpdate={onTrackUpdate || (() => {})}
+                onTrackDelete={onTrackDelete || (() => {})}
+                isSelected={selectedTrackId === track.id}
+                onSelect={setSelectedTrackId}
+              />
+            ))}
+          </div>
+          
+          {/* Add Track Button */}
+          {onTrackAdd && (
+            <div className="p-2 border-t border-border bg-zinc-900">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    disabled={sortedTracks.length >= MAX_TRACKS}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Track
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[180px]">
+                  <DropdownMenuItem onClick={() => handleAddTrack("video")}>
+                    <Video className="w-4 h-4 mr-2" />
+                    Video Track
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddTrack("audio")}>
+                    <AudioWaveform className="w-4 h-4 mr-2" />
+                    Audio Track
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
+
+        {/* Timeline Canvas */}
+        <div
+          ref={containerRef}
+          className="overflow-x-auto overflow-y-hidden flex-1"
+          style={{
+            cursor: editingMode === 'slip' ? 'ew-resize' :
+                    editingMode === 'slide' ? 'move' :
+                    draggingClipId ? 'grabbing' : 'default'
+          }}
+        >
         <Stage
           key="konva-timeline-stage"
           width={TIMELINE_WIDTH}
@@ -878,33 +969,54 @@ const KonvaTimelineComponent = ({
               onClick={handleTimelineClick}
             />
 
-            {/* Timeline track */}
-            <Rect
-              x={X_OFFSET}
-              y={CLIP_Y}
-              width={TIMELINE_WIDTH - X_OFFSET * 2}
-              height={CLIP_HEIGHT}
-              fill="#000000"
-              cornerRadius={4}
-            />
+            {/* Zebra striping for tracks */}
+            {sortedTracks.map((track, index) => {
+              const trackY = getTrackY(track.order);
+              const isEven = index % 2 === 0;
+              const stripeFill = isEven ? "#111827" : "#0f172a"; // Dark mode colors
+              
+              return (
+                <Rect
+                  key={`zebra-${track.id}`}
+                  x={0}
+                  y={trackY}
+                  width={TIMELINE_WIDTH}
+                  height={TRACK_HEIGHT}
+                  fill={stripeFill}
+                  listening={false}
+                />
+              );
+            })}
+            
+            {/* Track selection highlight */}
+            {selectedTrackId && sortedTracks.find(t => t.id === selectedTrackId) && (() => {
+              const selectedTrack = sortedTracks.find(t => t.id === selectedTrackId)!;
+              const trackY = getTrackY(selectedTrack.order);
+              
+              return (
+                <Rect
+                  key={`selection-${selectedTrackId}`}
+                  x={0}
+                  y={trackY}
+                  width={TIMELINE_WIDTH}
+                  height={TRACK_HEIGHT}
+                  stroke="#3B82F6" // Blue primary color
+                  strokeWidth={2}
+                  listening={false}
+                />
+              );
+            })()}
 
-            {/* Audio track */}
+            {/* Legacy audio track rendering removed - now using zebra striping */}
             {hasAudioTrack && (
               <>
-                <Rect
-                  x={X_OFFSET}
-                  y={AUDIO_TRACK_Y}
-                  width={TIMELINE_WIDTH - X_OFFSET * 2}
-                  height={AUDIO_TRACK_HEIGHT}
-                  fill={AUDIO_TRACK_BG}
-                  cornerRadius={4}
-                />
                 <Text
                   x={X_OFFSET + 8}
                   y={AUDIO_TRACK_Y - 18}
                   text="Audio Track"
                   fontSize={12}
                   fill={AUDIO_TRACK_LABEL_COLOR}
+                  listening={false}
                 />
 
                 {audioClips.map((clip) => {
@@ -1010,7 +1122,21 @@ const KonvaTimelineComponent = ({
               const isDragging = clip.id === draggingClipId;
               const asset = assetMap.get(clip.mediaId);
               const track = findTrackByClipId(clip.id);
+              
+              // Skip rendering if track is not visible
+              if (track && !track.visible) {
+                return null;
+              }
+              
+              // Handle solo mode: if any track has solo enabled, only render clips from solo tracks
+              const hasSoloTracks = sortedTracks.some((t) => t.solo);
+              if (hasSoloTracks && track && !track.solo) {
+                return null;
+              }
+              
               const yPos = track ? getTrackY(track.order) : TIMELINE_HEADER_Y; // Fallback to header Y if track not found
+              const trackOpacity = track?.opacity ?? 1.0;
+              
               return (
                 <KonvaClipItem
                   key={clip.id}
@@ -1023,6 +1149,7 @@ const KonvaTimelineComponent = ({
                   xOffset={X_OFFSET}
                   yPos={yPos}
                   trackHeight={TRACK_HEIGHT}
+                  opacity={trackOpacity}
                   onSelect={(shiftKey, metaKey) => handleClipClick(clip.id, shiftKey, metaKey)}
                   onDragStart={(startX, altKey, metaKey) => handleClipDragStart(clip.id, startX, altKey, metaKey)}
                   onDragMove={(currentX) =>
@@ -1158,6 +1285,7 @@ const KonvaTimelineComponent = ({
             />
           </Layer>
         </Stage>
+        </div>
       </div>
 
       {/* Zoom indicator */}

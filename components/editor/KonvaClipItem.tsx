@@ -17,6 +17,7 @@ interface KonvaClipItemProps {
   trackHeight?: number; // Height of the track (defaults to CLIP_HEIGHT)
   isDragging?: boolean;
   dragX?: number;
+  opacity?: number; // Track opacity (0-1, defaults to 1.0)
   onSelect: (shiftKey: boolean, metaKey: boolean) => void; // Updated to pass shift and meta key state
   onDragStart?: (startX: number, altKey: boolean, metaKey: boolean) => void;
   onDragMove?: (currentX: number) => void;
@@ -40,6 +41,7 @@ const KonvaClipItemComponent = ({
   trackHeight = CLIP_HEIGHT,
   isDragging = false,
   dragX,
+  opacity = 1.0,
   onSelect,
   onDragStart,
   onDragMove,
@@ -182,7 +184,7 @@ const KonvaClipItemComponent = ({
   };
 
   return (
-    <Group>
+    <Group opacity={opacity}>
       {/* Background rect (fallback color) */}
       <Rect
         x={clipX}
@@ -458,6 +460,7 @@ export const KonvaClipItem = memo(
       prevProps.dragX === nextProps.dragX &&
       prevProps.pixelsPerSecond === nextProps.pixelsPerSecond &&
       prevProps.xOffset === nextProps.xOffset &&
+      prevProps.opacity === nextProps.opacity &&
       prevProps.asset?.thumbnails === nextProps.asset?.thumbnails
     );
   },

@@ -57,6 +57,9 @@ const ENERGY_SENSITIVITY = 1.35;
 const MAX_BEATS_TRACKED = 512;
 const MIN_BEAT_INTERVAL = 0.2;
 const MAX_BEAT_INTERVAL = 2.5;
+const MIN_PREVIEW_HEIGHT = 260;
+const TIMELINE_VERTICAL_OFFSET = 220;
+const DEFAULT_VIEWPORT_HEIGHT = 1080;
 
 type AudioContextConstructor = typeof window.AudioContext;
 
@@ -217,6 +220,9 @@ export const StandaloneEditorApp = ({
   const [pendingDeleteClips, setPendingDeleteClips] = useState<string[]>([]);
   const [timelineHeight, setTimelineHeight] = useState(340);
   const [isResizingTimeline, setIsResizingTimeline] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(() =>
+    typeof window !== "undefined" ? window.innerHeight : DEFAULT_VIEWPORT_HEIGHT,
+  );
 
   // Convex hooks for project persistence
   const saveProject = useMutation(api.editor.saveProject);
@@ -962,9 +968,9 @@ export const StandaloneEditorApp = ({
     const windowHeight = window.innerHeight;
     const newHeight = windowHeight - e.clientY;
 
-    // Clamp between min (200px) and max (60% of window height)
     const minHeight = 200;
-    const maxHeight = windowHeight * 0.6;
+    const reserved = MIN_PREVIEW_HEIGHT + TIMELINE_VERTICAL_OFFSET;
+    const maxHeight = Math.max(minHeight, windowHeight - reserved);
     const clampedHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
 
     setTimelineHeight(clampedHeight);
@@ -972,6 +978,15 @@ export const StandaloneEditorApp = ({
 
   const handleTimelineResizeEnd = useCallback(() => {
     setIsResizingTimeline(false);
+  }, []);
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setViewportHeight(window.innerHeight);
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
   }, []);
 
   // Add mouse event listeners for timeline resize
@@ -994,6 +1009,11 @@ export const StandaloneEditorApp = ({
       </div>
     );
   }
+
+  const topRowHeight = Math.max(
+    MIN_PREVIEW_HEIGHT,
+    viewportHeight - (timelineHeight + TIMELINE_VERTICAL_OFFSET),
+  );
 
 
   return (
@@ -1105,7 +1125,7 @@ export const StandaloneEditorApp = ({
         {/* Top row: Left Panel (1/3) + Preview (2/3) */}
         <div
           className="grid grid-cols-[1fr_2fr] min-h-[420px]"
-          style={{ height: `calc(100vh - ${timelineHeight + 220}px)` }}
+          style={{ height: `${topRowHeight}px` }}
         >
           {/* Left Panel: Tabbed Media + Transitions */}
           <div className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-muted/20">
@@ -1178,6 +1198,7 @@ export const StandaloneEditorApp = ({
               currentTime={currentTime}
               duration={sequence.duration}
               isPlaying={isPlaying}
+              isTimelineResizing={isResizingTimeline}
               onTogglePlayback={handleTogglePlayback}
               onSeek={handleSeek}
               onCanvasResize={handleCanvasResize}
@@ -1249,6 +1270,9 @@ export const StandaloneEditorApp = ({
                 beatMarkers={beatMarkers}
                 snapToBeats={snapToBeats}
                 slipSlideSensitivity={project?.settings.slipSlideSensitivity ?? 1.0}
+                onTrackUpdate={(trackId, updates) => actions.updateTrack(trackId, updates)}
+                onTrackDelete={(trackId) => actions.deleteTrack(trackId)}
+                onTrackAdd={(kind, name) => actions.addTrack(kind, name)}
               />
             </div>
           </ContextMenuTrigger>

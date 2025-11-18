@@ -9,6 +9,7 @@ interface PreviewPanelProps {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+  isTimelineResizing: boolean;
   onTogglePlayback: () => void;
   onSeek: (time: number) => void;
   onCanvasResize?: (width: number, height: number) => void;
@@ -30,14 +31,72 @@ const PreviewPanelComponent = ({
   currentTime,
   duration,
   isPlaying,
+  isTimelineResizing,
   onTogglePlayback,
   onSeek,
   onCanvasResize,
 }: PreviewPanelProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const resizeTimeoutRef = useRef<number | null>(null);
-  const lastSizeRef = useRef({ width: 0, height: 0 });
-  const [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 });
+  const resizeRafRef = useRef<number | null>(null);
+  const pendingVisualSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const pendingRenderSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const lastRenderSizeRef = useRef({ width: 1280, height: 720 });
+  const [displaySize, setDisplaySize] = useState({ width: 1280, height: 720 });
+  const [renderSize, setRenderSize] = useState({ width: 1280, height: 720 });
+
+  const flushPendingRendererResize = useCallback(() => {
+    const pending = pendingRenderSizeRef.current;
+    if (!pending) return;
+
+    pendingRenderSizeRef.current = null;
+
+    setRenderSize((prev) =>
+      prev.width === pending.width && prev.height === pending.height
+        ? prev
+        : { width: pending.width, height: pending.height },
+    );
+
+    if (
+      lastRenderSizeRef.current.width !== pending.width ||
+      lastRenderSizeRef.current.height !== pending.height
+    ) {
+      lastRenderSizeRef.current = { width: pending.width, height: pending.height };
+      onCanvasResize?.(pending.width, pending.height);
+    }
+  }, [onCanvasResize]);
+
+  const scheduleCanvasResize = useCallback(
+    (width: number, height: number) => {
+      pendingVisualSizeRef.current = { width, height };
+      if (resizeRafRef.current !== null) return;
+
+      resizeRafRef.current = window.requestAnimationFrame(() => {
+        resizeRafRef.current = null;
+        const pending = pendingVisualSizeRef.current;
+        if (!pending) return;
+        pendingVisualSizeRef.current = null;
+
+        const visualWidth = Math.max(1, Math.floor(pending.width));
+        const visualHeight = Math.max(1, Math.floor(pending.height));
+
+        setDisplaySize((prev) =>
+          prev.width === visualWidth && prev.height === visualHeight
+            ? prev
+            : { width: visualWidth, height: visualHeight },
+        );
+
+        pendingRenderSizeRef.current = {
+          width: visualWidth,
+          height: visualHeight,
+        };
+
+        if (!isTimelineResizing) {
+          flushPendingRendererResize();
+        }
+      });
+    },
+    [flushPendingRendererResize, isTimelineResizing],
+  );
 
   // Debounced resize handler
   const handleResize = useCallback(
@@ -59,33 +118,9 @@ const PreviewPanelComponent = ({
         nextWidth = height * PREVIEW_ASPECT_RATIO;
       }
 
-      // Clear previous timeout
-      if (resizeTimeoutRef.current !== null) {
-        window.clearTimeout(resizeTimeoutRef.current);
-      }
-
-      // Debounce resize events (16ms ~= 60fps for smooth resizing)
-      resizeTimeoutRef.current = window.setTimeout(() => {
-        const canvasWidth = Math.max(1, Math.floor(nextWidth));
-        const canvasHeight = Math.max(1, Math.floor(nextHeight));
-
-        setCanvasSize((prev) =>
-          prev.width === canvasWidth && prev.height === canvasHeight
-            ? prev
-            : { width: canvasWidth, height: canvasHeight },
-        );
-
-        // Only resize if dimensions actually changed
-        if (
-          lastSizeRef.current.width !== canvasWidth ||
-          lastSizeRef.current.height !== canvasHeight
-        ) {
-          lastSizeRef.current = { width: canvasWidth, height: canvasHeight };
-          onCanvasResize?.(canvasWidth, canvasHeight);
-        }
-      }, 16);
+      scheduleCanvasResize(nextWidth, nextHeight);
     },
-    [onCanvasResize],
+    [onCanvasResize, scheduleCanvasResize],
   );
 
   // Setup ResizeObserver
@@ -97,11 +132,17 @@ const PreviewPanelComponent = ({
 
     return () => {
       resizeObserver.disconnect();
-      if (resizeTimeoutRef.current !== null) {
-        window.clearTimeout(resizeTimeoutRef.current);
+      if (resizeRafRef.current !== null) {
+        window.cancelAnimationFrame(resizeRafRef.current);
       }
     };
   }, [handleResize, onCanvasResize]);
+
+  useEffect(() => {
+    if (!isTimelineResizing) {
+      flushPendingRendererResize();
+    }
+  }, [isTimelineResizing, flushPendingRendererResize]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-card/50">
@@ -115,12 +156,12 @@ const PreviewPanelComponent = ({
             <canvas
               ref={canvasRef}
               className="rounded-md bg-black"
-              width={canvasSize.width}
-              height={canvasSize.height}
+              width={renderSize.width}
+              height={renderSize.height}
               style={{
                 display: "block",
-                width: `${canvasSize.width}px`,
-                height: `${canvasSize.height}px`,
+                width: `${displaySize.width}px`,
+                height: `${displaySize.height}px`,
                 maxWidth: "100%",
                 maxHeight: "100%",
               }}
