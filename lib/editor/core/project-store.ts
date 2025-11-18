@@ -214,7 +214,7 @@ export interface ProjectStoreState {
     trimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
     splitClip: (clipId: string, offset: number) => void;
     splitClipAtTime: (clipId: string, globalTime: number) => void;
-    rippleDelete: (clipId: string) => void;
+    rippleDelete: (clipIds: string | string[], options?: { allTracks?: boolean }) => void;
     duplicateClip: (clipId: string) => void;
     copyClipsToClipboard: (clipIds: string[]) => void;
     cutClipsToClipboard: (clipIds: string[]) => void;
@@ -517,26 +517,107 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
           currentTime: Math.min(current.currentTime, duration),
         }));
       },
-      rippleDelete: (clipId) => {
+      rippleDelete: (clipIds, options = {}) => {
         const project = get().project;
         if (!project) return;
         const snapshot = deepClone(project);
         const sequence = getSequence(snapshot);
+
+        // Normalize to array
+        const idsToDelete = Array.isArray(clipIds) ? clipIds : [clipIds];
+        if (idsToDelete.length === 0) return;
+
+        // Build map of clips to delete for efficient lookup
+        const deleteSet = new Set(idsToDelete);
+
+        // Group clips by track for efficient processing
+        const clipsByTrack = new Map<string, Array<{ clip: Clip; index: number }>>();
+
         for (const track of sequence.tracks) {
-          const index = track.clips.findIndex((clip) => clip.id === clipId);
-          if (index === -1) {
-            continue;
-          }
-          const removed = track.clips[index];
-          track.clips.splice(index, 1);
-          track.clips.forEach((clip) => {
-            if (clip.start > removed.start) {
-              clip.start = Math.max(0, clip.start - removed.duration);
+          const clipsToRemove: Array<{ clip: Clip; index: number }> = [];
+          track.clips.forEach((clip, index) => {
+            if (deleteSet.has(clip.id)) {
+              clipsToRemove.push({ clip, index });
             }
           });
-          sortTrackClips(track);
-          break;
+          if (clipsToRemove.length > 0) {
+            clipsByTrack.set(track.id, clipsToRemove);
+          }
         }
+
+        if (clipsByTrack.size === 0) return;
+
+        // Process each track
+        for (const track of sequence.tracks) {
+          const clipsToRemove = clipsByTrack.get(track.id);
+
+          // Determine if we should ripple this track
+          const shouldRippleTrack = options.allTracks || clipsToRemove !== undefined;
+
+          if (!shouldRippleTrack) continue;
+
+          if (clipsToRemove) {
+            // Sort by index descending to safely remove from array
+            clipsToRemove.sort((a, b) => b.index - a.index);
+
+            // Calculate gaps to close (process in chronological order for gap calculation)
+            const gapsToClose: Array<{ position: number; duration: number }> = [];
+
+            // Reverse to chronological order for gap calculation
+            const chronologicalClips = [...clipsToRemove].reverse();
+            for (const { clip } of chronologicalClips) {
+              gapsToClose.push({
+                position: clip.start,
+                duration: clip.duration,
+              });
+            }
+
+            // Remove clips (in reverse index order to maintain indices)
+            for (const { index } of clipsToRemove) {
+              track.clips.splice(index, 1);
+            }
+
+            // Sort gaps by position for processing
+            gapsToClose.sort((a, b) => a.position - b.position);
+
+            // Shift remaining clips left to close gaps
+            // Process gaps from latest to earliest to avoid double-shifting
+            for (let i = gapsToClose.length - 1; i >= 0; i--) {
+              const gap = gapsToClose[i];
+              track.clips.forEach((clip) => {
+                if (clip.start > gap.position) {
+                  clip.start = Math.max(0, clip.start - gap.duration);
+                }
+              });
+            }
+          } else if (options.allTracks && clipsByTrack.size > 0) {
+            // Ripple all tracks even if no clips deleted from this track
+            // Find the earliest deletion point across all tracks
+            let earliestGap = Infinity;
+            let totalGapDuration = 0;
+
+            for (const [_, clips] of clipsByTrack) {
+              for (const { clip } of clips) {
+                if (clip.start < earliestGap) {
+                  earliestGap = clip.start;
+                }
+                totalGapDuration += clip.duration;
+              }
+            }
+
+            // Shift clips on this track
+            if (earliestGap < Infinity) {
+              track.clips.forEach((clip) => {
+                if (clip.start > earliestGap) {
+                  clip.start = Math.max(0, clip.start - totalGapDuration);
+                }
+              });
+            }
+          }
+
+          sortTrackClips(track);
+        }
+
         const duration = recalculateSequenceDuration(sequence);
         snapshot.updatedAt = Date.now();
         const state = get();
@@ -844,10 +925,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => {
         // First copy to clipboard
         actions.copyClipsToClipboard(clipIds);
 
-        // Then ripple delete each clip
-        for (const clipId of clipIds) {
-          actions.rippleDelete(clipId);
-        }
+        // Then ripple delete all clips at once
+        actions.rippleDelete(clipIds);
       },
       pasteClipsFromClipboard: (trackId, start) => {
         const state = get();

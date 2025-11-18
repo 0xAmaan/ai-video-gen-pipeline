@@ -293,7 +293,8 @@ export const StandaloneEditorApp = ({
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdKey = isMac ? event.metaKey : event.ctrlKey;
 
-      // Delete/Backspace - Delete selected clips
+      // Delete/Backspace - Delete selected clips (ripple delete)
+      // Cmd+Delete - Also ripple delete (explicit ripple delete shortcut)
       if (event.key === "Delete" || event.key === "Backspace") {
         if (!selection.clipIds.length) return;
         event.preventDefault();
@@ -303,8 +304,8 @@ export const StandaloneEditorApp = ({
           setPendingDeleteClips(selection.clipIds);
           setDeleteDialogOpen(true);
         } else {
-          // Single clip - delete immediately
-          selection.clipIds.forEach((clipId) => storeActions.rippleDelete(clipId));
+          // Single clip - delete immediately using multi-select rippleDelete
+          storeActions.rippleDelete(selection.clipIds);
           storeActions.setSelection({ clipIds: [], trackIds: [] });
         }
         return;
@@ -929,14 +930,15 @@ export const StandaloneEditorApp = ({
       setPendingDeleteClips(selection.clipIds);
       setDeleteDialogOpen(true);
     } else {
-      // Single clip - delete immediately
-      selection.clipIds.forEach((clipId) => actions.rippleDelete(clipId));
+      // Single clip - delete immediately using multi-select rippleDelete
+      actions.rippleDelete(selection.clipIds);
       actions.setSelection({ clipIds: [], trackIds: [] });
     }
   }, [selection.clipIds, actions]);
 
   const handleConfirmDelete = useCallback(() => {
-    pendingDeleteClips.forEach((clipId) => actions.rippleDelete(clipId));
+    // Use multi-select rippleDelete for efficient gap closure
+    actions.rippleDelete(pendingDeleteClips);
     actions.setSelection({ clipIds: [], trackIds: [] });
     setPendingDeleteClips([]);
   }, [pendingDeleteClips, actions]);
