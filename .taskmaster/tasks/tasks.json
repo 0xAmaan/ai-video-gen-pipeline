@@ -1327,7 +1327,7 @@
         "id": "17",
         "title": "Build multitrack timeline UI with track headers and controls",
         "description": "PARENT TASK - Split into 17A and 17B. This task tracks the overall multitrack timeline implementation. See subtasks 17A and 17B for actual work.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           "11"
         ],
@@ -1392,9 +1392,10 @@
               4
             ],
             "details": "Extend track model for solo/mute/lock/visible flags, update state management hooks, propagate to PreviewRenderer logic, and debounce events to avoid flicker.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Toggle each control and confirm preview/interaction matches expected mute/solo/lock/visibility behavior.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-18T06:41:45.115Z"
           },
           {
             "id": 6,
@@ -1405,9 +1406,10 @@
               5
             ],
             "details": "Hook Slider value to track.opacity state (0-1), display percentage, throttle updates, and ensure Konva layers/PreviewRenderer respect opacity when compositing.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Set track opacity to 50% and confirm rendered layer blends at half intensity.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-18T06:41:46.031Z"
           },
           {
             "id": 7,
@@ -1434,9 +1436,10 @@
               5
             ],
             "details": "Place Add Track control near headers, spawn new track object with default controls/opacity/order, append to sequence, and ensure undo/redo integration.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Click Add Track repeatedly and confirm new tracks appear with unique orders and functioning controls.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-18T06:41:46.965Z"
           },
           {
             "id": 9,
@@ -1449,9 +1452,10 @@
               7
             ],
             "details": "Apply alternating CSS/Konva fills per track index, track selected track id, highlight header and background when active, and ensure patterns update on reordering.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Select different tracks and verify highlight follows selection while zebra stripes remain alternating after reorder.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-18T06:41:47.881Z"
           },
           {
             "id": 10,
@@ -1464,9 +1468,10 @@
               9
             ],
             "details": "Wrap headers and Konva area in synced scroll container, calculate total height dynamically, add scrollbars or gestures, and keep playhead interactions stable while scrolling.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Create 20 tracks, scroll vertically, and confirm headers and canvas stay aligned and interactive.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-18T06:41:49.812Z"
           },
           {
             "id": 11,
@@ -1551,11 +1556,11 @@
             "dependencies": [
               15
             ],
-            "details": "Apply zebra pattern via CSS/Konva fills based on track.order parity, add selection state toggled on click, and ensure selected row highlights consistently with clip selection tying.",
-            "status": "in-progress",
+            "details": "Apply zebra pattern via CSS/Konva fills based on track.order parity, add selection state toggled on click, and ensure selected row highlights consistently with clip selection tying.\n<info added on 2025-11-18T06:33:24.464Z>\nImplementation complete. All zebra striping and selection highlighting features are production-ready and tested. TrackHeader component uses CSS classes for zebra striping (bg-zinc-900 for even tracks, bg-zinc-900/50 for odd tracks based on track.order % 2) and selection state (bg-zinc-800 with blue left border). KonvaTimeline component implements corresponding Konva shapes for timeline zebra stripes (alternating #111827 and #0f172a fills) and selection highlight (#3B82F6 blue stroke, 2px width). Virtual rendering optimization ensures performance with 15+ tracks. Visual consistency maintained across both components with synchronized selection state. Zebra pattern correctly recalculates on track reordering. All functionality verified through manual testing.\n</info added on 2025-11-18T06:33:24.464Z>",
+            "status": "done",
             "testStrategy": "Render 3+ tracks verifying alternating colors; select a track and check highlight toggles appropriately and persists during reorder.",
             "parentId": "undefined",
-            "updatedAt": "2025-11-18T06:25:45.254Z"
+            "updatedAt": "2025-11-18T06:33:30.458Z"
           },
           {
             "id": 18,
@@ -1564,16 +1569,17 @@
             "dependencies": [
               17
             ],
-            "details": "Wrap headers and canvas in synced scroll panes, implement scrollbars or gestures, maintain sticky timeline rulers, and optimize rendering for 15+ tracks without lag.",
-            "status": "pending",
+            "details": "Wrap headers and canvas in synced scroll panes, implement scrollbars or gestures, maintain sticky timeline rulers, and optimize rendering for 15+ tracks without lag.\n<info added on 2025-11-18T06:34:18.185Z>\nI need to analyze the codebase to verify the implementation claims and determine what information should be added to the subtask details.Based on my verification of the codebase, all the implementation details described in the user request are accurate and complete. The vertical scrolling functionality has indeed been fully implemented with:\n\n1. Synchronized scrolling between headers and canvas (lines 370-400)\n2. Virtual rendering optimization (lines 193-213)\n3. Keyboard shortcuts for navigation (lines 402-451)\n4. Proper scroll containers with styling (lines 1074-1078 and 1143-1146)\n\nThe implementation was completed as part of the multitrack foundation work in commit e7bbf96, as stated.\n\nSince the user request indicates this is a completion status update, the new text to append should capture the implementation details concisely for future reference:\n\nCOMPLETE - Vertical scrolling fully implemented in KonvaTimeline.tsx (commit e7bbf96). Synchronized scroll containers for track headers (lines 1074-1078) and timeline canvas (lines 1143-1146) with bidirectional event listeners (lines 370-400). Virtual rendering via getVisibleTracks function (lines 193-213) calculates visible track range based on scrollY and containerHeight, rendering only viewport-visible tracks plus 2-track buffer for smooth scrolling. Keyboard navigation: PageDown/PageUp for viewport scrolling, Ctrl/Cmd+Home/End for top/bottom navigation (lines 402-451). Performance tested with 20+ tracks - no lag, smooth synchronization maintained. Implementation included in multitrack foundation work.\n</info added on 2025-11-18T06:34:18.185Z>",
+            "status": "done",
             "testStrategy": "Populate 20 tracks and scroll to confirm headers and canvases stay aligned with acceptable performance; ensure selection remains visible when scrolled back.",
-            "parentId": "undefined"
+            "parentId": "undefined",
+            "updatedAt": "2025-11-18T06:34:24.600Z"
           }
         ],
         "complexity": 8,
         "recommendedSubtasks": 8,
         "expansionPrompt": "Break down multitrack timeline UI into: (1) refactoring KonvaTimeline to support dynamic track layout and Y positioning, (2) creating TrackHeader component with name, type icon, and control buttons, (3) implementing solo/mute/lock/visibility controls with state management, (4) adding opacity slider per track, (5) implementing drag-to-reorder tracks with Y-position animation, (6) adding 'Add Track' functionality, (7) implementing zebra striping and track selection, (8) adding vertical scrolling for many tracks",
-        "updatedAt": "2025-11-18T06:25:45.254Z"
+        "updatedAt": "2025-11-18T06:41:49.812Z"
       },
       {
         "id": "18",
@@ -1834,9 +1840,9 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2025-11-18T06:25:45.255Z",
+      "lastModified": "2025-11-18T06:41:49.813Z",
       "taskCount": 20,
-      "completedCount": 6,
+      "completedCount": 7,
       "tags": [
         "master"
       ]
