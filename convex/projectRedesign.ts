@@ -246,6 +246,31 @@ export const deleteSceneShot = mutation({
   },
 });
 
+export const reorderSceneShots = mutation({
+  args: {
+    sceneId: v.id("projectScenes"),
+    shotOrders: v.array(
+      v.object({
+        shotId: v.id("sceneShots"),
+        shotNumber: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    for (const { shotId, shotNumber } of args.shotOrders) {
+      const shot = await ctx.db.get(shotId);
+      if (!shot || shot.sceneId !== args.sceneId) continue;
+
+      await ctx.db.patch(shotId, {
+        shotNumber,
+        updatedAt: now,
+      });
+    }
+  },
+});
+
 // ========================================
 // SHOT IMAGE MUTATIONS
 // ========================================
@@ -519,6 +544,35 @@ export const getSceneShots = query({
   },
 });
 
+export const getShotWithScene = query({
+  args: { shotId: v.id("sceneShots") },
+  handler: async (ctx, args) => {
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) return null;
+
+    const scene = await ctx.db.get(shot.sceneId);
+    if (!scene) return null;
+
+    const images = await ctx.db
+      .query("shotImages")
+      .withIndex("by_shot", (q) => q.eq("shotId", args.shotId))
+      .order("asc")
+      .collect();
+
+    const storyboardSelection = await ctx.db
+      .query("storyboardSelections")
+      .withIndex("by_shot", (q) => q.eq("shotId", args.shotId))
+      .first();
+
+    return {
+      shot,
+      scene,
+      images,
+      storyboardSelection,
+    };
+  },
+});
+
 export const getShotImages = query({
   args: {
     shotId: v.id("sceneShots"),
@@ -569,6 +623,40 @@ export const getStoryboardByScene = query({
       .query("storyboardSelections")
       .withIndex("by_scene", (q) => q.eq("sceneId", args.sceneId))
       .collect();
+  },
+});
+
+export const getProjectShotSelections = query({
+  args: { projectId: v.id("videoProjects") },
+  handler: async (ctx, args) => {
+    const selections = await ctx.db
+      .query("storyboardSelections")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const enriched = await Promise.all(
+      selections.map(async (selection) => {
+        const shot = await ctx.db.get(selection.shotId);
+        if (!shot) return null;
+
+        const scene = await ctx.db.get(shot.sceneId);
+        if (!scene) return null;
+
+        const image = await ctx.db.get(selection.selectedImageId);
+        if (!image) return null;
+
+        return {
+          selection,
+          shot,
+          scene,
+          image,
+        };
+      }),
+    );
+
+    return enriched
+      .filter((item): item is NonNullable<typeof item> => !!item)
+      .sort((a, b) => b.selection.updatedAt - a.selection.updatedAt);
   },
 });
 
@@ -624,6 +712,51 @@ export const getCompleteProject = query({
       project,
       scenes: scenesWithData,
     };
+  },
+});
+
+export const getStoryboardRows = query({
+  args: { projectId: v.id("videoProjects") },
+  handler: async (ctx, args) => {
+    const scenes = await ctx.db
+      .query("projectScenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("asc")
+      .collect();
+
+    return await Promise.all(
+      scenes.map(async (scene) => {
+        const shots = await ctx.db
+          .query("sceneShots")
+          .withIndex("by_scene", (q) => q.eq("sceneId", scene._id))
+          .order("asc")
+          .collect();
+
+        const shotsWithSelections = await Promise.all(
+          shots.map(async (shot) => {
+            const selectedImage = shot.selectedImageId
+              ? await ctx.db.get(shot.selectedImageId)
+              : null;
+
+            const selection = await ctx.db
+              .query("storyboardSelections")
+              .withIndex("by_shot", (q) => q.eq("shotId", shot._id))
+              .first();
+
+            return {
+              shot,
+              selectedImage,
+              selection,
+            };
+          }),
+        );
+
+        return {
+          scene,
+          shots: shotsWithSelections,
+        };
+      }),
+    );
   },
 });
 
