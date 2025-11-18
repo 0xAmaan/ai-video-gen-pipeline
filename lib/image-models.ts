@@ -24,6 +24,8 @@ export interface ImageModel {
   estimatedCost?: number;
   /** Additional notes or warnings */
   notes?: string;
+  /** Whether model accepts an image input for guided variations */
+  supportsImageInput?: boolean;
 }
 
 /**
@@ -262,6 +264,7 @@ export const IMAGE_MODELS: Record<string, ImageModel> = {
     cost: "low",
     bestFor: ["fallback", "quick-generation"],
     features: ["simple", "fast"],
+    supportsImageInput: true,
     estimatedCost: 0.003,
     notes: "Legacy model, used as fallback option.",
   },
