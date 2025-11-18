@@ -340,6 +340,9 @@ export const adaptConvexProjectToStandalone = ({
     locked: false,
     muted: false,
     volume: 1,
+    order: 0,
+    opacity: 1.0,
+    effects: [],
     clips: clipsForTrack,
   };
 
@@ -350,6 +353,9 @@ export const adaptConvexProjectToStandalone = ({
     locked: false,
     muted: false,
     volume: 1,
+    order: 0,
+    opacity: 1.0,
+    effects: [],
     clips: narrationClips,
   };
 
@@ -360,6 +366,9 @@ export const adaptConvexProjectToStandalone = ({
     locked: false,
     muted: false,
     volume: 1,
+    order: 0,
+    opacity: 1.0,
+    effects: [],
     clips: bgmClips,
   };
 
@@ -370,6 +379,9 @@ export const adaptConvexProjectToStandalone = ({
     locked: false,
     muted: false,
     volume: 1,
+    order: 0,
+    opacity: 1.0,
+    effects: [],
     clips: sfxClips,
   };
   const audioTrackSettings = project.audioTrackSettings ?? {};

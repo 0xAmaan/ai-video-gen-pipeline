@@ -4,12 +4,20 @@ export type EffectType =
   | "brightness"
   | "contrast"
   | "saturation"
+  | "hue"
   | "blur"
+  | "sharpen"
   | "grain"
   | "colorGrade"
+  | "temperature"
+  | "tint"
   | "vintage"
+  | "bw"
+  | "sepia"
+  | "crossProcess"
   | "vignette"
   | "filmLook"
+  | "lut"
   | "custom";
 
 // Filter parameter interfaces (for type safety and documentation)
@@ -53,8 +61,10 @@ export interface FilmLookParams {
 export interface Effect {
   id: string;
   type: EffectType;
-  params: Record<string, number>; // Flat structure for all effect types
+  params: Record<string, number | string>; // Flat structure for all effect types
   enabled: boolean;
+  blend?: number; // Optional blend amount (0-1)
+  order?: number; // Optional render order within effect stack
 }
 
 export type EasingFunction = "linear" | "ease-in" | "ease-out" | "ease-in-out";
@@ -102,6 +112,9 @@ export interface Track {
   locked: boolean;
   muted: boolean;
   volume: number;
+  order: number; // Z-index for layering (higher = on top)
+  opacity: number; // Track-level opacity (0-1)
+  effects: Effect[]; // Track-level effects applied to all clips
 }
 
 export interface Sequence {
@@ -136,6 +149,9 @@ export interface ProjectSettings {
   snapThreshold: number; // Distance in seconds within which snapping occurs
   zoom: number;
   activeSequenceId: string;
+  // Slip/Slide editing preferences
+  slipSlideSensitivity?: number; // Multiplier for slip/slide drag sensitivity (default: 1.0)
+  enableSlipPreview?: boolean; // Show visual preview during slip editing (default: true)
 }
 
 export interface Project {

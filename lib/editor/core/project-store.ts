@@ -55,6 +55,9 @@ const createTrack = (id: string, kind: Track["kind"]): Track => ({
   locked: false,
   muted: false,
   volume: 1,
+  order: 0,
+  opacity: 1.0,
+  effects: [],
   clips: [],
 });
 
@@ -124,6 +127,8 @@ const createProject = (): Project => {
       snapThreshold: 0.1,
       zoom: 1,
       activeSequenceId: sequence.id,
+      slipSlideSensitivity: 1.0,
+      enableSlipPreview: true,
     },
   };
 };
