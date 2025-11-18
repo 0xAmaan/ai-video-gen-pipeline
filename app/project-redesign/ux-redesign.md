@@ -38,7 +38,7 @@
  Implementation Steps:
 
  1. Build Vision preview container (large centered area)
- 2. Add "Create with Vision" button (routes to /project-redesign/scene-planner)
+  2. Add "Create with Vision" button (routes to /project-redesign/[projectId]/scene-planner)
  3. Integrate visual effect placeholder (can be enhanced later)
  4. Add smooth entrance animations
 
@@ -60,7 +60,7 @@
  Components: ProjectCard, Grid container
 
  ---
- Phase 4: Prompt Planner Page (/project-redesign/scene-planner)
+Phase 4: Prompt Planner Page (/project-redesign/[projectId]/scene-planner)
 
  Wireframe: Image #3 - Scene/shot editor with chat input
 

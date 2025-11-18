@@ -1,29 +1,48 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Plus } from "lucide-react";
+import { useCreateRedesignProject } from "@/lib/hooks/useProjectRedesign";
 
 const HomePage = () => {
   const router = useRouter();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, userId } = useAuth();
+  const createProject = useCreateRedesignProject();
+  const [isCreating, setIsCreating] = useState(false);
   const projects = useQuery(
     api.video.getUserProjects,
-    isSignedIn ? {} : "skip"
+    isSignedIn ? {} : "skip",
   );
 
   // Get 3 most recent projects
   const recentProjects = projects?.slice(0, 3) || [];
 
-  const handleNewProject = () => {
-    router.push("/project-redesign/scene-planner");
+  const handleNewProject = async () => {
+    if (!userId || isCreating) return;
+    const prompt =
+      window.prompt("What should we call this project?", "New Project") ||
+      undefined;
+    if (!prompt) return;
+
+    try {
+      setIsCreating(true);
+      const projectId = await createProject({
+        userId,
+        prompt,
+        title: prompt,
+      });
+      router.push(`/project-redesign/${projectId}/scene-planner`);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleProjectClick = (projectId: string) => {
-    // TODO: Route to appropriate project page based on status
-    router.push(`/project-redesign/projects`);
+    router.push(`/project-redesign/${projectId}/scene-planner`);
   };
 
   if (!isSignedIn) {
@@ -68,14 +87,15 @@ const HomePage = () => {
           {/* New Project Button */}
           <button
             onClick={handleNewProject}
-            className="group relative w-56 h-36 rounded-3xl bg-gray-600/60 border border-gray-500/40 hover:border-gray-400/60 transition-all duration-300 hover:scale-[1.02] cursor-pointer"
+            disabled={isCreating}
+            className="group relative w-56 h-36 rounded-3xl bg-gray-600/60 border border-gray-500/40 hover:border-gray-400/60 transition-all duration-300 hover:scale-[1.02] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
           >
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
               <div className="w-12 h-12 rounded-full bg-gray-500/40 flex items-center justify-center group-hover:bg-gray-400/50 transition-colors">
                 <Plus className="w-6 h-6 text-gray-200" />
               </div>
               <span className="text-gray-200 font-medium text-lg">
-                New project
+                {isCreating ? "Creating..." : "New project"}
               </span>
             </div>
           </button>
