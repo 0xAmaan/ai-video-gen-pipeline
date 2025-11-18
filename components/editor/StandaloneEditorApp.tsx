@@ -1103,8 +1103,8 @@ export const StandaloneEditorApp = ({
       {/* 2-row layout: Top row (media/transitions + preview) and bottom row (timeline) */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top row: Left Panel (1/3) + Preview (2/3) */}
-        <div 
-          className="grid grid-cols-[1fr_2fr] overflow-hidden min-h-0"
+        <div
+          className="grid grid-cols-[1fr_2fr] min-h-[420px] min-h-0"
           style={{ height: `calc(100vh - ${timelineHeight + 220}px)` }}
         >
           {/* Left Panel: Tabbed Media + Transitions */}
@@ -1240,6 +1240,7 @@ export const StandaloneEditorApp = ({
                 }}
                 beatMarkers={beatMarkers}
                 snapToBeats={snapToBeats}
+                slipSlideSensitivity={project?.settings.slipSlideSensitivity ?? 1.0}
               />
             </div>
           </ContextMenuTrigger>

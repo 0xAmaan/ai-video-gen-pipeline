@@ -36,6 +36,7 @@ interface KonvaTimelineProps {
   snapToBeats?: boolean;
   magneticSnapEnabled?: boolean; // Enable magnetic snapping to clip edges/playhead
   magneticSnapThreshold?: number; // Snap distance threshold in seconds (default: 0.1)
+  slipSlideSensitivity?: number; // Multiplier for slip/slide drag sensitivity (default: 1.0)
 }
 
 const CLIP_HEIGHT = 120;
@@ -107,6 +108,7 @@ const KonvaTimelineComponent = ({
   snapToBeats = false,
   magneticSnapEnabled = true,
   magneticSnapThreshold = 0.1, // Default 100ms snap threshold
+  slipSlideSensitivity = 1.0, // Default sensitivity multiplier
 }: KonvaTimelineProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const playheadLineRef = useRef<Konva.Line>(null);
@@ -620,7 +622,7 @@ const KonvaTimelineComponent = ({
       if (editingMode === 'slip') {
         // Calculate drag delta in pixels and convert to time
         const dragDeltaPixels = currentX - draggedClipX;
-        const dragDeltaTime = dragDeltaPixels / PIXELS_PER_SECOND;
+        const dragDeltaTime = (dragDeltaPixels / PIXELS_PER_SECOND) * slipSlideSensitivity;
 
         // Calculate new trimStart based on initial value and drag delta
         // Dragging right should shift content left (decrease trimStart)
@@ -648,7 +650,7 @@ const KonvaTimelineComponent = ({
       if (editingMode === 'slide') {
         // Calculate drag delta from initial drag position
         const dragDeltaPixels = currentX - draggedClipX;
-        const dragDeltaTime = dragDeltaPixels / PIXELS_PER_SECOND;
+        const dragDeltaTime = (dragDeltaPixels / PIXELS_PER_SECOND) * slipSlideSensitivity;
 
         // Find the dragged clip's index in the original clip order
         const draggedClipIndex = clips.findIndex((c) => c.id === clipId);

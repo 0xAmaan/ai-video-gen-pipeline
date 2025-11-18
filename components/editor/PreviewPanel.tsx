@@ -104,25 +104,48 @@ const PreviewPanelComponent = ({
   }, [handleResize, onCanvasResize]);
 
   return (
-    <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
-      {/* Canvas container - renderer handles aspect ratio + padding */}
+    <div
+      className="flex h-full flex-col border-l
+       border-border bg-card/50"
+    >
+      {/* Video area fills remaining height above the
+       controls */}
       <div
-        ref={containerRef}
-        className="flex-1 relative flex items-center justify-center overflow-hidden bg-black"
+        className="flex-1 flex items-center
+       justify-center bg-black px-6 pt-4 pb-2"
       >
-        <canvas
-          ref={canvasRef}
-          className="rounded-md"
-          width={canvasSize.width}
-          height={canvasSize.height}
-          style={{
-            display: "block",
-            width: `${canvasSize.width}px`,
-            height: `${canvasSize.height}px`,
-          }}
-        />
+        <div
+          ref={containerRef}
+          className="relative flex items-center
+       justify-center w-full h-full max-h-full"
+        >
+          <div
+            className="flex items-center
+       justify-center w-full h-full bg-black"
+          >
+            <canvas
+              ref={canvasRef}
+              className="rounded-md bg-black"
+              width={canvasSize.width}
+              height={canvasSize.height}
+              style={{
+                display: "block",
+                width: `${canvasSize.width}px`,
+                height: `${canvasSize.height}px`,
+                maxWidth: "100%",
+                maxHeight: "100%",
+              }}
+            />
+          </div>
+        </div>
       </div>
-      <div className="flex items-center gap-3">
+
+      {/* Controls bar pinned to bottom of preview
+       column */}
+      <div
+        className="flex items-center gap-3 px-4
+       py-3 border-t border-border bg-card/80"
+      >
         <Button
           variant="secondary"
           size="icon"
@@ -145,8 +168,11 @@ const PreviewPanelComponent = ({
           className="flex-1"
           onChange={(event) => onSeek(parseFloat(event.target.value))}
         />
-        <div className="text-xs text-muted-foreground">
-          {formatTime(currentTime)} / {formatTime(duration)}
+        <div
+          className="text-xs
+       text-muted-foreground"
+        >
+          {formatTime(currentTime)} /{formatTime(duration)}
         </div>
       </div>
     </div>
