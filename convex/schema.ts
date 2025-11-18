@@ -20,6 +20,20 @@ export default defineSchema({
       v.literal("storyboard_created"),
       v.literal("video_generated"),
     ),
+    // New workflow version tracking
+    workflowVersion: v.optional(
+      v.union(v.literal("v1_legacy"), v.literal("v2_redesign")),
+    ),
+    promptPlannerData: v.optional(v.string()), // Brain dump from initial planning
+    redesignStatus: v.optional(
+      v.union(
+        v.literal("prompt_planning"),
+        v.literal("scenes_setup"),
+        v.literal("shot_iteration"),
+        v.literal("storyboard_final"),
+        v.literal("animation_complete"),
+      ),
+    ),
     lastActivePhase: v.optional(
       v.union(
         v.literal("prompt"),
@@ -228,4 +242,82 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_scene", ["sceneId"]),
+
+  // ========================================
+  // New Redesigned Workflow Tables (v2)
+  // ========================================
+
+  // Top-level scenes within a project (replaces legacy scenes table concept)
+  projectScenes: defineTable({
+    projectId: v.id("videoProjects"),
+    sceneNumber: v.number(), // Display order
+    title: v.string(), // e.g., "Opening: The City Awakens"
+    description: v.string(), // Scene narrative/context
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId", "sceneNumber"]),
+
+  // Individual shots within a scene (camera angles, moments)
+  sceneShots: defineTable({
+    projectId: v.id("videoProjects"), // For easy querying
+    sceneId: v.id("projectScenes"), // Parent scene
+    shotNumber: v.number(), // Order within scene
+    description: v.string(), // Shot description/direction
+    initialPrompt: v.string(), // Base prompt for first generation
+    selectedImageId: v.optional(v.id("shotImages")), // Final chosen image
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_scene", ["sceneId", "shotNumber"])
+    .index("by_project", ["projectId"]),
+
+  // Image iterations for each shot (img2img refinement workflow)
+  shotImages: defineTable({
+    projectId: v.id("videoProjects"),
+    sceneId: v.id("projectScenes"),
+    shotId: v.id("sceneShots"),
+    iterationNumber: v.number(), // 0 = initial batch, 1+ = refinements
+    variantNumber: v.number(), // 0-5 (six variants per iteration)
+    imageUrl: v.string(), // Generated image URL
+    imageStorageId: v.optional(v.string()), // Convex storage ID
+    iterationPrompt: v.string(), // Prompt used for this iteration
+    parentImageId: v.optional(v.id("shotImages")), // Source image for img2img
+    replicateImageId: v.optional(v.string()), // Prediction tracking
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    isFavorite: v.boolean(), // User starred this variant
+    metadata: v.optional(v.any()), // Generation params (model, cfg_scale, etc.)
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_shot", ["shotId", "iterationNumber", "variantNumber"])
+    .index("by_scene", ["sceneId"])
+    .index("by_project", ["projectId"]),
+
+  // Final storyboard with master shots per scene
+  storyboardSelections: defineTable({
+    projectId: v.id("videoProjects"),
+    sceneId: v.id("projectScenes"),
+    shotId: v.id("sceneShots"),
+    selectedImageId: v.id("shotImages"), // Master shot choice
+    animationStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
+    animatedVideoUrl: v.optional(v.string()), // Final animation
+    replicateVideoId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_scene", ["sceneId"])
+    .index("by_shot", ["shotId"]),
 });

@@ -9,6 +9,7 @@
  */
 
 import type * as editor from "../editor.js";
+import type * as projectRedesign from "../projectRedesign.js";
 import type * as video from "../video.js";
 
 import type {
@@ -19,6 +20,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   editor: typeof editor;
+  projectRedesign: typeof projectRedesign;
   video: typeof video;
 }>;
 
