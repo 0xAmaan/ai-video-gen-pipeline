@@ -13,7 +13,7 @@ const navItems = [
   },
   {
     name: "Scene Iterator",
-    path: "/project-redesign/iterator",
+    path: "/project-redesign/scene-iterator",
     icon: Film,
   },
   {
