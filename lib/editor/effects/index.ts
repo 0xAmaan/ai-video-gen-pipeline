@@ -1,14 +1,31 @@
 /**
  * Effects Module
  *
- * Centralized effect application for video clips.
- * Handles all visual effects (grain, color grading, vintage, vignette, film look)
+ * Centralized effect application for video clips and tracks.
+ * Handles all visual effects including basic filters, color grading, artistic filters,
+ * and color effects with blend parameter support.
  */
 
 import type { Effect, Clip } from "../types";
 import { applyGrainEffect } from "./grain-filter";
 import { applyColorGradeEffect } from "./color-grading";
 import { applyVintage, applyVignette } from "./artistic-filters";
+import {
+  applyBrightness,
+  applyContrast,
+  applySaturation,
+  applyBlur,
+  applyHue,
+  applySharpen,
+} from "./basic-filters";
+import {
+  applyBlackAndWhite,
+  applySepia,
+  applyCrossProcess,
+  applyTemperature,
+  applyTint,
+  applyLUT,
+} from "./color-effects";
 
 /**
  * Apply all enabled effects from a clip to a canvas context
@@ -50,7 +67,66 @@ export function applyEffect(
   effect: Effect,
   frameNumber?: number,
 ): void {
+  // Get blend amount (default to 1.0 if not specified)
+  const blend = effect.blend ?? 1.0;
+
+  // Skip effect if blend is 0 or effect is disabled
+  if (!effect.enabled || blend <= 0) {
+    return;
+  }
+
   switch (effect.type) {
+    // Basic filter effects
+    case "brightness":
+      applyBrightness(ctx, effect.params, blend);
+      break;
+
+    case "contrast":
+      applyContrast(ctx, effect.params, blend);
+      break;
+
+    case "saturation":
+      applySaturation(ctx, effect.params, blend);
+      break;
+
+    case "blur":
+      applyBlur(ctx, effect.params, blend);
+      break;
+
+    case "hue":
+      applyHue(ctx, effect.params, blend);
+      break;
+
+    case "sharpen":
+      applySharpen(ctx, effect.params, blend);
+      break;
+
+    // Color effects
+    case "bw":
+      applyBlackAndWhite(ctx, effect.params, blend);
+      break;
+
+    case "sepia":
+      applySepia(ctx, effect.params, blend);
+      break;
+
+    case "crossProcess":
+      applyCrossProcess(ctx, effect.params, blend);
+      break;
+
+    case "temperature":
+      applyTemperature(ctx, effect.params, blend);
+      break;
+
+    case "tint":
+      applyTint(ctx, effect.params, blend);
+      break;
+
+    case "lut":
+      applyLUT(ctx, effect.params, blend);
+      break;
+
+    // Existing effects (need blend parameter support added)
     case "grain":
       applyGrainEffect(ctx, effect.params, frameNumber);
       break;
@@ -72,12 +148,8 @@ export function applyEffect(
       console.warn("[Effects] Film look not yet implemented");
       break;
 
-    case "brightness":
-    case "contrast":
-    case "saturation":
-    case "blur":
-      // Basic effects - could be implemented with CSS filters or pixel manipulation
-      console.warn(`[Effects] ${effect.type} not yet implemented`);
+    case "custom":
+      console.warn("[Effects] Custom effect type - no built-in implementation");
       break;
 
     default:
@@ -85,6 +157,25 @@ export function applyEffect(
   }
 }
 
+// Re-export all effect functions for external use
 export { applyGrainEffect } from "./grain-filter";
 export { applyColorGradeEffect } from "./color-grading";
 export { applyVintage, applyVignette, applyVignettePixelBased } from "./artistic-filters";
+export {
+  applyBrightness,
+  applyContrast,
+  applySaturation,
+  applyBlur,
+  applyHue,
+  applySharpen,
+} from "./basic-filters";
+export {
+  applyBlackAndWhite,
+  applySepia,
+  applyCrossProcess,
+  applyTemperature,
+  applyTint,
+  applyLUT,
+  rgbToHsl,
+  hslToRgb,
+} from "./color-effects";
