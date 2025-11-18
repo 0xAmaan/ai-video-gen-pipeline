@@ -56,6 +56,34 @@ export function applyClipEffects(
 }
 
 /**
+ * Apply all enabled effects from a track to a canvas context
+ *
+ * @param ctx - Canvas 2D context to apply effects to
+ * @param effects - Array of effects from track
+ * @param frameNumber - Optional frame number for temporal consistency
+ */
+export function applyTrackEffects(
+  ctx: CanvasRenderingContext2D,
+  effects: Effect[],
+  frameNumber?: number,
+): void {
+  if (!effects || effects.length === 0) {
+    return;
+  }
+
+  // Apply each enabled effect in order
+  for (const effect of effects) {
+    if (!effect.enabled) continue;
+
+    try {
+      applyEffect(ctx, effect, frameNumber);
+    } catch (error) {
+      console.error(`[Effects] Failed to apply track ${effect.type} effect:`, error);
+    }
+  }
+}
+
+/**
  * Apply a single effect to a canvas context
  *
  * @param ctx - Canvas 2D context

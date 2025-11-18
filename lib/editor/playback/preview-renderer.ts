@@ -3,7 +3,7 @@ import { FrameCache } from "./frame-cache";
 import { renderTransition, type TransitionRenderContext } from "../transitions/renderer";
 import type { TransitionType } from "../transitions/presets";
 import { getEasingFunction } from "../transitions/presets";
-import { applyClipEffects } from "../effects";
+import { applyClipEffects, applyTrackEffects } from "../effects";
 import { calculateSpeedAtTime } from "../effects/speed-interpolation";
 
 export type TimeUpdateHandler = (time: number) => void;
@@ -42,6 +42,13 @@ export class PreviewRenderer {
   private lastFpsTime = 0;
   private currentFps = 0;
   private frameRenderTime = 0;
+
+  // Canvas pool for multitrack rendering (reuse to avoid GC)
+  private canvasPool: HTMLCanvasElement[] = [];
+  private canvasPoolIndex = 0;
+
+  // Debug logging flag (can be enabled for troubleshooting)
+  private debugLogging = false;
 
   constructor(
     private readonly getSequence: () => Sequence | null,
@@ -181,7 +188,19 @@ export class PreviewRenderer {
       fps: this.currentFps,
       frameTime: this.frameRenderTime,
       isPlaying: this.playing,
+      canvasPoolSize: this.canvasPool.length,
     };
+  }
+
+  /**
+   * Enable or disable debug logging for multitrack rendering
+   * @param enabled Whether to enable debug logging
+   */
+  setDebugLogging(enabled: boolean) {
+    this.debugLogging = enabled;
+    if (enabled) {
+      console.log('[PreviewRenderer] Debug logging enabled');
+    }
   }
 
   async play() {
@@ -247,12 +266,49 @@ export class PreviewRenderer {
     this.cache.clear();
     this.audioBuffers.clear();
     this.audioLoadPromises.clear();
+    this.canvasPool = []; // Clear canvas pool
     this.videoEl?.pause();
     this.videoEl?.removeAttribute("src");
     this.videoEl?.load();
     this.workletNode?.disconnect();
     this.audioGainNode?.disconnect();
     this.audioContext?.close();
+  }
+
+  /**
+   * Get a temporary canvas from the pool, creating one if needed
+   * @param width Canvas width
+   * @param height Canvas height
+   * @returns A canvas from the pool with the specified dimensions
+   */
+  private getTempCanvas(width: number, height: number): HTMLCanvasElement {
+    let canvas: HTMLCanvasElement;
+
+    if (this.canvasPoolIndex < this.canvasPool.length) {
+      // Reuse existing canvas from pool
+      canvas = this.canvasPool[this.canvasPoolIndex];
+    } else {
+      // Create new canvas and add to pool
+      canvas = document.createElement('canvas');
+      this.canvasPool.push(canvas);
+    }
+
+    this.canvasPoolIndex++;
+
+    // Update dimensions if needed
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    return canvas;
+  }
+
+  /**
+   * Reset canvas pool index to beginning for next render cycle
+   */
+  private resetCanvasPool() {
+    this.canvasPoolIndex = 0;
   }
 
   private loop = (timestamp?: number) => {
@@ -394,85 +450,123 @@ export class PreviewRenderer {
     if (this.isDrawingFrame) return;
     this.isDrawingFrame = true;
 
+    // Reset canvas pool for this frame
+    this.resetCanvasPool();
+
     const canvasWidth = this.canvas.width;
     const canvasHeight = this.canvas.height;
-    const video = this.videoEl;
+    const sequence = this.getSequence();
 
-    // Check if we're in a transition
-    const transitionInfo = this.getActiveTransition();
+    if (!sequence) {
+      // No sequence fallback
+      this.ctx.fillStyle = "#888";
+      this.ctx.fillText("No sequence", 24, 32);
+      this.isDrawingFrame = false;
+      return;
+    }
 
-    // Only clear if we have no video to draw (prevents flicker)
-    const hasVideo =
-      video &&
-      video.readyState >= 2 &&
-      video.videoWidth > 0 &&
-      video.videoHeight > 0;
+    // Get all active clips across all tracks
+    const activeClips = this.resolveAllActiveClips(sequence, this.currentTime);
 
-    if (hasVideo && transitionInfo && this.nextVideoEl) {
-      // Render transition between current and next clip
-      // Note: readyState >= 1 (HAVE_METADATA) is sufficient - we just need dimensions
-      const hasNextVideo =
-        this.nextVideoEl.readyState >= 1 &&
-        this.nextVideoEl.videoWidth > 0 &&
-        this.nextVideoEl.videoHeight > 0;
-
-      if (hasNextVideo) {
-        this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-        // Create temporary canvases for aspect-ratio-corrected frames
-        const fromCanvas = document.createElement('canvas');
-        fromCanvas.width = canvasWidth;
-        fromCanvas.height = canvasHeight;
-        const fromCtx = fromCanvas.getContext('2d');
-
-        const toCanvas = document.createElement('canvas');
-        toCanvas.width = canvasWidth;
-        toCanvas.height = canvasHeight;
-        const toCtx = toCanvas.getContext('2d');
-
-        if (fromCtx && toCtx) {
-          // Draw current video with proper aspect ratio to fromCanvas (with effects)
-          this.drawVideoToCanvas(fromCtx, video, canvasWidth, canvasHeight, this.currentClip);
-
-          // Draw next video with proper aspect ratio to toCanvas (with effects)
-          this.drawVideoToCanvas(toCtx, this.nextVideoEl, canvasWidth, canvasHeight, this.nextClip);
-
-          // Render transition using aspect-corrected canvases
-          renderTransition(transitionInfo.type as TransitionType, {
-            ctx: this.ctx,
-            width: canvasWidth,
-            height: canvasHeight,
-            fromFrame: fromCanvas,
-            toFrame: toCanvas,
-            progress: transitionInfo.progress,
-          });
-        }
-      } else {
-        // Next video not ready, just draw current frame
-        this.drawSingleFrame(video, canvasWidth, canvasHeight);
-      }
-    } else if (hasVideo) {
-      // No transition, just draw current frame
-      this.drawSingleFrame(video, canvasWidth, canvasHeight);
-    } else {
+    if (activeClips.length === 0) {
       // No media fallback
+      this.ctx.fillStyle = "#050505";
+      this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       this.ctx.fillStyle = "#888";
       this.ctx.fillText("No media", 24, 32);
+      this.isDrawingFrame = false;
+      return;
+    }
+
+    // Clear canvas
+    this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    this.ctx.fillStyle = "#050505";
+    this.ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Render multitrack composition
+    this.renderMultitrackClips(activeClips, canvasWidth, canvasHeight);
+
+    // Debug logging for canvas pool usage
+    if (this.debugLogging) {
+      console.log(`[PreviewRenderer] Canvas pool: ${this.canvasPoolIndex} used, ${this.canvasPool.length} total`);
     }
 
     this.isDrawingFrame = false;
   }
 
   /**
+   * Render multiple clips from different tracks, composited in z-order
+   * @param activeClips - Array of active clips with track info, already sorted by track order
+   * @param canvasWidth - Canvas width
+   * @param canvasHeight - Canvas height
+   */
+  private renderMultitrackClips(
+    activeClips: Array<{ clip: Clip; track: Track; mediaClip?: MediaAssetMeta }>,
+    canvasWidth: number,
+    canvasHeight: number,
+  ) {
+    if (!this.ctx || !this.canvas) return;
+
+    const frameNumber = Math.floor(this.currentTime * 30); // Assume 30fps for effect seeds
+
+    if (this.debugLogging) {
+      console.log(`[PreviewRenderer] Rendering ${activeClips.length} active clips at time ${this.currentTime.toFixed(3)}s`);
+    }
+
+    // Render each clip in order (lower track.order first, higher track.order on top)
+    for (const { clip, track, mediaClip } of activeClips) {
+      if (this.debugLogging) {
+        console.log(`  - Track ${track.order} (${track.name}): clip ${clip.id}, opacity ${(track.opacity * clip.opacity).toFixed(2)}`);
+      }
+      // Get a temporary canvas for this clip
+      const tempCanvas = this.getTempCanvas(canvasWidth, canvasHeight);
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) continue;
+
+      // Clear temp canvas
+      tempCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+      // For now, use the current video element if this is the current clip
+      // TODO: Implement proper per-clip video element management for true multitrack
+      if (this.currentClip && clip.id === this.currentClip.id && this.videoEl) {
+        const hasVideo =
+          this.videoEl.readyState >= 2 &&
+          this.videoEl.videoWidth > 0 &&
+          this.videoEl.videoHeight > 0;
+
+        if (hasVideo) {
+          // Draw video to temp canvas with aspect ratio correction
+          this.drawVideoToCanvas(tempCtx, this.videoEl, canvasWidth, canvasHeight);
+
+          // Apply clip-level effects
+          if (clip.effects && clip.effects.length > 0) {
+            applyClipEffects(tempCtx, clip, frameNumber);
+          }
+
+          // Apply track-level effects
+          if (track.effects && track.effects.length > 0) {
+            applyTrackEffects(tempCtx, track.effects, frameNumber);
+          }
+
+          // Composite to main canvas with track opacity and clip opacity
+          const finalOpacity = track.opacity * clip.opacity;
+          this.ctx.globalAlpha = finalOpacity;
+          this.ctx.drawImage(tempCanvas, 0, 0);
+          this.ctx.globalAlpha = 1.0;
+        }
+      }
+    }
+  }
+
+  /**
    * Helper method to draw a video to a canvas with proper aspect ratio
-   * This is used both for single frame rendering and transition rendering
+   * Effects should be applied separately after calling this method
    */
   private drawVideoToCanvas(
     ctx: CanvasRenderingContext2D,
     video: HTMLVideoElement,
     canvasWidth: number,
     canvasHeight: number,
-    clip?: Clip,
   ) {
     // Safety check for video dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
@@ -507,13 +601,6 @@ export class PreviewRenderer {
 
     // Draw video centered with correct aspect ratio
     ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
-
-    // Apply clip effects if provided
-    if (clip && clip.effects && clip.effects.length > 0) {
-      // Use frame number based on current time for temporal consistency
-      const frameNumber = Math.floor(this.currentTime * 30); // Assume 30fps for seed
-      applyClipEffects(ctx, clip, frameNumber);
-    }
   }
 
   private drawSingleFrame(
@@ -522,7 +609,13 @@ export class PreviewRenderer {
     canvasHeight: number,
   ) {
     if (!this.ctx) return;
-    this.drawVideoToCanvas(this.ctx, video, canvasWidth, canvasHeight, this.currentClip);
+    this.drawVideoToCanvas(this.ctx, video, canvasWidth, canvasHeight);
+
+    // Apply clip effects if current clip exists
+    if (this.currentClip && this.currentClip.effects && this.currentClip.effects.length > 0) {
+      const frameNumber = Math.floor(this.currentTime * 30);
+      applyClipEffects(this.ctx, this.currentClip, frameNumber);
+    }
   }
 
   private getActiveTransition(): {
@@ -565,6 +658,38 @@ export class PreviewRenderer {
     }
 
     return null;
+  }
+
+  /**
+   * Resolve all active clips across all video tracks at a given time, sorted by z-index
+   * @param sequence - The sequence to resolve clips from
+   * @param time - The timeline time in seconds
+   * @returns Array of active clips with their track and media information, sorted by track order
+   */
+  private resolveAllActiveClips(
+    sequence: Sequence,
+    time: number
+  ): Array<{ clip: Clip; track: Track; mediaClip?: MediaAssetMeta }> {
+    const activeClips: Array<{ clip: Clip; track: Track; mediaClip?: MediaAssetMeta }> = [];
+
+    for (const track of sequence.tracks) {
+      // Only process video tracks for visual rendering
+      if (track.kind !== "video") continue;
+
+      // Skip muted or invisible tracks
+      if (track.muted || !track.visible) continue;
+
+      for (const clip of track.clips) {
+        // Check if clip is active at this time
+        if (time >= clip.start && time < clip.start + clip.duration) {
+          const mediaClip = this.getAsset(clip.mediaId);
+          activeClips.push({ clip, track, mediaClip });
+        }
+      }
+    }
+
+    // Sort by track order (lower order = rendered first, higher order = on top)
+    return activeClips.sort((a, b) => a.track.order - b.track.order);
   }
 
   private resolveClip(sequence: Sequence, time: number) {
