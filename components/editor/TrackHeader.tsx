@@ -105,14 +105,18 @@ export const TrackHeader = ({
     onSelect?.(track.id);
   };
 
+  // Zebra striping: alternate background colors based on track order
+  const isEvenTrack = track.order % 2 === 0;
+  const baseBackground = isEvenTrack ? "bg-zinc-900" : "bg-zinc-900/50";
+
   return (
     <div
       className={`
         w-[200px] h-[60px] border-r border-b border-zinc-800
-        bg-zinc-900 flex px-2 py-1
-        ${isSelected ? "bg-zinc-800 border-l-2 border-l-blue-500" : ""}
+        ${baseBackground} flex px-2 py-1
+        ${isSelected ? "!bg-zinc-800 border-l-2 border-l-blue-500" : ""}
         ${isDragging ? "opacity-50 shadow-lg" : ""}
-        transition-opacity
+        transition-all duration-150
       `}
       onClick={handleTrackClick}
     >
