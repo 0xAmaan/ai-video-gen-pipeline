@@ -110,6 +110,13 @@ export interface ShotImagesByIteration {
   parentImage?: ShotImage;
 }
 
+export interface ShotWithSceneData {
+  shot: SceneShot;
+  scene: ProjectScene;
+  images: ShotImage[];
+  storyboardSelection?: StoryboardSelection | null;
+}
+
 // ========================================
 // Storyboard Types
 // ========================================
@@ -132,9 +139,16 @@ export interface StoryboardSceneGroup {
   scene: ProjectScene;
   shots: Array<{
     shot: SceneShot;
-    selectedImage: ShotImage;
-    selection: StoryboardSelection;
+    selectedImage?: ShotImage | null;
+    selection?: StoryboardSelection | null;
   }>;
+}
+
+export interface ShotSelectionSummary {
+  selection: StoryboardSelection;
+  shot: SceneShot;
+  scene: ProjectScene;
+  image: ShotImage;
 }
 
 // ========================================
@@ -268,4 +282,9 @@ export interface StoryboardViewState {
 export interface SceneReorderItem {
   sceneId: Id<"projectScenes">;
   sceneNumber: number;
+}
+
+export interface ShotReorderItem {
+  shotId: Id<"sceneShots">;
+  shotNumber: number;
 }

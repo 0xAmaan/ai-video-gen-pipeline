@@ -13,6 +13,9 @@ import {
   UpdateImageInput,
   UpdateStoryboardAnimationInput,
   SceneReorderItem,
+  ShotWithSceneData,
+  ShotSelectionSummary,
+  StoryboardSceneGroup,
 } from "@/lib/types/redesign";
 
 // ========================================
@@ -88,11 +91,22 @@ export const useDeleteSceneShot = () => {
   return useMutation(api.projectRedesign.deleteSceneShot);
 };
 
+export const useReorderSceneShots = () => {
+  return useMutation(api.projectRedesign.reorderSceneShots);
+};
+
 export const useSceneShots = (sceneId?: Id<"projectScenes">) => {
   return useQuery(
     api.projectRedesign.getSceneShots,
     sceneId ? { sceneId } : "skip",
   );
+};
+
+export const useShotWithScene = (shotId?: Id<"sceneShots">) => {
+  return useQuery(
+    api.projectRedesign.getShotWithScene,
+    shotId ? { shotId } : "skip",
+  ) as ShotWithSceneData | null;
 };
 
 // ========================================
@@ -167,6 +181,22 @@ export const useStoryboardByScene = (sceneId?: Id<"projectScenes">) => {
     api.projectRedesign.getStoryboardByScene,
     sceneId ? { sceneId } : "skip",
   );
+};
+
+export const useProjectShotSelections = (
+  projectId?: Id<"videoProjects">,
+) => {
+  return useQuery(
+    api.projectRedesign.getProjectShotSelections,
+    projectId ? { projectId } : "skip",
+  ) as ShotSelectionSummary[] | undefined;
+};
+
+export const useStoryboardRows = (projectId?: Id<"videoProjects">) => {
+  return useQuery(
+    api.projectRedesign.getStoryboardRows,
+    projectId ? { projectId } : "skip",
+  ) as StoryboardSceneGroup[] | undefined;
 };
 
 // ========================================

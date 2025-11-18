@@ -24,6 +24,9 @@ export const ChatInput = ({
   const [mode, setMode] = useState<"image" | "video">("image");
   const [showSettings, setShowSettings] = useState(false);
 
+  const currentMessage =
+    initialMessage !== undefined ? initialMessage : message;
+
   // Settings state
   const [settings, setSettings] = useState<GenerationSettings>({
     mode: "image",
@@ -36,8 +39,6 @@ export const ChatInput = ({
   });
 
   const handleSubmit = () => {
-    const currentMessage =
-      initialMessage !== undefined ? initialMessage : message;
     if (currentMessage.trim() && onSubmit) {
       onSubmit(currentMessage, { ...settings, mode });
       if (onMessageChange) {
@@ -123,9 +124,7 @@ export const ChatInput = ({
 
                 {/* Textarea */}
                 <textarea
-                  value={
-                    initialMessage !== undefined ? initialMessage : message
-                  }
+                  value={currentMessage}
                   onChange={(e) => {
                     const newValue = e.target.value;
                     if (onMessageChange) {
@@ -144,7 +143,7 @@ export const ChatInput = ({
                 {/* Generate button - square */}
                 <button
                   onClick={handleSubmit}
-                  disabled={disabled || !message.trim()}
+                  disabled={disabled || !currentMessage.trim()}
                   className="w-9 h-9 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 text-white transition-colors cursor-pointer disabled:cursor-not-allowed flex items-center justify-center shrink-0"
                 >
                   <Sparkles className="w-4 h-4" />

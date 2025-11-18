@@ -5,42 +5,61 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Sparkles, Layout, Film, Scissors } from "lucide-react";
 
-const navItems = [
-  {
-    name: "Prompt Planner",
-    path: "/project-redesign/scene-planner",
-    icon: Sparkles,
-  },
-  {
-    name: "Scene Iterator",
-    path: "/project-redesign/scene-iterator",
-    icon: Film,
-  },
-  {
-    name: "Storyboard",
-    path: "/project-redesign/storyboard",
-    icon: Layout,
-  },
-  {
-    name: "Video Editor",
-    path: "/project-redesign/home",
-    icon: Scissors,
-  },
-];
+interface PageNavigationProps {
+  projectId?: string;
+  shotId?: string | null;
+}
 
-export const PageNavigation = () => {
+const DEFAULT_PATH = "/project-redesign/home";
+
+export const PageNavigation = ({ projectId, shotId }: PageNavigationProps) => {
   const pathname = usePathname();
+
+  const navItems = [
+    {
+      name: "Prompt Planner",
+      icon: Sparkles,
+      href: projectId
+        ? `/project-redesign/${projectId}/scene-planner`
+        : DEFAULT_PATH,
+      match: "/scene-planner",
+    },
+    {
+      name: "Scene Iterator",
+      icon: Film,
+      href: projectId
+        ? `/project-redesign/${projectId}/scene-iterator${
+            shotId ? `?shotId=${shotId}` : ""
+          }`
+        : DEFAULT_PATH,
+      match: "/scene-iterator",
+    },
+    {
+      name: "Storyboard",
+      icon: Layout,
+      href: projectId
+        ? `/project-redesign/${projectId}/storyboard`
+        : DEFAULT_PATH,
+      match: "/storyboard",
+    },
+    {
+      name: "Video Editor",
+      icon: Scissors,
+      href: "/project-redesign/home",
+      match: "/project-redesign/home",
+    },
+  ];
 
   return (
     <div className="flex items-center gap-2 bg-[#2a2a2a] rounded-lg p-1">
       {navItems.map((item) => {
-        const isActive = pathname === item.path;
+        const isActive = pathname?.includes(item.match);
         const Icon = item.icon;
 
         return (
           <Link
-            key={item.path}
-            href={item.path}
+            key={item.name}
+            href={item.href}
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all cursor-pointer",
               isActive

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Card } from "@/components/ui/card";
@@ -14,6 +14,8 @@ import {
   Plus,
   Trash2,
   MoreVertical,
+  ArrowUpRight,
+  CheckCircle2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -21,64 +23,65 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-export interface Shot {
-  id: string;
-  text: string;
-  color?: "green" | "red" | "blue" | "amber";
-}
-
-export interface Scene {
-  id: string;
-  title: string;
-  description: string;
-  shots: Shot[];
-  isExpanded?: boolean;
-}
+import { ProjectScene, SceneShot } from "@/lib/types/redesign";
+import { Id } from "@/convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
 
 interface PromptPlannerCardProps {
-  scene: Scene;
+  scene: ProjectScene;
   sceneIndex: number;
-  onToggleExpand: (sceneId: string) => void;
-  onShotClick: (shot: Shot, sceneId: string) => void;
-  onAddShot: (sceneId: string) => void;
-  onDeleteScene: (sceneId: string) => void;
-  onDeleteShot: (sceneId: string, shotId: string) => void;
-  onUpdateSceneTitle: (sceneId: string, title: string) => void;
-  onUpdateSceneDescription: (sceneId: string, description: string) => void;
-  onUpdateShotText: (sceneId: string, shotId: string, text: string) => void;
+  shots: SceneShot[];
+  isExpanded: boolean;
+  activeShotId?: Id<"sceneShots"> | null;
+  onToggleExpand: (sceneId: Id<"projectScenes">) => void;
+  onShotClick: (shot: SceneShot) => void;
+  onAddShot: (sceneId: Id<"projectScenes">) => void;
+  onDeleteScene: (sceneId: Id<"projectScenes">) => void;
+  onDeleteShot: (shotId: Id<"sceneShots">) => void;
+  onUpdateSceneTitle: (sceneId: Id<"projectScenes">, title: string) => void;
+  onUpdateSceneDescription: (
+    sceneId: Id<"projectScenes">,
+    description: string,
+  ) => void;
+  onUpdateShotText: (shotId: Id<"sceneShots">, text: string) => void;
+  onEnterIterator: (shot: SceneShot) => void;
+  registerShotRef?: (shotId: Id<"sceneShots">, node: HTMLDivElement | null) => void;
 }
 
 interface ShotCardProps {
-  shot: Shot;
-  sceneId: string;
+  shot: SceneShot;
+  scene: ProjectScene;
   sceneIndex: number;
   shotIndex: number;
-  editingShotId: string | null;
-  onShotClick: (shot: Shot, sceneId: string) => void;
-  onDeleteShot: (sceneId: string, shotId: string) => void;
-  onUpdateShotText: (sceneId: string, shotId: string, text: string) => void;
-  setEditingShotId: (shotId: string | null) => void;
+  isActive: boolean;
+  onShotClick: (shot: SceneShot) => void;
+  onDeleteShot: (shotId: Id<"sceneShots">) => void;
+  onUpdateShotText: (shotId: Id<"sceneShots">, text: string) => void;
+  onEnterIterator: (shot: SceneShot) => void;
+  registerShotRef?: (shotId: Id<"sceneShots">, node: HTMLDivElement | null) => void;
 }
 
-const SHOT_COLOR_CLASSES = {
-  green: "border-l-green-600",
-  red: "border-l-red-600",
-  blue: "border-l-blue-600",
-  amber: "border-l-amber-600",
-};
-
-const ShotCard: React.FC<ShotCardProps> = ({
+const ShotCard = ({
   shot,
-  sceneId,
+  scene,
   sceneIndex,
   shotIndex,
-  editingShotId,
+  isActive,
   onShotClick,
   onDeleteShot,
   onUpdateShotText,
-  setEditingShotId,
-}) => {
+  onEnterIterator,
+  registerShotRef,
+}: ShotCardProps) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(shot.description);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft(shot.description);
+    }
+  }, [shot.description, isEditing]);
+
   const {
     attributes,
     listeners,
@@ -87,8 +90,8 @@ const ShotCard: React.FC<ShotCardProps> = ({
     transition,
     isDragging,
   } = useSortable({
-    id: shot.id,
-    data: { sceneId },
+    id: shot._id,
+    data: { type: "shot", sceneId: scene._id },
   });
 
   const style = {
@@ -96,66 +99,127 @@ const ShotCard: React.FC<ShotCardProps> = ({
     transition,
   };
 
+  const setRefs = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    registerShotRef?.(shot._id, node);
+  };
+
+  const label = useMemo(() => {
+    const shotNumber =
+      shot.shotNumber !== undefined
+        ? shot.shotNumber
+        : shotIndex + 1;
+    return `Shot ${scene.sceneNumber}.${shotNumber}`;
+  }, [scene.sceneNumber, shot.shotNumber, shotIndex]);
+
+  const commitDraft = () => {
+    if (draft.trim().length && draft !== shot.description) {
+      onUpdateShotText(shot._id, draft.trim());
+    }
+    setIsEditing(false);
+  };
+
   return (
     <Card
-      ref={setNodeRef}
+      ref={setRefs}
       style={style}
-      onClick={() => !editingShotId && onShotClick(shot, sceneId)}
-      className={`p-3 bg-[#131414] border-gray-800/50 border-l-4 hover:border-gray-500/50 transition-all cursor-pointer ${
-        shot.color ? SHOT_COLOR_CLASSES[shot.color] : "border-l-gray-600"
-      } ${isDragging ? "opacity-50" : ""}`}
+      onClick={() => !isEditing && onShotClick(shot)}
+      className={cn(
+        "p-3 bg-[#131414] border border-gray-800/60 hover:border-gray-600/80 transition-all",
+        isDragging && "opacity-50",
+        isActive && "ring-2 ring-emerald-400/70",
+      )}
     >
-      <div className="flex items-start gap-2">
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-          <GripVertical className="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" />
+      <div className="flex items-start gap-3">
+        <div
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="cursor-grab active:cursor-grabbing text-gray-500 mt-1"
+        >
+          <GripVertical className="w-4 h-4" />
         </div>
 
-        <div className="flex-1 min-w-0">
-          <Badge variant="secondary" className="text-xs mb-2">
-            Shot {sceneIndex + 1}.{shotIndex + 1}
-          </Badge>
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="secondary"
+              className={cn(
+                "text-xs flex items-center gap-1",
+                shot.selectedImageId ? "bg-emerald-500/20 text-emerald-300" : "",
+              )}
+            >
+              {shot.selectedImageId && (
+                <CheckCircle2 className="w-3 h-3" />
+              )}
+              {label}
+            </Badge>
+          </div>
 
-          {editingShotId === shot.id ? (
+          {isEditing ? (
             <Textarea
-              value={shot.text}
-              onChange={(e) => onUpdateShotText(sceneId, shot.id, e.target.value)}
-              onBlur={() => setEditingShotId(null)}
-              onClick={(e) => e.stopPropagation()}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commitDraft}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setIsEditing(false);
+                  setDraft(shot.description);
+                }
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  commitDraft();
+                }
+              }}
               autoFocus
-              className="w-full bg-[#0a0a0a] text-sm text-gray-200 min-h-[60px]"
+              className="w-full bg-[#0a0a0a] text-sm text-gray-100 min-h-[70px]"
             />
           ) : (
             <p
               onClick={(e) => {
                 e.stopPropagation();
-                setEditingShotId(shot.id);
+                setIsEditing(true);
               }}
-              className="text-sm text-gray-200 cursor-text hover:bg-[#0a0a0a] px-2 py-1 rounded transition-colors"
+              className="text-sm text-gray-200 cursor-text hover:bg-[#0f0f0f] px-2 py-1 rounded transition-colors"
             >
-              {shot.text}
+              {shot.description}
             </p>
           )}
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteShot(sceneId, shot.id);
-          }}
-          className="flex-shrink-0 h-6 w-6 text-gray-500 hover:text-red-400 cursor-pointer"
-        >
-          <Trash2 className="w-3 h-3" />
-        </Button>
+        <div className="flex flex-col gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteShot(shot._id);
+            }}
+            className="h-8 w-8 text-gray-500 hover:text-red-400"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+          <Button
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEnterIterator(shot);
+            }}
+            className="h-8 w-8 rounded-full bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40"
+          >
+            <ArrowUpRight className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
     </Card>
   );
 };
 
-export const PromptPlannerCard: React.FC<PromptPlannerCardProps> = ({
+export const PromptPlannerCard = ({
   scene,
   sceneIndex,
+  shots,
+  isExpanded,
+  activeShotId,
   onToggleExpand,
   onShotClick,
   onAddShot,
@@ -164,12 +228,12 @@ export const PromptPlannerCard: React.FC<PromptPlannerCardProps> = ({
   onUpdateSceneTitle,
   onUpdateSceneDescription,
   onUpdateShotText,
-}) => {
+  onEnterIterator,
+  registerShotRef,
+}: PromptPlannerCardProps) => {
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
-  const [editingShotId, setEditingShotId] = useState<string | null>(null);
 
-  // Use dnd-kit sortable for scene
   const {
     attributes: sceneAttributes,
     listeners: sceneListeners,
@@ -177,101 +241,115 @@ export const PromptPlannerCard: React.FC<PromptPlannerCardProps> = ({
     transform: sceneTransform,
     transition: sceneTransition,
     isDragging: isSceneDragging,
-  } = useSortable({ id: scene.id });
+  } = useSortable({
+    id: scene._id,
+    data: { type: "scene" },
+  });
 
   const sceneStyle = {
     transform: CSS.Transform.toString(sceneTransform),
     transition: sceneTransition,
   };
 
+  const sortedShots = useMemo(
+    () =>
+      [...shots].sort((a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)),
+    [shots],
+  );
+
   return (
     <Card
       ref={setSceneRef}
       style={sceneStyle}
-      className={`p-4 transition-opacity bg-[#171717] border-gray-800 hover:border-gray-500/50 ${
-        isSceneDragging ? "opacity-50" : ""
-      }`}
+      className={cn(
+        "p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-opacity",
+        isSceneDragging && "opacity-50",
+      )}
     >
-      {/* Scene Header */}
-      <div className="flex items-start gap-3 mb-3">
-        <div {...sceneAttributes} {...sceneListeners} className="cursor-grab active:cursor-grabbing">
-          <GripVertical className="w-5 h-5 text-gray-500 flex-shrink-0 mt-1" />
+      <div className="flex items-start gap-3 mb-4">
+        <div
+          {...sceneAttributes}
+          {...sceneListeners}
+          className="cursor-grab active:cursor-grabbing text-gray-500 mt-1"
+        >
+          <GripVertical className="w-5 h-5" />
         </div>
 
         <button
-          onClick={() => onToggleExpand(scene.id)}
-          className="flex-shrink-0 mt-1 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          onClick={() => onToggleExpand(scene._id)}
+          className="text-gray-400 hover:text-gray-200 mt-1 cursor-pointer"
         >
-          {scene.isExpanded ? (
+          {isExpanded ? (
             <ChevronDown className="w-5 h-5" />
           ) : (
             <ChevronRight className="w-5 h-5" />
           )}
         </button>
 
-        <div className="flex-1 min-w-0">
-          {/* Title */}
+        <div className="flex-1 min-w-0 space-y-2">
           {editingTitle ? (
             <input
-              type="text"
               value={scene.title}
-              onChange={(e) => onUpdateSceneTitle(scene.id, e.target.value)}
+              onChange={(e) => onUpdateSceneTitle(scene._id, e.target.value)}
               onBlur={() => setEditingTitle(false)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") setEditingTitle(false);
               }}
               autoFocus
-              className="w-full bg-[#131414] text-lg font-semibold text-white px-2 py-1 rounded border border-gray-700 focus:outline-none focus:border-gray-500"
+              className="w-full bg-[#111] text-xl font-semibold text-white px-2 py-1 rounded border border-gray-700"
             />
           ) : (
             <div
               onClick={() => setEditingTitle(true)}
-              className="text-lg font-semibold text-white cursor-text hover:bg-[#131414] px-2 py-1 rounded transition-colors"
+              className="text-xl font-semibold text-white cursor-text hover:bg-[#111] px-2 py-1 rounded"
             >
               {scene.title}
             </div>
           )}
 
-          {/* Description */}
           {editingDescription ? (
             <Textarea
               value={scene.description}
-              onChange={(e) => onUpdateSceneDescription(scene.id, e.target.value)}
+              onChange={(e) =>
+                onUpdateSceneDescription(scene._id, e.target.value)
+              }
               onBlur={() => setEditingDescription(false)}
               autoFocus
-              className="w-full bg-[#131414] text-sm text-gray-300 mt-1 min-h-[60px]"
+              className="w-full bg-[#111] text-sm text-gray-200 min-h-[70px]"
             />
           ) : (
-            <div
+            <p
               onClick={() => setEditingDescription(true)}
-              className="text-sm text-gray-300 mt-1 cursor-text hover:bg-[#131414] px-2 py-1 rounded transition-colors"
+              className="text-sm text-gray-300 cursor-text hover:bg-[#111] px-2 py-1 rounded"
             >
               {scene.description}
-            </div>
+            </p>
           )}
 
-          {/* Collapsed State - Show Shot Count */}
-          {!scene.isExpanded && scene.shots.length > 0 && (
-            <Badge variant="outline" className="mt-2 text-xs text-gray-400">
-              {scene.shots.length} {scene.shots.length === 1 ? "shot" : "shots"}
+          {!isExpanded && (
+            <Badge variant="outline" className="text-xs text-gray-400">
+              {sortedShots.length}{" "}
+              {sortedShots.length === 1 ? "shot" : "shots"}
             </Badge>
           )}
         </div>
 
-        {/* Actions Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="flex-shrink-0 h-8 w-8 text-gray-400 hover:text-gray-200"
+              className="h-8 w-8 text-gray-400 hover:text-gray-200"
             >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-[#171717] border-gray-800">
+          <DropdownMenuContent
+            align="end"
+            className="bg-[#171717] border border-gray-800"
+          >
             <DropdownMenuItem
-              onClick={() => onDeleteScene(scene.id)}
+              onClick={() => onDeleteScene(scene._id)}
               className="text-red-400 hover:text-red-300 hover:bg-red-950/20"
             >
               <Trash2 className="w-4 h-4 mr-2" />
@@ -281,30 +359,29 @@ export const PromptPlannerCard: React.FC<PromptPlannerCardProps> = ({
         </DropdownMenu>
       </div>
 
-      {/* Expanded State - Show Shots */}
-      {scene.isExpanded && (
-        <div className="ml-8 space-y-2 mt-4">
-          {scene.shots.map((shot, shotIndex) => (
+      {isExpanded && (
+        <div className="ml-8 space-y-2">
+          {sortedShots.map((shot, idx) => (
             <ShotCard
-              key={shot.id}
+              key={shot._id}
               shot={shot}
-              sceneId={scene.id}
+              scene={scene}
               sceneIndex={sceneIndex}
-              shotIndex={shotIndex}
-              editingShotId={editingShotId}
+              shotIndex={idx}
+              isActive={activeShotId === shot._id}
               onShotClick={onShotClick}
               onDeleteShot={onDeleteShot}
               onUpdateShotText={onUpdateShotText}
-              setEditingShotId={setEditingShotId}
+              onEnterIterator={onEnterIterator}
+              registerShotRef={registerShotRef}
             />
           ))}
 
-          {/* Add Shot Button */}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onAddShot(scene.id)}
-            className="w-full border-dashed border-gray-700 hover:border-gray-500 text-gray-400 hover:text-gray-200"
+            onClick={() => onAddShot(scene._id)}
+            className="w-full border-dashed border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Shot

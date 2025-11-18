@@ -29,7 +29,7 @@ export interface TextToTextModel extends ModelConfig {
 
 export interface TextToImageModel extends ModelConfig {
   provider: "openai" | "replicate";
-  supportsImageInput: false;
+  supportsImageInput: boolean;
   supportsVideoGeneration: false;
 }
 
@@ -232,7 +232,7 @@ export const TEXT_TO_IMAGE_MODELS: TextToImageModel[] = [
     speed: "fast",
     cost: "low",
     description: "Legacy model, used as fallback option",
-    supportsImageInput: false,
+    supportsImageInput: true,
     supportsVideoGeneration: false,
     isAvailable: true,
   },
