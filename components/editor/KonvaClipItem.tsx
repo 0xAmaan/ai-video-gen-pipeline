@@ -13,6 +13,8 @@ interface KonvaClipItemProps {
   isSelected: boolean;
   pixelsPerSecond: number;
   xOffset?: number;
+  yPos?: number; // Y position for the clip (for dynamic track positioning)
+  trackHeight?: number; // Height of the track (defaults to CLIP_HEIGHT)
   isDragging?: boolean;
   dragX?: number;
   onSelect: (shiftKey: boolean, metaKey: boolean) => void; // Updated to pass shift and meta key state
@@ -34,6 +36,8 @@ const KonvaClipItemComponent = ({
   isSelected,
   pixelsPerSecond,
   xOffset = 0,
+  yPos = CLIP_Y, // Default to legacy position for backward compatibility
+  trackHeight = CLIP_HEIGHT,
   isDragging = false,
   dragX,
   onSelect,
@@ -182,9 +186,9 @@ const KonvaClipItemComponent = ({
       {/* Background rect (fallback color) */}
       <Rect
         x={clipX}
-        y={CLIP_Y}
+        y={yPos}
         width={clipWidth}
-        height={CLIP_HEIGHT}
+        height={trackHeight}
         fill={thumbnailImages.length > 0 ? "#000000" : clipColor}
         opacity={thumbnailImages.length > 0 ? 1 : 0.7}
         cornerRadius={4}
@@ -206,7 +210,7 @@ const KonvaClipItemComponent = ({
         const thumbnailAspectRatio = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
 
         // Calculate how many thumbnails we can fit maintaining aspect ratio
-        const tileWidth = CLIP_HEIGHT * thumbnailAspectRatio; // Maintain aspect ratio based on clip height
+        const tileWidth = trackHeight * thumbnailAspectRatio; // Maintain aspect ratio based on clip height
         const tilesNeeded = Math.ceil(clipWidth / tileWidth);
 
         // Generate tiles by repeating/cycling through available thumbnails
@@ -231,9 +235,9 @@ const KonvaClipItemComponent = ({
                 key={i}
                 image={img}
                 x={tileX}
-                y={CLIP_Y}
+                y={yPos}
                 width={remainingWidth}
-                height={CLIP_HEIGHT}
+                height={trackHeight}
                 crop={{
                   x: cropStartX,
                   y: 0,
@@ -250,9 +254,9 @@ const KonvaClipItemComponent = ({
                 key={i}
                 image={img}
                 x={tileX}
-                y={CLIP_Y}
+                y={yPos}
                 width={tileWidth}
-                height={CLIP_HEIGHT}
+                height={trackHeight}
                 listening={false}
               />
             );
@@ -267,7 +271,7 @@ const KonvaClipItemComponent = ({
         <>
           <Text
             x={clipX + 10}
-            y={CLIP_Y + 10}
+            y={yPos + 10}
             text={
               clip.mediaId?.substring(0, Math.floor(clipWidth / 8)) || "Clip"
             }
@@ -280,7 +284,7 @@ const KonvaClipItemComponent = ({
           {/* Duration label */}
           <Text
             x={clipX + 10}
-            y={CLIP_Y + 30}
+            y={yPos + 30}
             text={`${clip.duration.toFixed(1)}s`}
             fontSize={11}
             fill="rgba(255, 255, 255, 0.8)"
@@ -292,7 +296,7 @@ const KonvaClipItemComponent = ({
             <>
               <Rect
                 x={clipX + clipWidth - 50}
-                y={CLIP_Y + 8}
+                y={yPos + 8}
                 width={42}
                 height={18}
                 fill="rgba(139, 92, 246, 0.9)"
@@ -301,7 +305,7 @@ const KonvaClipItemComponent = ({
               />
               <Text
                 x={clipX + clipWidth - 46}
-                y={CLIP_Y + 12}
+                y={yPos + 12}
                 text={`↔ ${clip.transitions.length}`}
                 fontSize={10}
                 fill="#FFFFFF"
@@ -317,9 +321,9 @@ const KonvaClipItemComponent = ({
       {!isSelected && (
         <Rect
           x={clipX}
-          y={CLIP_Y}
+          y={yPos}
           width={clipWidth}
-          height={CLIP_HEIGHT}
+          height={trackHeight}
           fill="transparent"
           draggable
           onClick={(e) => {
@@ -346,9 +350,9 @@ const KonvaClipItemComponent = ({
           {/* Left trim handle */}
           <Rect
             x={clipX}
-            y={CLIP_Y}
+            y={yPos}
             width={HANDLE_WIDTH}
-            height={CLIP_HEIGHT}
+            height={trackHeight}
             fill="rgba(255, 255, 255, 0.2)"
             draggable
             dragBoundFunc={(pos) => ({
@@ -356,7 +360,7 @@ const KonvaClipItemComponent = ({
                 clipX,
                 Math.min(pos.x, clipX + clipWidth - HANDLE_WIDTH),
               ),
-              y: CLIP_Y,
+              y: yPos,
             })}
             onDragStart={handleLeftTrimDragStart}
             onDragMove={handleLeftTrimDragMove}
@@ -373,9 +377,9 @@ const KonvaClipItemComponent = ({
           {/* Right trim handle */}
           <Rect
             x={clipX + clipWidth - HANDLE_WIDTH}
-            y={CLIP_Y}
+            y={yPos}
             width={HANDLE_WIDTH}
-            height={CLIP_HEIGHT}
+            height={trackHeight}
             fill="rgba(255, 255, 255, 0.2)"
             draggable
             dragBoundFunc={(pos) => ({
@@ -383,7 +387,7 @@ const KonvaClipItemComponent = ({
                 clipX + HANDLE_WIDTH,
                 Math.min(pos.x, clipX + clipWidth),
               ),
-              y: CLIP_Y,
+              y: yPos,
             })}
             onDragStart={handleRightTrimDragStart}
             onDragMove={handleRightTrimDragMove}
@@ -400,7 +404,7 @@ const KonvaClipItemComponent = ({
           {/* Visual indicators for trim handles */}
           <Rect
             x={clipX + 2}
-            y={CLIP_Y + CLIP_HEIGHT / 2 - 15}
+            y={yPos + trackHeight / 2 - 15}
             width={2}
             height={30}
             fill="#FFFFFF"
@@ -408,7 +412,7 @@ const KonvaClipItemComponent = ({
           />
           <Rect
             x={clipX + 6}
-            y={CLIP_Y + CLIP_HEIGHT / 2 - 15}
+            y={yPos + trackHeight / 2 - 15}
             width={2}
             height={30}
             fill="#FFFFFF"
@@ -417,7 +421,7 @@ const KonvaClipItemComponent = ({
 
           <Rect
             x={clipX + clipWidth - 8}
-            y={CLIP_Y + CLIP_HEIGHT / 2 - 15}
+            y={yPos + trackHeight / 2 - 15}
             width={2}
             height={30}
             fill="#FFFFFF"
@@ -425,7 +429,7 @@ const KonvaClipItemComponent = ({
           />
           <Rect
             x={clipX + clipWidth - 4}
-            y={CLIP_Y + CLIP_HEIGHT / 2 - 15}
+            y={yPos + trackHeight / 2 - 15}
             width={2}
             height={30}
             fill="#FFFFFF"

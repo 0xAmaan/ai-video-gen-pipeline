@@ -1104,17 +1104,22 @@ export const StandaloneEditorApp = ({
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top row: Left Panel (1/3) + Preview (2/3) */}
         <div
-          className="grid grid-cols-[1fr_2fr] min-h-[420px] min-h-0"
+          className="grid grid-cols-[1fr_2fr] min-h-[420px]"
           style={{ height: `calc(100vh - ${timelineHeight + 220}px)` }}
         >
           {/* Left Panel: Tabbed Media + Transitions */}
-          <Tabs value={leftPanelTab} onValueChange={(v) => setLeftPanelTab(v as typeof leftPanelTab)} className="flex flex-col h-full">
-            <div className="border-r border-border bg-muted/20 px-2 pt-2">
-              <TabsList className="w-full grid grid-cols-4">
-                <TabsTrigger value="media" className="gap-1.5">
-                  <span>Media</span>
-                  <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">
-                    {assets.length}
+          <div className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-muted/20">
+            <Tabs
+              value={leftPanelTab}
+              onValueChange={(v) => setLeftPanelTab(v as typeof leftPanelTab)}
+              className="flex h-full min-h-0 flex-col"
+            >
+              <div className="px-2 pt-2">
+                <TabsList className="w-full grid grid-cols-4">
+                  <TabsTrigger value="media" className="gap-1.5">
+                    <span>Media</span>
+                    <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">
+                      {assets.length}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="transitions" className="gap-1.5">
@@ -1165,16 +1170,19 @@ export const StandaloneEditorApp = ({
                 </div>
               )}
             </TabsContent>
-          </Tabs>
-          <PreviewPanel
-            canvasRef={canvasRef}
-            currentTime={currentTime}
-            duration={sequence.duration}
-            isPlaying={isPlaying}
-            onTogglePlayback={handleTogglePlayback}
-            onSeek={handleSeek}
-            onCanvasResize={handleCanvasResize}
-          />
+            </Tabs>
+          </div>
+          <div className="min-h-0 overflow-hidden">
+            <PreviewPanel
+              canvasRef={canvasRef}
+              currentTime={currentTime}
+              duration={sequence.duration}
+              isPlaying={isPlaying}
+              onTogglePlayback={handleTogglePlayback}
+              onSeek={handleSeek}
+              onCanvasResize={handleCanvasResize}
+            />
+          </div>
         </div>
         {/* Resize handle */}
         <div

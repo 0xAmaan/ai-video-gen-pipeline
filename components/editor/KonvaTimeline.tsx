@@ -40,7 +40,9 @@ interface KonvaTimelineProps {
 }
 
 const CLIP_HEIGHT = 120;
-const CLIP_Y = 94;
+const CLIP_Y = 94; // Legacy: Y position for single-track mode (kept for backward compatibility)
+const TRACK_HEIGHT = 60; // Standard height for each track
+const TIMELINE_HEADER_Y = 30; // Top offset for timeline markers/ruler
 const TIMELINE_HEIGHT = 200;
 const DEFAULT_TIMELINE_DURATION = 300; // 5 minutes default view
 const MIN_ZOOM = 0.5;
@@ -54,7 +56,7 @@ const AUDIO_TRACK_LABEL_COLOR = "#9CA3AF";
 const AUDIO_TRACK_BG = "#0b0b0b";
 const AUDIO_WAVEFORM_COLOR = "#A5B4FC";
 const AUDIO_VOLUME_COLOR = "#FBBF24";
-const AUDIO_TRACK_Y = CLIP_Y + CLIP_HEIGHT + 20;
+const AUDIO_TRACK_Y = CLIP_Y + CLIP_HEIGHT + 20; // Legacy: Y position for audio track in single-track mode
 
 const generateWaveformPoints = (
   waveform: Float32Array,
@@ -119,6 +121,7 @@ const KonvaTimelineComponent = ({
   const [draggedClipX, setDraggedClipX] = useState<number>(0);
   const [virtualClipOrder, setVirtualClipOrder] = useState<Clip[]>([]);
   const [snapGuides, setSnapGuides] = useState<number[]>([]); // Array of time positions for snap guides
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
 
   // Marquee selection state
   const [marqueeStart, setMarqueeStart] = useState<{ x: number; y: number } | null>(null);
@@ -152,7 +155,28 @@ const KonvaTimelineComponent = ({
     return () => window.removeEventListener('keyup', handleKeyUp);
   }, [editingMode, draggingClipId]);
 
-  // Get first video track
+  // Sort tracks by order for consistent rendering
+  const sortedTracks = useMemo(
+    () => [...sequence.tracks].sort((a, b) => a.order - b.order),
+    [sequence.tracks]
+  );
+
+  // Helper function to get Y position for a track based on its order
+  const getTrackY = useCallback((trackOrder: number) => {
+    return TIMELINE_HEADER_Y + trackOrder * TRACK_HEIGHT;
+  }, []);
+
+  // Helper function to find track by clip ID
+  const findTrackByClipId = useCallback(
+    (clipId: string) => {
+      return sortedTracks.find((track) =>
+        track.clips.some((clip) => clip.id === clipId)
+      );
+    },
+    [sortedTracks]
+  );
+
+  // Legacy support: Get first video/audio track (for backward compatibility)
   const videoTrack = sequence.tracks.find((t) => t.kind === "video");
   const audioTrack = sequence.tracks.find((t) => t.kind === "audio");
   const clips = videoTrack?.clips ?? [];
@@ -433,24 +457,27 @@ const KonvaTimelineComponent = ({
       const y1 = Math.min(marqueeStart.y, marqueeCurrent.y);
       const y2 = Math.max(marqueeStart.y, marqueeCurrent.y);
 
-      // Find clips that intersect with marquee
+      // Find clips that intersect with marquee (check all tracks)
       const selectedIds: string[] = [];
-      clips.forEach((clip) => {
-        const clipX = timeToPixels(clip.start) + X_OFFSET;
-        const clipWidth = clip.duration * PIXELS_PER_SECOND;
-        const clipY = CLIP_Y;
-        const clipHeight = CLIP_HEIGHT;
+      sortedTracks.forEach((track) => {
+        const trackY = getTrackY(track.order);
+        track.clips.forEach((clip) => {
+          const clipX = timeToPixels(clip.start) + X_OFFSET;
+          const clipWidth = clip.duration * PIXELS_PER_SECOND;
+          const clipY = trackY;
+          const clipHeight = TRACK_HEIGHT;
 
-        // Check if clip intersects with marquee rectangle
-        const intersects =
-          clipX < x2 &&
-          clipX + clipWidth > x1 &&
-          clipY < y2 &&
-          clipY + clipHeight > y1;
+          // Check if clip intersects with marquee rectangle
+          const intersects =
+            clipX < x2 &&
+            clipX + clipWidth > x1 &&
+            clipY < y2 &&
+            clipY + clipHeight > y1;
 
-        if (intersects) {
-          selectedIds.push(clip.id);
-        }
+          if (intersects) {
+            selectedIds.push(clip.id);
+          }
+        });
       });
 
       // Update selection
@@ -982,6 +1009,8 @@ const KonvaTimelineComponent = ({
             {clipsToRender.map((clip) => {
               const isDragging = clip.id === draggingClipId;
               const asset = assetMap.get(clip.mediaId);
+              const track = findTrackByClipId(clip.id);
+              const yPos = track ? getTrackY(track.order) : TIMELINE_HEADER_Y; // Fallback to header Y if track not found
               return (
                 <KonvaClipItem
                   key={clip.id}
@@ -992,6 +1021,8 @@ const KonvaTimelineComponent = ({
                   dragX={isDragging ? draggedClipX : undefined}
                   pixelsPerSecond={PIXELS_PER_SECOND}
                   xOffset={X_OFFSET}
+                  yPos={yPos}
+                  trackHeight={TRACK_HEIGHT}
                   onSelect={(shiftKey, metaKey) => handleClipClick(clip.id, shiftKey, metaKey)}
                   onDragStart={(startX, altKey, metaKey) => handleClipDragStart(clip.id, startX, altKey, metaKey)}
                   onDragMove={(currentX) =>
@@ -1067,9 +1098,11 @@ const KonvaTimelineComponent = ({
                 : '';
 
               // Position tooltip near the top-left of the dragged clip
+              const draggedTrack = findTrackByClipId(draggedClip.id);
+              const draggedClipY = draggedTrack ? getTrackY(draggedTrack.order) : TIMELINE_HEADER_Y;
               const clipX = draggedClipX;
               const tooltipX = clipX + 10;
-              const tooltipY = CLIP_Y - 30;
+              const tooltipY = draggedClipY - 30;
 
               return (
                 <Group>

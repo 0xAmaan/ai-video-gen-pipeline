@@ -104,25 +104,14 @@ const PreviewPanelComponent = ({
   }, [handleResize, onCanvasResize]);
 
   return (
-    <div
-      className="flex h-full flex-col border-l
-       border-border bg-card/50"
-    >
-      {/* Video area fills remaining height above the
-       controls */}
-      <div
-        className="flex-1 flex items-center
-       justify-center bg-black px-6 pt-4 pb-2"
-      >
+    <div className="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-card/50">
+      {/* Video area fills remaining height above the controls */}
+      <div className="flex-1 min-h-0 flex items-center justify-center bg-black px-6 pt-4 pb-2">
         <div
           ref={containerRef}
-          className="relative flex items-center
-       justify-center w-full h-full max-h-full"
+          className="relative flex h-full min-h-0 w-full max-h-full items-center justify-center"
         >
-          <div
-            className="flex items-center
-       justify-center w-full h-full bg-black"
-          >
+          <div className="flex h-full w-full items-center justify-center bg-black">
             <canvas
               ref={canvasRef}
               className="rounded-md bg-black"
@@ -140,12 +129,8 @@ const PreviewPanelComponent = ({
         </div>
       </div>
 
-      {/* Controls bar pinned to bottom of preview
-       column */}
-      <div
-        className="flex items-center gap-3 px-4
-       py-3 border-t border-border bg-card/80"
-      >
+      {/* Controls bar pinned to bottom of preview column */}
+      <div className="flex items-center gap-3 px-4 py-3 border-t border-border bg-card/80">
         <Button
           variant="secondary"
           size="icon"
@@ -168,11 +153,8 @@ const PreviewPanelComponent = ({
           className="flex-1"
           onChange={(event) => onSeek(parseFloat(event.target.value))}
         />
-        <div
-          className="text-xs
-       text-muted-foreground"
-        >
-          {formatTime(currentTime)} /{formatTime(duration)}
+        <div className="text-xs text-muted-foreground">
+          {formatTime(currentTime)} / {formatTime(duration)}
         </div>
       </div>
     </div>

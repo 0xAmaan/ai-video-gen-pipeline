@@ -48,12 +48,15 @@ const deepClone = <T>(value: T): T => {
   return JSON.parse(JSON.stringify(value));
 };
 
-const createTrack = (id: string, kind: Track["kind"]): Track => ({
+const createTrack = (id: string, kind: Track["kind"], name?: string): Track => ({
   id,
+  name: name || `${kind === "video" ? "Video" : "Audio"} Track`,
   kind,
   allowOverlap: kind !== "video",
   locked: false,
   muted: false,
+  solo: false,
+  visible: true,
   volume: 1,
   order: 0,
   opacity: 1.0,

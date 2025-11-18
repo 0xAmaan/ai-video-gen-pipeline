@@ -106,11 +106,14 @@ export interface Clip {
 
 export interface Track {
   id: string;
+  name: string; // Display name (editable)
   kind: TrackKind;
   allowOverlap: boolean;
   clips: Clip[];
   locked: boolean;
   muted: boolean;
+  solo: boolean; // Solo mode - mutes all other tracks temporarily
+  visible: boolean; // Show/hide track
   volume: number;
   order: number; // Z-index for layering (higher = on top)
   opacity: number; // Track-level opacity (0-1)

@@ -335,10 +335,13 @@ export const adaptConvexProjectToStandalone = ({
 
   const videoTrack: Track = {
     id: "video-1",
+    name: "Video 1",
     kind: "video",
     allowOverlap: false,
     locked: false,
     muted: false,
+    solo: false,
+    visible: true,
     volume: 1,
     order: 0,
     opacity: 1.0,
@@ -348,10 +351,13 @@ export const adaptConvexProjectToStandalone = ({
 
   const narrationTrack: Track = {
     id: NARRATION_TRACK_ID,
+    name: "Narration",
     kind: "audio",
     allowOverlap: false,
     locked: false,
     muted: false,
+    solo: false,
+    visible: true,
     volume: 1,
     order: 0,
     opacity: 1.0,
@@ -361,10 +367,13 @@ export const adaptConvexProjectToStandalone = ({
 
   const bgmTrack: Track = {
     id: BGM_TRACK_ID,
+    name: "Background Music",
     kind: "audio",
     allowOverlap: true,
     locked: false,
     muted: false,
+    solo: false,
+    visible: true,
     volume: 1,
     order: 0,
     opacity: 1.0,
@@ -374,10 +383,13 @@ export const adaptConvexProjectToStandalone = ({
 
   const sfxTrack: Track = {
     id: SFX_TRACK_ID,
+    name: "Sound Effects",
     kind: "audio",
     allowOverlap: true,
     locked: false,
     muted: false,
+    solo: false,
+    visible: true,
     volume: 1,
     order: 0,
     opacity: 1.0,

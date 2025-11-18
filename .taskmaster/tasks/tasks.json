@@ -2,7 +2,7 @@
   "master": {
     "tasks": [
       {
-        "id": "1",
+        "id": 1,
         "title": "Implement transition effects library and clip transition system",
         "description": "Add transition effects between clips (fade, dissolve, wipe, slide) with preset library for non-technical users",
         "details": "Leverage existing Clip.transitions field and TransitionSpec type in lib/editor/types.ts. Research open-source transition libraries (e.g., gl-transitions, CSS transitions). Create TransitionLibrary component with preset gallery. Implement transition rendering in PreviewRenderer (lib/editor/playback/preview-renderer.ts) using Canvas API or WebGL. Add UI controls in KonvaTimeline for applying transitions between adjacent clips. Store transition specs in clip.transitions array. Ensure smooth blending between clips during playback and export.",
@@ -78,7 +78,7 @@
         "updatedAt": "2025-11-17T00:16:13.875Z"
       },
       {
-        "id": "2",
+        "id": 2,
         "title": "Add visual filter presets (grain, color grading, vintage effects)",
         "description": "Implement visual filters beyond base video generation including film grain, color grading, vintage/retro effects with preset library",
         "details": "Extend Effect type in lib/editor/types.ts with new filter types: 'grain', 'colorGrade', 'vintage', 'vignette', 'filmLook'. Create FilterLibrary component with visual preset thumbnails. Implement filter rendering in preview-renderer.ts and export-pipeline.ts using Canvas getImageData/putImageData or WebGL shaders for performance. Add filter controls panel in editor UI (intensity sliders, preset selection). Store filter effects in clip.effects array. Research shader libraries like gl-shader for complex filters.",
@@ -172,7 +172,7 @@
         "updatedAt": "2025-11-17T06:41:11.908Z"
       },
       {
-        "id": "3",
+        "id": 3,
         "title": "Implement speed ramping controls for individual clips",
         "description": "Add speed control UI for clip-level time manipulation including ramp up/down effects and variable speed curves",
         "details": "Add speed curve data structure to Clip interface: speedCurve: { keyframes: Array<{ time: number, speed: number }> }. Create SpeedControlPanel component with visual curve editor (similar to After Effects). Implement speed interpolation in preview-renderer.ts using cubic bezier easing. Add preset speed ramps: 'slow-to-fast', 'fast-to-slow', 'freeze-frame'. Update audio pitch compensation during speed changes. Modify frame-renderer.ts for export to respect speed curves. Store speed metadata in clip properties.",
@@ -280,7 +280,7 @@
         "updatedAt": "2025-11-17T07:15:14.842Z"
       },
       {
-        "id": "4",
+        "id": 4,
         "title": "Build AI text overlay system with customizable positioning",
         "description": "Implement text overlay track with AI-generated text suggestions, customizable fonts, positioning, and animations",
         "details": "Add 'text' track kind to TrackKind type. Create TextClip interface extending Clip with text-specific properties: { content: string, font: string, size: number, color: string, position: {x, y}, alignment: string, animation: string }. Build TextOverlayPanel component for editing text properties. Integrate AI text generation API (OpenAI/Anthropic) for auto-generating captions/titles based on video content. Render text overlays in preview-renderer.ts using Canvas fillText/strokeText. Add text animations: fade-in, slide-up, typewriter. Support multiple text layers on overlay track.",
@@ -367,7 +367,7 @@
         "expansionPrompt": "Break down AI text overlay system into: (1) extending Track/Clip types for text overlay track kind, (2) creating TextClip interface with font, position, and animation properties, (3) building TextOverlayPanel UI component for text editing, (4) integrating AI text generation API (OpenAI/Anthropic) for auto-captions, (5) implementing Canvas text rendering in PreviewRenderer with animations, (6) ensuring text overlays export correctly in FrameRenderer"
       },
       {
-        "id": "5",
+        "id": 5,
         "title": "Create effect preset library with visual previews",
         "description": "Build comprehensive preset library UI for transitions, filters, and effects with thumbnail previews and one-click application",
         "details": "Create EffectLibraryPanel component with categorized tabs (Transitions, Filters, Speed, Text). Generate thumbnail previews for each preset using sample video frames. Implement drag-and-drop from library to timeline clips. Store presets in JSON config file with metadata: { id, name, category, thumbnail, params }. Add favorite/recent presets section. Implement search/filter for preset discovery. Support custom user presets by saving current clip effect configurations. Use Radix UI Tabs and ScrollArea for library UI.",
@@ -432,7 +432,7 @@
         "expansionPrompt": "Break down effect preset library into: (1) creating EffectLibraryPanel component with categorized tabs and search, (2) implementing preset JSON storage with metadata structure, (3) generating thumbnail previews using sample frames and effect rendering, (4) adding drag-and-drop functionality from library to timeline clips with user preset saving"
       },
       {
-        "id": "6",
+        "id": 6,
         "title": "Implement individual clip regeneration functionality",
         "description": "Add ability to regenerate AI-generated clips within editor without reprocessing entire video",
         "details": "Add 'Regenerate' button to clip context menu in timeline. Create RegenerateClipModal component with regeneration options (preserve duration, style variations, prompt refinement). Integrate with existing video generation API (convex/video.ts). Implement clip replacement in project-store.ts that preserves timeline position, effects, and transitions. Add loading state during regeneration with progress indicator. Store original generation params with clip metadata for intelligent regeneration. Support batch regeneration of multiple selected clips.",
@@ -505,7 +505,7 @@
         "expansionPrompt": "Break down clip regeneration into: (1) adding Regenerate button to existing ClipContextMenu component, (2) creating RegenerateClipModal UI with regeneration options, (3) integrating with existing Convex video generation API, (4) implementing clip replacement in project-store.ts preserving effects/transitions, (5) adding loading states and progress indicators with cancellation support"
       },
       {
-        "id": "7",
+        "id": 7,
         "title": "Enhance timeline UI with CapCut-style interactions",
         "description": "Improve timeline UX with magnetic snap guides, multi-select, clip splitting, and ripple editing to match CapCut experience",
         "details": "Enhance KonvaTimeline component with: magnetic snap lines (visual guides when clips align), multi-clip selection via shift-click and marquee select, split clip at playhead (Cmd+B shortcut), ripple delete (auto-close gaps), slip/slide editing modes. Add visual feedback: clip preview on hover, duration tooltip during resize, snap indicators. Implement keyboard shortcuts: J/K/L for playback control, arrow keys for frame stepping, +/- for zoom. Store snap settings in ProjectSettings. Use Konva layers for efficient rendering.",
@@ -624,7 +624,7 @@
         "updatedAt": "2025-11-18T01:45:05.665Z"
       },
       {
-        "id": "8",
+        "id": 8,
         "title": "Build comprehensive keyboard shortcut system",
         "description": "Implement full keyboard shortcut support for common editing operations to improve workflow efficiency",
         "details": "Create KeyboardShortcutManager hook (extend existing useKeyboardShortcut.ts). Define shortcut mappings: playback (Space, J/K/L), editing (Cmd+Z/Cmd+Shift+Z undo/redo, Cmd+C/V copy/paste clips, Delete/Backspace delete, Cmd+B split), timeline (Cmd +/- zoom, Cmd+0 fit, arrows seek), effects (Cmd+D duplicate, Cmd+Shift+C copy effects). Add ShortcutHelpModal with searchable command palette (Cmd+K). Prevent conflicts with browser shortcuts. Support customizable key bindings stored in user preferences.",
@@ -690,7 +690,7 @@
         "expansionPrompt": "Break down keyboard shortcut system into: (1) extending existing useKeyboardShortcut.ts hook with comprehensive shortcut mappings, (2) implementing shortcut actions for playback, editing, timeline navigation, and effects, (3) creating ShortcutHelpModal with searchable command palette (Cmd+K), (4) adding customizable key bindings with user preferences storage and browser conflict prevention"
       },
       {
-        "id": "9",
+        "id": 9,
         "title": "Optimize export pipeline with MediaBunny for professional quality",
         "description": "Enhance export-pipeline.ts to leverage MediaBunny's full capabilities for high-quality video export with progress tracking",
         "details": "Review and optimize lib/editor/export/export-pipeline.ts integration with mediabunny package. Implement hardware acceleration for encoding when available. Add export presets: 'YouTube 4K', 'Instagram Story', 'TikTok', 'High Quality MP4'. Support advanced codec options (H.264, H.265, VP9, AV1). Implement multi-pass encoding for better compression. Add bitrate control (CBR/VBR). Enhance progress reporting with time remaining estimate. Support exporting specific timeline range. Add watermark option in export settings.",
@@ -781,7 +781,7 @@
         "expansionPrompt": "Break down export optimization into: (1) reviewing and benchmarking current export-pipeline.ts MediaBunny integration, (2) implementing hardware acceleration detection and configuration, (3) creating export preset configurations (YouTube 4K, Instagram, TikTok, MP4), (4) adding advanced codec options (H.265, VP9, AV1) with bitrate control, (5) enhancing progress reporting with time remaining estimates, (6) implementing timeline range export and watermark options"
       },
       {
-        "id": "10",
+        "id": 10,
         "title": "Create comprehensive editor onboarding and tooltips",
         "description": "Build user-friendly onboarding flow and contextual tooltips to make editor intuitive for non-technical users",
         "details": "Create EditorOnboardingFlow component with interactive tutorial steps: import media, add to timeline, apply transition, apply filter, adjust speed, add text overlay, export. Implement contextual tooltips using Radix UI Tooltip on all editor controls. Add 'First Time User' detection in project-store.ts. Create interactive hotspot overlays that highlight features with explanations. Build optional video tutorial integration. Add 'Tips' panel with workflow suggestions based on current project state. Store onboarding completion state in Convex user preferences.",
@@ -848,7 +848,7 @@
         "expansionPrompt": "Break down onboarding into: (1) creating EditorOnboardingFlow component with interactive tutorial steps, (2) implementing contextual tooltips using Radix UI Tooltip on editor controls, (3) adding first-time user detection and completion state persistence in Convex, (4) building Tips panel with context-aware workflow suggestions and video tutorial integration"
       },
       {
-        "id": "11",
+        "id": 11,
         "title": "Extend data model to support multitrack compositing with z-index and opacity",
         "description": "Update the Track interface and related types to include order (z-index), opacity, and effects array fields for multitrack video compositing support",
         "details": "1. Locate the Track interface definition (likely in lib/types/ or lib/editor/types/)\n2. Add three new fields to the Track interface:\n   - order: number (default 0, represents z-index for layering)\n   - opacity: number (default 1.0, range 0-1 for track-level blending)\n   - effects: Effect[] (default [], for track-level effects)\n3. Define the Effect type and EffectType union:\n   ```typescript\n   export type EffectType =\n     | \"brightness\" | \"contrast\" | \"saturation\" | \"hue\"\n     | \"blur\" | \"sharpen\" | \"grain\" | \"vignette\"\n     | \"lut\" | \"colorGrade\" | \"temperature\" | \"tint\"\n     | \"vintage\" | \"bw\" | \"sepia\" | \"crossProcess\"\n     | \"custom\";\n\n   export interface Effect {\n     id: string;\n     type: EffectType;\n     params: Record<string, number | string>;\n     enabled: boolean;\n     blend?: number;\n     order?: number;\n   }\n   ```\n4. Update Clip interface to include effects: Effect[] field\n5. Update all Track factory/creation functions to initialize new fields with defaults\n6. Run TypeScript compiler to verify no breaking changes\n7. Update any existing Track creation/manipulation code to handle new fields",
@@ -902,7 +902,7 @@
         "updatedAt": "2025-11-18T02:03:20.394Z"
       },
       {
-        "id": "12",
+        "id": 12,
         "title": "Create effect rendering engine with Canvas API support",
         "description": "Implement core effect rendering functions that apply visual effects to canvas elements using Canvas filter API and pixel manipulation",
         "details": "1. Create new file lib/editor/effects/effect-renderer.ts\n2. Implement applyEffect function:\n   ```typescript\n   export function applyEffect(\n     canvas: HTMLCanvasElement,\n     effect: Effect\n   ): void {\n     const ctx = canvas.getContext('2d')!;\n     const blend = effect.blend ?? 1.0;\n\n     if (!effect.enabled || blend === 0) return;\n\n     switch (effect.type) {\n       case 'brightness':\n       case 'contrast':\n       case 'saturation':\n       case 'blur':\n         applyFilterEffect(ctx, effect, blend);\n         break;\n       case 'grain':\n       case 'vintage':\n       case 'lut':\n       case 'vignette':\n         applyPixelEffect(ctx, effect, blend);\n         break;\n     }\n   }\n   ```\n3. Implement applyFilterEffect using ctx.filter:\n   - Build CSS filter string from effect params\n   - Apply filter and redraw canvas\n4. Implement applyPixelEffect using getImageData/putImageData:\n   - Get pixel data\n   - Apply per-pixel transformations\n   - Put modified data back\n5. Implement specific effect algorithms:\n   - brightness: adjust RGB values\n   - contrast: adjust RGB around midpoint\n   - saturation: convert to HSL, adjust S channel\n   - blur: use ctx.filter = `blur(${radius}px)`\n   - grain: add random noise to pixels\n   - vignette: darken edges based on distance from center\n6. Create helper functions for color space conversions (RGB↔HSL)\n7. Optimize with canvas reuse pool to avoid GC pressure",
@@ -997,7 +997,7 @@
         "updatedAt": "2025-11-18T02:11:34.707Z"
       },
       {
-        "id": "13",
+        "id": 13,
         "title": "Refactor PreviewRenderer for multitrack compositing",
         "description": "Update PreviewRenderer to resolve and composite all active clips across multiple tracks in z-index order with track opacity blending",
         "details": "1. Locate PreviewRenderer class (lib/editor/playback/preview-renderer.ts)\n2. Create new method resolveAllActiveClips:\n   ```typescript\n   private resolveAllActiveClips(\n     sequence: Sequence,\n     time: number\n   ): Array<{ clip: Clip; track: Track; mediaClip?: MediaClip }> {\n     const activeClips: Array<{ clip: Clip; track: Track; mediaClip?: MediaClip }> = [];\n\n     for (const track of sequence.tracks) {\n       if (track.muted || !this.isTrackVisible(track)) continue;\n\n       for (const clip of track.clips) {\n         if (time >= clip.start && time < clip.start + clip.duration) {\n           const mediaClip = this.resolveMediaClip(clip);\n           activeClips.push({ clip, track, mediaClip });\n         }\n       }\n     }\n\n     return activeClips.sort((a, b) => a.track.order - b.track.order);\n   }\n   ```\n3. Refactor render method to composite multiple clips:\n   - Create temporary canvases pool (reuse to avoid GC)\n   - For each active clip (sorted by track order):\n     a. Render clip to temp canvas\n     b. Apply clip-level effects\n     c. Apply track-level effects\n     d. Composite to main canvas with track opacity\n4. Implement canvas compositing with globalAlpha:\n   ```typescript\n   this.ctx.globalAlpha = track.opacity;\n   this.ctx.drawImage(tempCanvas, 0, 0);\n   this.ctx.globalAlpha = 1.0;\n   ```\n5. Add canvas dimension safety checks (from recent commit 0d0886a)\n6. Optimize by caching effect results for unchanged parameters\n7. Add debug logging for multitrack rendering (from recent commit)",
@@ -1097,7 +1097,7 @@
         "expansionPrompt": "Break down PreviewRenderer refactor into: (1) implementing resolveAllActiveClips to find clips across all tracks at given time, (2) sorting clips by track z-order for correct compositing, (3) creating temporary canvas pool for per-clip rendering, (4) implementing clip-level effect application pipeline, (5) implementing track-level effect application, (6) adding opacity-based compositing with globalAlpha, (7) optimizing render performance and adding debug logging"
       },
       {
-        "id": "14",
+        "id": 14,
         "title": "Implement basic color adjustment effects (brightness, contrast, saturation, hue)",
         "description": "Create effect implementations for brightness, contrast, saturation, and hue rotation using Canvas filter API and pixel manipulation",
         "details": "1. Create lib/editor/effects/color-effects.ts\n2. Implement brightness effect:\n   ```typescript\n   export function applyBrightness(\n     ctx: CanvasRenderingContext2D,\n     value: number, // -1 to 1\n     blend: number = 1.0\n   ): void {\n     const brightness = 1 + (value * blend);\n     ctx.filter = `brightness(${brightness})`;\n     const canvas = ctx.canvas;\n     ctx.drawImage(canvas, 0, 0);\n     ctx.filter = 'none';\n   }\n   ```\n3. Implement contrast effect using filter API:\n   - Map value (0-2) to CSS contrast filter\n4. Implement saturation using pixel manipulation:\n   - Convert RGB to HSL\n   - Multiply S channel by saturation value\n   - Convert back to RGB\n5. Implement hue rotation:\n   - Use ctx.filter = `hue-rotate(${degrees}deg)`\n   - Support -180 to 180 degree range\n6. Add utility functions:\n   - rgbToHsl(r, g, b): [h, s, l]\n   - hslToRgb(h, s, l): [r, g, b]\n   - clamp(value, min, max)\n7. Integrate into effect-renderer.ts switch statement\n8. Add effect parameter validation and clamping",
@@ -1161,7 +1161,7 @@
         "expansionPrompt": "Break down color adjustment effects into: (1) creating lib/editor/effects/color-effects.ts module, (2) implementing brightness and contrast using Canvas filter API, (3) implementing saturation using RGB to HSL conversion and pixel manipulation, (4) implementing hue rotation with filter API and integrating all effects into effect-renderer.ts"
       },
       {
-        "id": "15",
+        "id": 15,
         "title": "Implement filter effects (blur, sharpen, grain, vignette)",
         "description": "Create implementations for blur, sharpen, grain/noise, and vignette effects using Canvas API and pixel manipulation",
         "details": "1. Create lib/editor/effects/filter-effects.ts\n2. Implement Gaussian blur:\n   ```typescript\n   export function applyBlur(\n     ctx: CanvasRenderingContext2D,\n     radius: number, // 0-50px\n     blend: number = 1.0\n   ): void {\n     const blurRadius = radius * blend;\n     ctx.filter = `blur(${blurRadius}px)`;\n     ctx.drawImage(ctx.canvas, 0, 0);\n     ctx.filter = 'none';\n   }\n   ```\n3. Implement sharpen using unsharp mask:\n   - Create blurred version\n   - Subtract from original\n   - Add back scaled difference\n4. Implement grain/noise effect:\n   ```typescript\n   export function applyGrain(\n     ctx: CanvasRenderingContext2D,\n     intensity: number, // 0-1\n     blend: number = 1.0\n   ): void {\n     const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);\n     const data = imageData.data;\n     const strength = intensity * blend * 50;\n\n     for (let i = 0; i < data.length; i += 4) {\n       const noise = (Math.random() - 0.5) * strength;\n       data[i] = clamp(data[i] + noise, 0, 255);\n       data[i+1] = clamp(data[i+1] + noise, 0, 255);\n       data[i+2] = clamp(data[i+2] + noise, 0, 255);\n     }\n\n     ctx.putImageData(imageData, 0, 0);\n   }\n   ```\n5. Implement vignette:\n   - Calculate distance from center for each pixel\n   - Darken based on distance using radial gradient\n6. Optimize grain with Web Workers for large canvases\n7. Add requestAnimationFrame for smooth real-time updates",
@@ -1237,7 +1237,7 @@
         "expansionPrompt": "Break down filter effects into: (1) creating lib/editor/effects/filter-effects.ts module, (2) implementing Gaussian blur using Canvas filter API, (3) implementing sharpen using unsharp mask algorithm, (4) implementing grain/noise with pixel-level random noise generation, (5) implementing vignette using radial gradient darkening and optimizing grain performance with Web Workers"
       },
       {
-        "id": "16",
+        "id": 16,
         "title": "Add LUT (Look-Up Table) support for color grading",
         "description": "Implement .cube LUT file parsing and 3D color lookup for professional color grading effects",
         "details": "1. Create lib/editor/effects/lut-loader.ts\n2. Implement .cube file parser:\n   ```typescript\n   export interface LUT3D {\n     size: number; // typically 32 or 64\n     data: Float32Array; // R,G,B triplets\n   }\n\n   export async function parseCubeLUT(file: File | string): Promise<LUT3D> {\n     const text = typeof file === 'string' ? file : await file.text();\n     const lines = text.split('\\n');\n     let size = 0;\n     const data: number[] = [];\n\n     for (const line of lines) {\n       if (line.startsWith('LUT_3D_SIZE')) {\n         size = parseInt(line.split(' ')[1]);\n       } else if (!line.startsWith('#') && line.trim()) {\n         const [r, g, b] = line.trim().split(/\\s+/).map(parseFloat);\n         data.push(r, g, b);\n       }\n     }\n\n     return { size, data: new Float32Array(data) };\n   }\n   ```\n3. Implement 3D LUT application:\n   ```typescript\n   export function applyLUT(\n     ctx: CanvasRenderingContext2D,\n     lut: LUT3D,\n     intensity: number = 1.0\n   ): void {\n     const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);\n     const data = imageData.data;\n     const size = lut.size;\n\n     for (let i = 0; i < data.length; i += 4) {\n       const r = data[i] / 255;\n       const g = data[i+1] / 255;\n       const b = data[i+2] / 255;\n\n       const [newR, newG, newB] = lookup3D(lut, r, g, b);\n\n       data[i] = lerp(data[i], newR * 255, intensity);\n       data[i+1] = lerp(data[i+1], newG * 255, intensity);\n       data[i+2] = lerp(data[i+2], newB * 255, intensity);\n     }\n\n     ctx.putImageData(imageData, 0, 0);\n   }\n   ```\n4. Implement trilinear interpolation for smooth color lookup\n5. Create preset LUT library (Cinematic, Vintage, Cool, Warm)\n6. Add LUT file upload UI component\n7. Cache parsed LUTs to avoid re-parsing",
@@ -1324,120 +1324,248 @@
         "expansionPrompt": "Break down LUT support into: (1) creating lib/editor/effects/lut-loader.ts with .cube file parser, (2) implementing 3D LUT data structure and storage, (3) implementing trilinear interpolation for smooth color lookup, (4) creating applyLUT function with intensity blending, (5) building LUT file upload UI component, (6) creating preset LUT library and implementing LUT caching to avoid re-parsing"
       },
       {
-        "id": "17",
+        "id": 17,
         "title": "Build multitrack timeline UI with track headers and controls",
-        "description": "Create professional timeline interface supporting multiple video/audio tracks with drag-to-reorder, solo/mute/lock controls, and dynamic track layout",
-        "details": "1. Locate KonvaTimeline component (likely components/editor/KonvaTimeline.tsx)\n2. Add state for track management:\n   ```typescript\n   const [tracks, setTracks] = useState<Track[]>([]);\n   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);\n   const [trackHeight] = useState(60); // pixels per track\n   ```\n3. Implement dynamic track Y positioning:\n   ```typescript\n   const getTrackY = (trackOrder: number) => {\n     return trackOrder * trackHeight;\n   };\n   ```\n4. Create TrackHeader component:\n   - Track name label (editable on double-click)\n   - Track type icon (video/audio)\n   - Solo button (isolate track, mute others)\n   - Mute button (disable track)\n   - Lock button (prevent editing)\n   - Opacity slider (0-1)\n   - Eye icon (show/hide)\n   - Delete button\n   - Drag handle for reordering\n5. Implement track reordering:\n   - Use Konva drag events on track headers\n   - Update track.order on drop\n   - Animate tracks to new positions\n6. Add 'Add Track' button at bottom:\n   - Creates new track with next order number\n   - Defaults: opacity=1.0, effects=[], allowOverlap=true\n7. Style tracks with alternating background colors (zebra striping)\n8. Highlight selected track\n9. Add vertical scrolling for many tracks\n10. Ensure track controls match design from existing timeline (context menu patterns from recent commit 0399dae)",
-        "testStrategy": "1. UI test: can add new tracks up to 10+\n2. UI test: drag-to-reorder updates track.order correctly\n3. UI test: solo button mutes all other tracks\n4. UI test: mute button disables track\n5. UI test: lock button prevents clip editing\n6. UI test: opacity slider updates track opacity\n7. UI test: delete button removes track\n8. Visual test: zebra striping visible\n9. Test vertical scrolling with 15+ tracks",
-        "priority": "high",
+        "description": "PARENT TASK - Split into 17A and 17B. This task tracks the overall multitrack timeline implementation. See subtasks 17A and 17B for actual work.",
+        "status": "in-progress",
         "dependencies": [
           "11"
         ],
-        "status": "pending",
+        "priority": "high",
+        "details": "This parent task has been split into two focused subtasks for better manageability:\n\n17A: Create TrackHeader component and basic multitrack layout (Complexity: 5)\n- TrackHeader React component with controls (solo, mute, lock, visibility, opacity, delete)\n- Track state management in KonvaTimeline\n- Dynamic Y positioning based on track.order\n- 'Add Track' button functionality\n- Basic visual styling\n\n17B: Implement track reordering and advanced features (Complexity: 6)\n- Drag-to-reorder tracks functionality\n- Zebra striping for track backgrounds\n- Track selection highlighting\n- Vertical scrolling for 15+ tracks\n- Smooth animations for track position changes\n\nOriginal context: KonvaTimeline.tsx has hardcoded CLIP_Y=94 and AUDIO_TRACK_Y. Needs refactoring to dynamic track array with order-based Y positioning.",
+        "testStrategy": "See subtasks 17A and 17B for detailed test strategies",
         "subtasks": [
           {
             "id": 1,
-            "title": "Refactor KonvaTimeline for dynamic track layout and Y positioning",
-            "description": "Update KonvaTimeline component to support multiple tracks with dynamic Y-coordinate calculation based on track order and configurable track height",
+            "title": "TASK 17A: Create TrackHeader component and basic multitrack layout",
+            "description": "Build TrackHeader component with all controls and implement dynamic track layout in KonvaTimeline without drag-to-reorder",
             "dependencies": [],
-            "details": "Locate components/editor/KonvaTimeline.tsx and add track management state: tracks array, selectedTrackId, and trackHeight constant (60px). Implement getTrackY function that calculates Y position as trackOrder * trackHeight. Update all clip rendering to use getTrackY for positioning. Modify clip drag handlers to constrain movement within track boundaries. Update timeline rendering loop to iterate over tracks and render clips per track. Ensure existing clip state and playback logic remains functional.",
-            "status": "pending",
-            "testStrategy": "Verify clips render at correct Y positions based on track order. Test that dragging clips stays within track bounds. Ensure playback and seeking still work correctly. Test with 1, 3, and 10 tracks to verify scaling.",
+            "details": "Complexity: 5\n\nThis subtask focuses on core multitrack infrastructure:\n\n1. Create TrackHeader component (components/editor/TrackHeader.tsx):\n   - Track name (editable on double-click)\n   - Type icon (Video/AudioWaveform from lucide-react)\n   - Solo, Mute, Lock, Visibility buttons\n   - Opacity slider (0-100%)\n   - Delete button\n   - Width: 200px fixed\n   - Use shadcn/ui components (Button, Slider)\n   - Reference context menu patterns from commit 0399dae\n\n2. Refactor KonvaTimeline.tsx:\n   - Remove hardcoded CLIP_Y=94 and AUDIO_TRACK_Y\n   - Add tracks state: useState<Track[]>([])\n   - Add selectedTrackId state: useState<string | null>(null)\n   - Define TRACK_HEIGHT = 60\n   - Implement getTrackY(trackOrder) function\n   - Update all clip rendering to use dynamic Y positioning\n\n3. Integrate TrackHeader with KonvaTimeline:\n   - Fixed 200px left column for headers\n   - Synchronized height alignment (60px per track)\n   - Implement handleTrackUpdate and handleTrackDelete\n   - Apply track state (opacity, mute, lock, visibility) to rendering\n\n4. Add 'Add Track' button:\n   - Dropdown menu with Video/Audio options\n   - Auto-naming (Video 1, Audio 1, etc.)\n   - MAX_TRACKS = 20 limit\n   - Auto-scroll to new track\n\n5. Implement solo/mute/lock/visibility logic:\n   - Solo: mute all other tracks temporarily\n   - Mute: skip in PreviewRenderer\n   - Lock: prevent clip editing in drag handlers\n   - Visibility: hide/show track\n   - Opacity: apply via ctx.globalAlpha in PreviewRenderer\n\nTrack interface:\n```typescript\ninterface Track {\n  id: string;\n  name: string;\n  type: 'video' | 'audio';\n  order: number;\n  opacity: number;\n  isMuted: boolean;\n  isSolo: boolean;\n  isLocked: boolean;\n  isVisible: boolean;\n  allowOverlap: boolean;\n  effects: Effect[];\n}\n```\n<info added on 2025-11-18T02:35:20.193Z>\n**Implementation Completed:**\n\nAll core multitrack infrastructure implemented successfully:\n\n1. **Track Interface Extension** (lib/editor/types.ts:107-121):\n   - Added name, solo, visible fields\n   - All existing Track creation sites updated (convex-adapter.ts, project-store.ts)\n\n2. **TrackHeader Component** (components/editor/TrackHeader.tsx):\n   - Full implementation with all controls: solo, mute, lock, visibility, opacity slider, delete\n   - Editable track name (double-click to edit)\n   - Type icons (Video/AudioWaveform from lucide-react)\n   - 200px fixed width, 60px height\n   - Selected state styling\n\n3. **KonvaTimeline Refactoring**:\n   - TRACK_HEIGHT constant (60px) and TIMELINE_HEADER_Y (30px) defined\n   - getTrackY(trackOrder) helper function for dynamic Y positioning\n   - findTrackByClipId() helper for track lookup\n   - All hardcoded CLIP_Y references eliminated\n   - Marquee selection updated for multitrack support\n   - Slip/slide tooltip positioning updated for dynamic tracks\n\n4. **KonvaClipItem Updates**:\n   - Added yPos and trackHeight props for dynamic positioning\n   - All clip rendering uses dynamic positioning from parent timeline\n\n**Build Status**: TypeScript compilation successful with no errors\n\n**Remaining Work for 17.1**:\n- Integrate TrackHeader visual rendering into KonvaTimeline (fixed 200px left column)\n- Implement handleTrackUpdate and handleTrackDelete callbacks\n- Add 'Add Track' button with dropdown menu\n- Implement solo/mute/lock/visibility rendering logic in KonvaTimeline\n- Apply track opacity via globalAlpha in clip rendering\n</info added on 2025-11-18T02:35:20.193Z>",
+            "status": "in-progress",
+            "testStrategy": "1. UI test: TrackHeader renders with all controls\n2. UI test: double-click name to edit, blur/Enter to save\n3. UI test: click Solo and verify other tracks muted\n4. UI test: click Mute and verify track doesn't render in preview\n5. UI test: click Lock and verify clips can't be dragged\n6. UI test: opacity slider updates track.opacity and visual rendering\n7. UI test: delete button removes track and its clips\n8. UI test: Add Track dropdown creates Video/Audio tracks\n9. UI test: adding 10 tracks works correctly\n10. UI test: max 20 tracks enforced with error toast\n11. Test: clips render at correct Y positions using getTrackY\n12. Test: existing playback and seeking continues to work\n13. Test: track controls affect PreviewRenderer rendering\n14. Visual: TrackHeaders align with Konva tracks at 60px height",
+            "updatedAt": "2025-11-18T02:27:35.859Z",
             "parentId": "undefined"
           },
           {
             "id": 2,
-            "title": "Create TrackHeader component with name, type icon, and basic layout",
-            "description": "Build new TrackHeader component displaying track name (editable), type icon (video/audio), and proper visual styling integrated with KonvaTimeline",
+            "title": "TASK 17B: Implement track reordering and advanced multitrack features",
+            "description": "Add drag-to-reorder, zebra striping, selection highlighting, and vertical scrolling for advanced multitrack timeline UX",
             "dependencies": [
               1
             ],
-            "details": "Create components/editor/TrackHeader.tsx as a React component. Display track name as editable text (double-click to edit, blur or Enter to save). Add track type icon using lucide-react icons (Video or AudioWaveform). Position track headers in fixed left column aligned with track Y positions. Use 200px width for header column. Style with background matching timeline theme. Add hover states for interactivity. Connect to track state from KonvaTimeline via props.",
+            "details": "Complexity: 6\n\nThis subtask adds advanced visual features and interactions:\n\n1. Drag-to-reorder tracks:\n   - Make TrackHeader draggable with drag handle\n   - Track draggedTrackId and dragY state\n   - Show drop zone indicator (horizontal line)\n   - Implement reorderTrack function that updates track.order\n   - Animate tracks to new positions using Konva.Tween (200ms, EaseInOut)\n   - Prevent dragging locked tracks\n   - Add shadow to dragged track header\n\n2. Zebra striping:\n   - Render alternating track backgrounds in Konva using Rect\n   - Light mode: #f9fafb / #ffffff\n   - Dark mode: #111827 / #0f172a\n   - Update automatically when tracks reordered\n\n3. Track selection highlighting:\n   - Click track header to select (setSelectedTrackId)\n   - Render selection border (2px, primary color) in Konva\n   - Hover effect on TrackHeader (brightness increase)\n   - Selected track background opacity adjustment\n\n4. Vertical scrolling:\n   - Container height: 400px\n   - Calculate visible tracks based on scrollY\n   - Virtual rendering: only render visible tracks ± 2 buffer\n   - Synchronized scrolling between headers and timeline\n   - Konva clipFunc for viewport clipping\n   - Keyboard shortcuts: PageDown/PageUp, Home/End with Ctrl\n\nImplementation details:\n```typescript\n// Drag-to-reorder\nconst reorderTrack = (trackId: string, newOrder: number) => {\n  setTracks(prev => {\n    const oldIndex = prev.findIndex(t => t.id === trackId);\n    const newTracks = [...prev];\n    const [movedTrack] = newTracks.splice(oldIndex, 1);\n    newTracks.splice(newOrder, 0, movedTrack);\n    return newTracks.map((t, i) => ({ ...t, order: i }));\n  });\n};\n\n// Virtual rendering\nconst VIEWPORT_BUFFER = 2;\nconst getVisibleTracks = () => {\n  const startIndex = Math.max(0, Math.floor(scrollY / TRACK_HEIGHT) - VIEWPORT_BUFFER);\n  const endIndex = Math.min(tracks.length, startIndex + visibleTrackCount + (VIEWPORT_BUFFER * 2));\n  return tracks.slice(startIndex, endIndex);\n};\n```",
             "status": "pending",
-            "testStrategy": "Double-click track name and verify inline editing works. Test renaming track and verify state updates. Verify video tracks show video icon and audio tracks show audio icon. Test alignment with timeline tracks at different scroll positions.",
+            "testStrategy": "1. UI test: drag track from position 0 to 2, verify smooth animation\n2. UI test: track.order updates correctly for all affected tracks\n3. UI test: drop zone indicator appears during drag\n4. UI test: dragging locked track is prevented\n5. Visual test: zebra striping alternates correctly\n6. Visual test: zebra stripes update after reorder\n7. Visual test: selected track shows blue border\n8. Visual test: hover track header shows brightness change\n9. Visual test: dark mode zebra colors correct\n10. Test: add 15 tracks and verify scrollbar appears\n11. Test: scroll timeline and headers stay synchronized\n12. Test: only visible tracks render (check performance)\n13. Test: PageDown/PageUp keyboard shortcuts work\n14. Test: Ctrl+Home/Ctrl+End jump to top/bottom\n15. Performance: verify 60fps during scroll\n16. Test: rapid successive drags work correctly",
             "parentId": "undefined"
           },
           {
             "id": 3,
-            "title": "Implement solo/mute/lock/visibility control buttons with state management",
-            "description": "Add solo, mute, lock, and visibility toggle buttons to TrackHeader with proper state management and integration with preview renderer",
-            "dependencies": [
-              2
-            ],
-            "details": "Add control buttons to TrackHeader: Solo (headphones icon), Mute (volume-x icon), Lock (lock icon), Visibility (eye/eye-off icon). Add state to Track interface: isSolo, isMuted, isLocked, isVisible (all booleans). Implement solo logic: when track is soloed, mute all other tracks temporarily. Update PreviewRenderer (lib/editor/playback/preview-renderer.ts) to skip rendering for muted or hidden tracks. Prevent clip editing on locked tracks by checking isLocked in drag handlers. Add visual indicators (button highlights, dimmed tracks) for active states. Reference context menu patterns from commit 0399dae for consistent UI.",
+            "title": "Refactor KonvaTimeline for dynamic tracks",
+            "description": "Update KonvaTimeline to render tracks from data instead of fixed Y offsets.",
+            "dependencies": [],
+            "details": "Introduce track array iteration, compute Y from track.order, remove CLIP_Y/AUDIO_TRACK_Y constants, and ensure clips respect recalculated positions.",
             "status": "pending",
-            "testStrategy": "Solo track 1 and verify only track 1 plays, others muted. Mute track and verify it doesn't render in preview. Lock track and verify clips cannot be dragged or edited. Toggle visibility and verify track renders/hides. Test solo with multiple tracks enabled.",
+            "testStrategy": "Load timeline with mixed track orders and confirm clip rows align with expected Y positions.",
             "parentId": "undefined"
           },
           {
             "id": 4,
-            "title": "Add opacity slider control per track",
-            "description": "Implement opacity slider in TrackHeader allowing 0-100% opacity control with real-time preview integration",
+            "title": "Create TrackHeader component with controls",
+            "description": "Build reusable TrackHeader React component showing name, icon, buttons.",
             "dependencies": [
-              2
+              3
             ],
-            "details": "Add Slider component from shadcn/ui to TrackHeader for opacity control (0-1 range). Add opacity property to Track interface (default 1.0). Update PreviewRenderer to apply track opacity using ctx.globalAlpha before rendering track clips. Display current opacity percentage next to slider. Ensure slider works smoothly with real-time preview updates. Position slider horizontally in TrackHeader (80-100px width). Add visual feedback showing opacity value on hover/drag.",
+            "details": "Implement TrackHeader.tsx with editable name, type icon, solo/mute/lock/visibility buttons, opacity slider scaffold, delete button, and shadcn/ui layout sized to 200px.",
             "status": "pending",
-            "testStrategy": "Set track opacity to 50% and verify clip appears semi-transparent in preview. Test opacity at 0% (invisible), 50%, and 100%. Drag slider and verify smooth real-time updates. Verify multiple tracks with different opacities composite correctly.",
+            "testStrategy": "Render TrackHeader in story or editor, double-click to rename, and verify buttons render correctly.",
             "parentId": "undefined"
           },
           {
             "id": 5,
-            "title": "Implement drag-to-reorder tracks with animated Y-position updates",
-            "description": "Enable track reordering by dragging track headers vertically with smooth animation of track positions using Konva tweening",
+            "title": "Implement solo/mute/lock/visibility state flow",
+            "description": "Wire header controls to track state and KonvaTimeline behavior.",
             "dependencies": [
-              2
+              3,
+              4
             ],
-            "details": "Add drag handle icon to left side of TrackHeader. Implement onDragStart, onDragMove, onDragEnd handlers in TrackHeader. During drag, calculate new track order based on Y position (Math.floor(dragY / trackHeight)). On drop, update track.order for dragged track and adjust orders of other tracks accordingly. Use Konva.Tween to animate tracks to new Y positions over 200ms with easeInOut easing. Prevent dragging when track is locked. Add visual feedback during drag (shadow, highlighted drop zone). Ensure clip positions update with track reordering.",
+            "details": "Extend track model for solo/mute/lock/visible flags, update state management hooks, propagate to PreviewRenderer logic, and debounce events to avoid flicker.",
             "status": "pending",
-            "testStrategy": "Drag track 1 to position 3 and verify smooth animation. Verify track.order updates correctly for all affected tracks. Test dragging multiple times in succession. Verify clips move with their tracks. Test dragging locked track (should not work).",
+            "testStrategy": "Toggle each control and confirm preview/interaction matches expected mute/solo/lock/visibility behavior.",
             "parentId": "undefined"
           },
           {
             "id": 6,
-            "title": "Add 'Add Track' button with track creation functionality",
-            "description": "Implement button to create new tracks with proper default values and automatic ordering",
+            "title": "Add per-track opacity slider",
+            "description": "Enable adjustable opacity per track from header component.",
             "dependencies": [
-              1
+              4,
+              5
             ],
-            "details": "Add 'Add Track' button at bottom of track list (below all existing tracks). Implement addTrack function that creates new Track object with: unique ID (uuid), name 'Track N' (N = track count + 1), order = current max order + 1, opacity = 1.0, effects = [], isMuted = false, isSolo = false, isLocked = false, isVisible = true, allowOverlap = true. Add dropdown or button group to choose track type (video/audio) before creation. Auto-scroll to new track after creation. Update timeline height to accommodate new track. Limit maximum tracks to reasonable number (e.g., 20).",
+            "details": "Hook Slider value to track.opacity state (0-1), display percentage, throttle updates, and ensure Konva layers/PreviewRenderer respect opacity when compositing.",
             "status": "pending",
-            "testStrategy": "Click 'Add Track' and verify new track appears with correct default values. Add 10 tracks and verify all render correctly. Test adding video and audio tracks separately. Verify timeline scrolls to show new track. Test track limit enforcement.",
+            "testStrategy": "Set track opacity to 50% and confirm rendered layer blends at half intensity.",
             "parentId": "undefined"
           },
           {
             "id": 7,
-            "title": "Implement zebra striping and track selection highlighting",
-            "description": "Add alternating background colors for tracks and visual highlighting for selected track",
+            "title": "Implement drag-to-reorder tracks with animation",
+            "description": "Allow users to drag headers to reorder tracks vertically with smooth transitions.",
             "dependencies": [
-              1,
-              2
+              3,
+              4,
+              5
             ],
-            "details": "Apply zebra striping to track backgrounds: even tracks use bg-gray-50 dark:bg-gray-900, odd tracks use bg-white dark:bg-gray-950. Use Konva Rect shapes for track backgrounds in timeline area. Implement track selection: clicking track header or any clip on track sets selectedTrackId. Highlight selected track with border (2px solid primary color) and slightly lighter background. Add visual feedback on hover (subtle brightness increase). Ensure zebra stripes update when tracks are reordered. Make selection persistent across timeline interactions.",
+            "details": "Add drag gestures on headers, update track.order, animate Konva group Y using tweening for smooth repositioning, and handle persistence of new order.",
             "status": "pending",
-            "testStrategy": "Verify alternating track colors display correctly. Click track and verify selection highlight appears. Click different track and verify selection moves. Test selection visibility in light and dark modes. Reorder tracks and verify zebra stripes update correctly.",
+            "testStrategy": "Drag a track above another and verify order updates plus animated Y interpolation without jitter.",
             "parentId": "undefined"
           },
           {
             "id": 8,
-            "title": "Add vertical scrolling for many tracks with viewport management",
-            "description": "Implement vertical scrolling when track count exceeds visible area with proper Konva viewport clipping and scroll synchronization",
+            "title": "'Add Track' button and creation workflow",
+            "description": "Provide UI to insert new tracks with proper defaults.",
             "dependencies": [
-              1,
-              2
+              3,
+              4,
+              5
             ],
-            "details": "Calculate visible track range based on timeline container height and trackHeight. Implement vertical scrollbar using native HTML scrolling on container div wrapping both TrackHeaders and Konva timeline. Synchronize scroll position between track headers and timeline. Use Konva clipFunc to clip rendered content to visible viewport. Implement virtual scrolling optimization: only render tracks within visible range plus buffer (±2 tracks). Update getTrackY to account for scroll offset. Ensure smooth 60fps scrolling performance. Add keyboard shortcuts for scrolling (Page Up/Down, Home/End).",
+            "details": "Place Add Track control near headers, spawn new track object with default controls/opacity/order, append to sequence, and ensure undo/redo integration.",
             "status": "pending",
-            "testStrategy": "Add 15 tracks and verify scrollbar appears. Scroll vertically and verify track headers and timeline stay synchronized. Test that only visible tracks render (check performance). Verify clips on scrolled-out tracks don't render. Test keyboard scroll shortcuts. Verify smooth scrolling at 60fps.",
+            "testStrategy": "Click Add Track repeatedly and confirm new tracks appear with unique orders and functioning controls.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 9,
+            "title": "Zebra striping and track selection highlighting",
+            "description": "Enhance visuals with alternating backgrounds and selection state styling.",
+            "dependencies": [
+              3,
+              4,
+              5,
+              7
+            ],
+            "details": "Apply alternating CSS/Konva fills per track index, track selected track id, highlight header and background when active, and ensure patterns update on reordering.",
+            "status": "pending",
+            "testStrategy": "Select different tracks and verify highlight follows selection while zebra stripes remain alternating after reorder.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 10,
+            "title": "Vertical scrolling for large track counts",
+            "description": "Support scrolling viewport when more than ~15 tracks exist.",
+            "dependencies": [
+              3,
+              7,
+              8,
+              9
+            ],
+            "details": "Wrap headers and Konva area in synced scroll container, calculate total height dynamically, add scrollbars or gestures, and keep playhead interactions stable while scrolling.",
+            "status": "pending",
+            "testStrategy": "Create 20 tracks, scroll vertically, and confirm headers and canvas stay aligned and interactive.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 11,
+            "title": "Refactor KonvaTimeline for dynamic track layout",
+            "description": "Audit current KonvaTimeline hardcoded positions and refactor to drive layout from an ordered track array with computed Y offsets.",
+            "dependencies": [],
+            "details": "Replace fixed CLIP_Y/AUDIO_TRACK_Y with a loop over tracks that calculates y = base + trackHeight * track.order, ensure clips listen to updated positioning, and prepare structure for future track features.",
+            "status": "pending",
+            "testStrategy": "Verify multiple track entries render at expected stacked Y positions when order values change.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 12,
+            "title": "Create TrackHeader component with metadata",
+            "description": "Design reusable TrackHeader React component showing track name, type icon, and slots for control buttons.",
+            "dependencies": [
+              11
+            ],
+            "details": "Define props for name, trackType, active states, and callbacks; render iconography and layout container sized to match timeline rows; integrate into KonvaTimeline alongside track canvases.",
+            "status": "pending",
+            "testStrategy": "Render TrackHeader in Storybook/test harness with sample props to confirm layout, icon display, and sizing.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 13,
+            "title": "Implement solo/mute/lock/visibility controls",
+            "description": "Wire TrackHeader buttons to manage solo, mute, lock, and visibility flags in shared track state.",
+            "dependencies": [
+              12
+            ],
+            "details": "Add control buttons with debounced callbacks, extend track model/state store, ensure locking prevents edits, update PreviewRenderer visibility integration, and persist states across renders.",
+            "status": "pending",
+            "testStrategy": "Unit test reducers/state handlers toggling each flag; integration test that muted tracks stop rendering and locked ones ignore pointer events.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 14,
+            "title": "Add per-track opacity slider control",
+            "description": "Provide opacity slider in TrackHeader allowing 0-100% opacity with visual feedback and propagation to rendering.",
+            "dependencies": [
+              13
+            ],
+            "details": "Use slider input tied to track.opacity state, clamp values, update Konva layer alpha and preview compositing, and show numeric tooltip for precision.",
+            "status": "pending",
+            "testStrategy": "Set opacity across range and assert Konva node opacity matches expected value; snapshot test ensures UI updates.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 15,
+            "title": "Implement drag-to-reorder tracks with animation",
+            "description": "Enable drag handle in TrackHeader to reorder tracks, animate Y transitions, and block locked tracks from dragging.",
+            "dependencies": [
+              14
+            ],
+            "details": "Track drag state, display drop indicator, update track.order in store, trigger Konva.Tween animations (200ms ease), reflow clip positions, and add drag shadow styling.",
+            "status": "pending",
+            "testStrategy": "Simulate drag in UI test verifying order array updates and animation completes; confirm locked tracks cannot initiate drag.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 16,
+            "title": "Add 'Add Track' creation workflow",
+            "description": "Provide button to append new tracks with default metadata and assign next available order index.",
+            "dependencies": [
+              14
+            ],
+            "details": "Place Add Track UI near headers, hook to dispatcher that inserts track object, initializes controls/opacity defaults, and scrolls focus to new track.",
+            "status": "pending",
+            "testStrategy": "Click Add Track and assert track list length increments with new default state; ensure undo/redo behaves correctly.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 17,
+            "title": "Implement zebra striping and selection highlighting",
+            "description": "Enhance row visuals with alternating background colors and selected track emphasis.",
+            "dependencies": [
+              15
+            ],
+            "details": "Apply zebra pattern via CSS/Konva fills based on track.order parity, add selection state toggled on click, and ensure selected row highlights consistently with clip selection tying.",
+            "status": "pending",
+            "testStrategy": "Render 3+ tracks verifying alternating colors; select a track and check highlight toggles appropriately and persists during reorder.",
+            "parentId": "undefined"
+          },
+          {
+            "id": 18,
+            "title": "Add vertical scrolling support for many tracks",
+            "description": "Introduce scroll container/virtualization allowing smooth navigation when track count exceeds viewport.",
+            "dependencies": [
+              17
+            ],
+            "details": "Wrap headers and canvas in synced scroll panes, implement scrollbars or gestures, maintain sticky timeline rulers, and optimize rendering for 15+ tracks without lag.",
+            "status": "pending",
+            "testStrategy": "Populate 20 tracks and scroll to confirm headers and canvases stay aligned with acceptable performance; ensure selection remains visible when scrolled back.",
             "parentId": "undefined"
           }
         ],
         "complexity": 8,
         "recommendedSubtasks": 8,
-        "expansionPrompt": "Break down multitrack timeline UI into: (1) refactoring KonvaTimeline to support dynamic track layout and Y positioning, (2) creating TrackHeader component with name, type icon, and control buttons, (3) implementing solo/mute/lock/visibility controls with state management, (4) adding opacity slider per track, (5) implementing drag-to-reorder tracks with Y-position animation, (6) adding 'Add Track' functionality, (7) implementing zebra striping and track selection, (8) adding vertical scrolling for many tracks"
+        "expansionPrompt": "Break down multitrack timeline UI into: (1) refactoring KonvaTimeline to support dynamic track layout and Y positioning, (2) creating TrackHeader component with name, type icon, and control buttons, (3) implementing solo/mute/lock/visibility controls with state management, (4) adding opacity slider per track, (5) implementing drag-to-reorder tracks with Y-position animation, (6) adding 'Add Track' functionality, (7) implementing zebra striping and track selection, (8) adding vertical scrolling for many tracks",
+        "updatedAt": "2025-11-18T02:27:35.859Z"
       },
       {
-        "id": "18",
+        "id": 18,
         "title": "Create effects panel UI with library browser and parameter controls",
         "description": "Build right sidebar panel for browsing, applying, and configuring effects on clips and tracks with real-time preview",
         "details": "1. Create new component components/editor/EffectsPanel.tsx\n2. Implement categorized effect library:\n   ```typescript\n   const effectCategories = {\n     'Color': ['brightness', 'contrast', 'saturation', 'hue'],\n     'Filters': ['blur', 'sharpen', 'grain', 'vignette'],\n     'Grading': ['lut', 'colorGrade', 'temperature', 'tint'],\n     'Artistic': ['vintage', 'bw', 'sepia', 'crossProcess']\n   };\n   ```\n3. Create EffectLibraryBrowser:\n   - Accordion sections for each category\n   - Search/filter input\n   - Effect cards with icons and names\n   - Drag-and-drop to timeline clips/tracks\n4. Create EffectControlsPanel:\n   - Shows effects for selected clip/track\n   - Each effect row:\n     - Enable/disable checkbox\n     - Effect name\n     - Delete button\n     - Expand/collapse for parameters\n   - Parameter controls (sliders, color pickers)\n   - Real-time preview updates on change\n   - Drag handles for reordering effects\n5. Implement parameter controls:\n   ```typescript\n   <EffectParameter\n     label=\"Brightness\"\n     value={effect.params.value}\n     min={-1}\n     max={1}\n     step={0.01}\n     onChange={(val) => updateEffectParam(effect.id, 'value', val)}\n   />\n   ```\n6. Add preset library:\n   - Preset dropdown per effect type\n   - Apply preset copies params to effect\n   - Save custom presets to localStorage\n7. Add Before/After toggle for comparison\n8. Style panel as right sidebar (300-400px wide)\n9. Use existing UI patterns from timeline context menu",
@@ -1526,7 +1654,7 @@
         "expansionPrompt": "Break down effects panel UI into: (1) creating EffectsPanel.tsx component as right sidebar, (2) implementing EffectLibraryBrowser with categorized accordion and search, (3) implementing drag-and-drop from library to clips/tracks, (4) creating EffectControlsPanel showing selected clip/track effects, (5) implementing parameter controls (sliders, color pickers) with real-time preview, (6) adding preset system and Before/After comparison toggle"
       },
       {
-        "id": "19",
+        "id": 19,
         "title": "Update EDL export to include effects and multitrack metadata",
         "description": "Extend EDL serialization to include track order, opacity, effects arrays, and effect parameters for render server processing",
         "details": "1. Locate EDL export code (likely lib/export/ or lib/editor/export/)\n2. Update Track serialization:\n   ```typescript\n   function serializeTrack(track: Track): EDLTrack {\n     return {\n       id: track.id,\n       kind: track.kind,\n       order: track.order,\n       opacity: track.opacity,\n       effects: track.effects.map(serializeEffect),\n       clips: track.clips.map(serializeClip),\n       locked: track.locked,\n       muted: track.muted\n     };\n   }\n   ```\n3. Update Clip serialization:\n   ```typescript\n   function serializeClip(clip: Clip): EDLClip {\n     return {\n       id: clip.id,\n       start: clip.start,\n       duration: clip.duration,\n       mediaId: clip.mediaId,\n       effects: clip.effects.map(serializeEffect),\n       // ... other fields\n     };\n   }\n   ```\n4. Implement effect serialization:\n   ```typescript\n   function serializeEffect(effect: Effect): EDLEffect {\n     return {\n       id: effect.id,\n       type: effect.type,\n       params: effect.params, // Already JSON-serializable\n       enabled: effect.enabled,\n       blend: effect.blend ?? 1.0,\n       order: effect.order ?? 0\n     };\n   }\n   ```\n5. Add effect-to-ffmpeg mapping table:\n   ```typescript\n   export const effectToFFmpeg: Record<EffectType, (params: any) => string> = {\n     brightness: (p) => `eq=brightness=${p.value}`,\n     contrast: (p) => `eq=contrast=${p.value}`,\n     saturation: (p) => `eq=saturation=${p.value}`,\n     blur: (p) => `gblur=sigma=${p.radius}`,\n     grain: (p) => `noise=alls=${p.intensity}:allf=t`,\n     lut: (p) => `lut3d=${p.lutFile}`,\n     // ... more mappings\n   };\n   ```\n6. Include ffmpeg filter strings in EDL for render server\n7. Handle LUT file uploads: include file references in EDL\n8. Add EDL version field to track format changes",
@@ -1592,7 +1720,7 @@
         "expansionPrompt": "Break down EDL export updates into: (1) extending Track and Clip serialization to include order, opacity, and effects arrays, (2) implementing Effect serialization with full metadata, (3) creating effect-to-FFmpeg filter mapping table for render server processing, (4) adding EDL versioning and validating JSON schema compliance"
       },
       {
-        "id": "20",
+        "id": 20,
         "title": "Update FrameRenderer for multitrack export with effects",
         "description": "Refactor FrameRenderer to composite multiple tracks in z-order and apply effects during video export",
         "details": "1. Locate FrameRenderer class (likely lib/editor/export/frame-renderer.ts)\n2. Implement same multitrack logic as PreviewRenderer:\n   ```typescript\n   async renderFrame(sequence: Sequence, time: number): Promise<Buffer> {\n     const activeClips = this.resolveAllActiveClips(sequence, time);\n     const sortedClips = activeClips.sort((a, b) => a.track.order - b.track.order);\n\n     const canvas = createCanvas(sequence.width, sequence.height);\n     const ctx = canvas.getContext('2d');\n\n     for (const { clip, track, mediaClip } of sortedClips) {\n       const tempCanvas = createCanvas(sequence.width, sequence.height);\n       const tempCtx = tempCanvas.getContext('2d');\n\n       // Render clip to temp canvas\n       await this.drawClipFrame(tempCtx, clip, mediaClip, time);\n\n       // Apply clip-level effects\n       for (const effect of clip.effects) {\n         if (effect.enabled) {\n           applyEffect(tempCanvas, effect);\n         }\n       }\n\n       // Apply track-level effects\n       for (const effect of track.effects) {\n         if (effect.enabled) {\n           applyEffect(tempCanvas, effect);\n         }\n       }\n\n       // Composite with track opacity\n       ctx.globalAlpha = track.opacity;\n       ctx.drawImage(tempCanvas, 0, 0);\n       ctx.globalAlpha = 1.0;\n     }\n\n     return canvas.toBuffer('image/png');\n   }\n   ```\n3. Reuse effect rendering functions from effect-renderer.ts\n4. Add progress reporting for long renders\n5. Implement frame caching for effects (cache unchanged frames)\n6. Use node-canvas for server-side rendering\n7. Ensure pixel-perfect match with PreviewRenderer output",
@@ -1695,12 +1823,14 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2025-11-18T02:11:34.708Z",
+      "lastModified": "2025-11-18T02:27:35.861Z",
       "taskCount": 20,
       "completedCount": 6,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2025-11-18T02:35:03.036Z",
+      "description": "Tasks for master context"
     }
   }
 }
