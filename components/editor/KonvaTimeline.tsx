@@ -644,9 +644,40 @@ const KonvaTimelineComponent = ({
         return;
       }
 
-      // SLIDE MODE: Will be implemented in task 7.5
+      // SLIDE MODE: Move clip while shifting adjacent clips to preserve gaps
       if (editingMode === 'slide') {
-        // TODO: Implement slide mode logic in task 7.5
+        // Calculate drag delta from initial drag position
+        const dragDeltaPixels = currentX - draggedClipX;
+        const dragDeltaTime = dragDeltaPixels / PIXELS_PER_SECOND;
+
+        // Find the dragged clip's index in the original clip order
+        const draggedClipIndex = clips.findIndex((c) => c.id === clipId);
+        if (draggedClipIndex === -1) return;
+
+        // Calculate new position for dragged clip (constrain to timeline bounds)
+        const newStart = Math.max(0, draggedClip.start + dragDeltaTime);
+
+        // Create a new clip array with clips shifted to maintain gaps
+        // When dragging right: shift all clips AFTER dragged clip
+        // When dragging left: shift all clips BEFORE dragged clip
+        const updatedClips = clips.map((clip, index) => {
+          if (clip.id === clipId) {
+            // Move the dragged clip
+            return { ...clip, start: newStart };
+          } else if (dragDeltaTime > 0 && index > draggedClipIndex) {
+            // Dragging right: shift clips after by the same delta
+            return { ...clip, start: Math.max(0, clip.start + dragDeltaTime) };
+          } else if (dragDeltaTime < 0 && index < draggedClipIndex) {
+            // Dragging left: shift clips before by the same delta
+            return { ...clip, start: Math.max(0, clip.start + dragDeltaTime) };
+          }
+          // Clips on the opposite side of drag direction remain unchanged
+          return clip;
+        });
+
+        // Update virtual clip order for real-time preview
+        setVirtualClipOrder(updatedClips);
+        setDraggedClipX(currentX);
         return;
       }
 
@@ -787,7 +818,12 @@ const KonvaTimelineComponent = ({
       <div
         ref={containerRef}
         className="overflow-x-auto overflow-y-hidden flex-1"
-        style={{ height: `${timelineHeight}px` }}
+        style={{
+          height: `${timelineHeight}px`,
+          cursor: editingMode === 'slip' ? 'ew-resize' :
+                  editingMode === 'slide' ? 'move' :
+                  draggingClipId ? 'grabbing' : 'default'
+        }}
       >
         <Stage
           key="konva-timeline-stage"
@@ -1014,6 +1050,63 @@ const KonvaTimelineComponent = ({
                 listening={false}
               />
             )}
+
+            {/* Slip/Slide mode indicator */}
+            {editingMode !== 'normal' && draggingClipId && (() => {
+              const draggedClip = clips.find((c) => c.id === draggingClipId);
+              if (!draggedClip) return null;
+
+              const modeText = editingMode === 'slip' ? 'SLIP EDIT' : 'SLIDE EDIT';
+              const modeColor = editingMode === 'slip' ? '#F59E0B' : '#8B5CF6'; // Amber for slip, Purple for slide
+
+              // Show current trimStart offset in slip mode
+              const offsetText = editingMode === 'slip'
+                ? `Offset: ${formatTime(draggedClip.trimStart)}`
+                : '';
+
+              // Position tooltip near the top-left of the dragged clip
+              const clipX = draggedClipX;
+              const tooltipX = clipX + 10;
+              const tooltipY = CLIP_Y - 30;
+
+              return (
+                <Group>
+                  {/* Background for mode indicator */}
+                  <Rect
+                    x={tooltipX}
+                    y={tooltipY}
+                    width={120}
+                    height={offsetText ? 50 : 30}
+                    fill="rgba(0, 0, 0, 0.85)"
+                    cornerRadius={6}
+                    listening={false}
+                  />
+
+                  {/* Mode text */}
+                  <Text
+                    x={tooltipX + 10}
+                    y={tooltipY + 8}
+                    text={modeText}
+                    fontSize={12}
+                    fontStyle="bold"
+                    fill={modeColor}
+                    listening={false}
+                  />
+
+                  {/* Offset text (slip mode only) */}
+                  {offsetText && (
+                    <Text
+                      x={tooltipX + 10}
+                      y={tooltipY + 28}
+                      text={offsetText}
+                      fontSize={11}
+                      fill="#FFFFFF"
+                      listening={false}
+                    />
+                  )}
+                </Group>
+              );
+            })()}
 
             {/* Playhead (white - actual position) - updated via ref */}
             <Line

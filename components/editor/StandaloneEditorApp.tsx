@@ -1171,6 +1171,7 @@ export const StandaloneEditorApp = ({
             onTogglePlayback={handleTogglePlayback}
             onSeek={handleSeek}
             onCanvasResize={handleCanvasResize}
+            timelineHeight={timelineHeight}
           />
         </div>
         {/* Resize handle */}

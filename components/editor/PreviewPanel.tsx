@@ -12,6 +12,7 @@ interface PreviewPanelProps {
   onTogglePlayback: () => void;
   onSeek: (time: number) => void;
   onCanvasResize?: (width: number, height: number) => void;
+  timelineHeight?: number;
 }
 
 const formatTime = (seconds: number) => {
@@ -33,28 +34,42 @@ const PreviewPanelComponent = ({
   onTogglePlayback,
   onSeek,
   onCanvasResize,
+  timelineHeight = 340,
 }: PreviewPanelProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeTimeoutRef = useRef<number | null>(null);
   const lastSizeRef = useRef({ width: 0, height: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 });
 
+  // Calculate available height based on window and timeline height
+  const getAvailableHeight = useCallback(() => {
+    // When timeline is large, we need to be more aggressive about constraining
+    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const estimatedUIOverhead = 200; // Top bar + resize handle + padding + controls
+    const maxCanvasHeight = windowHeight - timelineHeight - estimatedUIOverhead;
+    
+    // Ensure reasonable bounds
+    return Math.max(150, Math.min(720, maxCanvasHeight));
+  }, [timelineHeight]);
+
   // Debounced resize handler
   const handleResize = useCallback(
     (entries: ResizeObserverEntry[]) => {
       const entry = entries[0];
-      if (!entry || !onCanvasResize) return;
+      if (!entry) return;
 
-      const { width, height } = entry.contentRect;
-      if (width <= 0 || height <= 0) return;
+      const { width } = entry.contentRect;
+      if (width <= 0) return;
 
+      // Use available height calculation instead of container height
+      const availableHeight = getAvailableHeight();
       const widthLimitedHeight = width / PREVIEW_ASPECT_RATIO;
       let nextWidth = width;
       let nextHeight = widthLimitedHeight;
 
-      if (widthLimitedHeight > height) {
-        nextHeight = height;
-        nextWidth = height * PREVIEW_ASPECT_RATIO;
+      if (widthLimitedHeight > availableHeight) {
+        nextHeight = availableHeight;
+        nextWidth = availableHeight * PREVIEW_ASPECT_RATIO;
       }
 
       // Clear previous timeout
@@ -83,12 +98,12 @@ const PreviewPanelComponent = ({
         }
       }, 16);
     },
-    [onCanvasResize],
+    [onCanvasResize, getAvailableHeight],
   );
 
-  // Setup ResizeObserver
+  // Setup ResizeObserver and timeline height monitoring
   useEffect(() => {
-    if (!containerRef.current || !onCanvasResize) return;
+    if (!containerRef.current) return;
 
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(containerRef.current);
@@ -99,7 +114,19 @@ const PreviewPanelComponent = ({
         window.clearTimeout(resizeTimeoutRef.current);
       }
     };
-  }, [handleResize, onCanvasResize]);
+  }, [handleResize]);
+
+  // Trigger resize when timeline height changes
+  useEffect(() => {
+    if (!containerRef.current || !onCanvasResize) return;
+    
+    // Simulate a resize entry to trigger recalculation
+    const entry = {
+      contentRect: containerRef.current.getBoundingClientRect(),
+    } as ResizeObserverEntry;
+    
+    handleResize([entry]);
+  }, [timelineHeight, handleResize, onCanvasResize]);
 
   return (
     <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
@@ -107,6 +134,9 @@ const PreviewPanelComponent = ({
       <div
         ref={containerRef}
         className="flex-1 relative flex items-center justify-center overflow-hidden bg-black"
+        style={{
+          maxHeight: `calc(100vh - ${timelineHeight + 180}px)`
+        }}
       >
         <canvas
           ref={canvasRef}
