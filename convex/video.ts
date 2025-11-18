@@ -1724,3 +1724,63 @@ export const areClipsGenerating = query({
     );
   },
 });
+
+// Delete a project and all its related data
+export const deleteProject = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    // Delete all video clips
+    const clips = await ctx.db
+      .query("videoClips")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(clips.map((clip) => ctx.db.delete(clip._id)));
+
+    // Delete all scenes
+    const scenes = await ctx.db
+      .query("scenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(scenes.map((scene) => ctx.db.delete(scene._id)));
+
+    // Delete all voice settings
+    const voiceSettings = await ctx.db
+      .query("projectVoiceSettings")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(
+      voiceSettings.map((setting) => ctx.db.delete(setting._id)),
+    );
+
+    // Delete all clarifying questions
+    const questions = await ctx.db
+      .query("clarifyingQuestions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(questions.map((question) => ctx.db.delete(question._id)));
+
+    // Delete all audio assets
+    const audioAssets = await ctx.db
+      .query("audioAssets")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    await Promise.all(audioAssets.map((asset) => ctx.db.delete(asset._id)));
+
+    // Finally, delete the project itself
+    await ctx.db.delete(args.projectId);
+
+    return { success: true };
+  },
+});

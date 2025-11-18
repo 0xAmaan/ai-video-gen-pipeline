@@ -3,17 +3,32 @@
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Video, Pencil, Check, X } from "lucide-react";
+import { Video, Pencil, Check, X, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Id } from "@/convex/_generated/dataModel";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const ProjectsPage = () => {
   const router = useRouter();
   const projects = useQuery(api.video.getUserProjects);
   const updateProjectTitle = useMutation(api.video.updateProjectTitle);
+  const deleteProject = useMutation(api.video.deleteProject);
 
   const [editingId, setEditingId] = useState<Id<"videoProjects"> | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<{
+    id: Id<"videoProjects">;
+    title: string;
+  } | null>(null);
 
   const getProjectTitle = (project: { title?: string; prompt: string }) => {
     if (project.title) return project.title;
@@ -60,6 +75,29 @@ const ProjectsPage = () => {
     } else if (e.key === "Escape") {
       e.preventDefault();
       cancelEditing(e as any);
+    }
+  };
+
+  const openDeleteDialog = (
+    e: React.MouseEvent,
+    projectId: Id<"videoProjects">,
+    title: string,
+  ) => {
+    e.stopPropagation();
+    setProjectToDelete({ id: projectId, title });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+
+    try {
+      await deleteProject({ projectId: projectToDelete.id });
+      setDeleteDialogOpen(false);
+      setProjectToDelete(null);
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      // Optionally show an error toast here
     }
   };
 
@@ -168,6 +206,18 @@ const ProjectsPage = () => {
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
+                        <button
+                          onClick={(e) =>
+                            openDeleteDialog(
+                              e,
+                              project._id,
+                              getProjectTitle(project),
+                            )
+                          }
+                          className="p-1 hover:bg-destructive/20 rounded text-muted-foreground hover:text-destructive shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                         {getPhaseBadge(project.lastActivePhase)}
                       </>
                     )}
@@ -181,6 +231,31 @@ const ProjectsPage = () => {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &quot;{projectToDelete?.title}&quot;?
+              This will permanently delete the project and all its data including
+              scenes, video clips, and audio assets. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteProject}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
