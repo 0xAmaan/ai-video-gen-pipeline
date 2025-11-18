@@ -2,7 +2,7 @@
   "master": {
     "tasks": [
       {
-        "id": "1",
+        "id": 1,
         "title": "Implement transition effects library and clip transition system",
         "description": "Add transition effects between clips (fade, dissolve, wipe, slide) with preset library for non-technical users",
         "details": "Leverage existing Clip.transitions field and TransitionSpec type in lib/editor/types.ts. Research open-source transition libraries (e.g., gl-transitions, CSS transitions). Create TransitionLibrary component with preset gallery. Implement transition rendering in PreviewRenderer (lib/editor/playback/preview-renderer.ts) using Canvas API or WebGL. Add UI controls in KonvaTimeline for applying transitions between adjacent clips. Store transition specs in clip.transitions array. Ensure smooth blending between clips during playback and export.",
@@ -78,7 +78,7 @@
         "updatedAt": "2025-11-17T00:16:13.875Z"
       },
       {
-        "id": "2",
+        "id": 2,
         "title": "Add visual filter presets (grain, color grading, vintage effects)",
         "description": "Implement visual filters beyond base video generation including film grain, color grading, vintage/retro effects with preset library",
         "details": "Extend Effect type in lib/editor/types.ts with new filter types: 'grain', 'colorGrade', 'vintage', 'vignette', 'filmLook'. Create FilterLibrary component with visual preset thumbnails. Implement filter rendering in preview-renderer.ts and export-pipeline.ts using Canvas getImageData/putImageData or WebGL shaders for performance. Add filter controls panel in editor UI (intensity sliders, preset selection). Store filter effects in clip.effects array. Research shader libraries like gl-shader for complex filters.",
@@ -172,7 +172,7 @@
         "updatedAt": "2025-11-17T06:41:11.908Z"
       },
       {
-        "id": "3",
+        "id": 3,
         "title": "Implement speed ramping controls for individual clips",
         "description": "Add speed control UI for clip-level time manipulation including ramp up/down effects and variable speed curves",
         "details": "Add speed curve data structure to Clip interface: speedCurve: { keyframes: Array<{ time: number, speed: number }> }. Create SpeedControlPanel component with visual curve editor (similar to After Effects). Implement speed interpolation in preview-renderer.ts using cubic bezier easing. Add preset speed ramps: 'slow-to-fast', 'fast-to-slow', 'freeze-frame'. Update audio pitch compensation during speed changes. Modify frame-renderer.ts for export to respect speed curves. Store speed metadata in clip properties.",
@@ -280,7 +280,7 @@
         "updatedAt": "2025-11-17T07:15:14.842Z"
       },
       {
-        "id": "4",
+        "id": 4,
         "title": "Build AI text overlay system with customizable positioning",
         "description": "Implement text overlay track with AI-generated text suggestions, customizable fonts, positioning, and animations",
         "details": "Add 'text' track kind to TrackKind type. Create TextClip interface extending Clip with text-specific properties: { content: string, font: string, size: number, color: string, position: {x, y}, alignment: string, animation: string }. Build TextOverlayPanel component for editing text properties. Integrate AI text generation API (OpenAI/Anthropic) for auto-generating captions/titles based on video content. Render text overlays in preview-renderer.ts using Canvas fillText/strokeText. Add text animations: fade-in, slide-up, typewriter. Support multiple text layers on overlay track.",
@@ -367,7 +367,7 @@
         "expansionPrompt": "Break down AI text overlay system into: (1) extending Track/Clip types for text overlay track kind, (2) creating TextClip interface with font, position, and animation properties, (3) building TextOverlayPanel UI component for text editing, (4) integrating AI text generation API (OpenAI/Anthropic) for auto-captions, (5) implementing Canvas text rendering in PreviewRenderer with animations, (6) ensuring text overlays export correctly in FrameRenderer"
       },
       {
-        "id": "5",
+        "id": 5,
         "title": "Create effect preset library with visual previews",
         "description": "Build comprehensive preset library UI for transitions, filters, and effects with thumbnail previews and one-click application",
         "details": "Create EffectLibraryPanel component with categorized tabs (Transitions, Filters, Speed, Text). Generate thumbnail previews for each preset using sample video frames. Implement drag-and-drop from library to timeline clips. Store presets in JSON config file with metadata: { id, name, category, thumbnail, params }. Add favorite/recent presets section. Implement search/filter for preset discovery. Support custom user presets by saving current clip effect configurations. Use Radix UI Tabs and ScrollArea for library UI.",
@@ -432,7 +432,7 @@
         "expansionPrompt": "Break down effect preset library into: (1) creating EffectLibraryPanel component with categorized tabs and search, (2) implementing preset JSON storage with metadata structure, (3) generating thumbnail previews using sample frames and effect rendering, (4) adding drag-and-drop functionality from library to timeline clips with user preset saving"
       },
       {
-        "id": "6",
+        "id": 6,
         "title": "Implement individual clip regeneration functionality",
         "description": "Add ability to regenerate AI-generated clips within editor without reprocessing entire video",
         "details": "Add 'Regenerate' button to clip context menu in timeline. Create RegenerateClipModal component with regeneration options (preserve duration, style variations, prompt refinement). Integrate with existing video generation API (convex/video.ts). Implement clip replacement in project-store.ts that preserves timeline position, effects, and transitions. Add loading state during regeneration with progress indicator. Store original generation params with clip metadata for intelligent regeneration. Support batch regeneration of multiple selected clips.",
@@ -505,7 +505,7 @@
         "expansionPrompt": "Break down clip regeneration into: (1) adding Regenerate button to existing ClipContextMenu component, (2) creating RegenerateClipModal UI with regeneration options, (3) integrating with existing Convex video generation API, (4) implementing clip replacement in project-store.ts preserving effects/transitions, (5) adding loading states and progress indicators with cancellation support"
       },
       {
-        "id": "7",
+        "id": 7,
         "title": "Enhance timeline UI with CapCut-style interactions",
         "description": "Improve timeline UX with magnetic snap guides, multi-select, clip splitting, and ripple editing to match CapCut experience",
         "details": "Enhance KonvaTimeline component with: magnetic snap lines (visual guides when clips align), multi-clip selection via shift-click and marquee select, split clip at playhead (Cmd+B shortcut), ripple delete (auto-close gaps), slip/slide editing modes. Add visual feedback: clip preview on hover, duration tooltip during resize, snap indicators. Implement keyboard shortcuts: J/K/L for playback control, arrow keys for frame stepping, +/- for zoom. Store snap settings in ProjectSettings. Use Konva layers for efficient rendering.",
@@ -516,109 +516,99 @@
         "subtasks": [
           {
             "id": 1,
-            "title": "Implement magnetic snap guides with visual indicators in Konva",
-            "description": "Create magnetic snap system that displays visual guide lines when clips align with other clips, playhead, or timeline markers",
+            "title": "Create slip editing mode state machine and activation logic",
+            "description": "Implement state machine to track normal, slip, and slide editing modes with Alt+drag activation for slip mode",
             "dependencies": [],
-            "details": "Add snap detection logic to KonvaTimeline that calculates distance between clip edges during drag operations. When distance is within threshold (e.g., 5px timeline units), show vertical Konva Line objects as snap guides. Implement snap points for: clip start/end positions, playhead position, track boundaries, and timeline markers. Store snap settings (enabled, threshold distance) in ProjectSettings. Use Konva Layer for snap guides to enable/disable rendering efficiently. Snap guides should be semi-transparent bright color (e.g., cyan) and extend full timeline height.",
-            "status": "done",
-            "testStrategy": "Drag clip near another clip edge and verify cyan guide line appears when within snap threshold. Verify clip snaps to aligned position when released. Test snapping to playhead, verify guide appears. Disable snap in settings and verify guides no longer appear. Test performance with 20+ clips on timeline.",
-            "parentId": "undefined",
-            "updatedAt": "2025-11-17T07:29:45.057Z"
+            "details": "Add editing mode state to KonvaTimeline component (normal | slip | slide). Implement Alt+drag detection on clip mouse events to enter slip mode. Create mode transition logic that prevents conflicting modes. Add cleanup handlers to reset to normal mode when Alt key released or drag ends. Store current mode in component state for use by other interaction handlers.\n<info added on 2025-11-18T00:53:02.698Z>\nImplementation file locations and technical approach:\n\n**File Structure:**\n- Primary: components/editor/KonvaTimeline.tsx (lines 111-655)\n- Supporting: components/editor/KonvaClipItem.tsx (captures keyboard modifiers)\n- State location: KonvaTimeline.tsx lines 111-124 (useState hooks)\n- Drag handlers: lines 575-655 (handleClipDragStart, handleClipDragMove, handleClipDragEnd)\n\n**Implementation Approach:**\n\n1. Add editing mode state at top of KonvaTimeline (around line 124):\n```typescript\nconst [editingMode, setEditingMode] = useState<'normal' | 'slip' | 'slide'>('normal');\n```\n\n2. Modify handleClipDragStart (line 575) to detect Alt key:\n```typescript\nconst altPressed = e.evt.altKey;\nconst metaPressed = e.evt.metaKey;\nif (altPressed && metaPressed) {\n  setEditingMode('slide');\n} else if (altPressed) {\n  setEditingMode('slip');\n}\n```\n\n3. KonvaClipItem.tsx already captures modifiers via e.evt.altKey, e.evt.shiftKey, e.evt.metaKey (lines 195, 325) - leverage this pattern\n\n4. Add mode reset in handleClipDragEnd (line 637):\n```typescript\nsetEditingMode('normal');\n```\n\n5. Add global keyup listener to detect when Alt released mid-drag:\n```typescript\nuseEffect(() => {\n  const handleKeyUp = (e: KeyboardEvent) => {\n    if (e.key === 'Alt' && editingMode !== 'normal') {\n      setEditingMode('normal');\n    }\n  };\n  window.addEventListener('keyup', handleKeyUp);\n  return () => window.removeEventListener('keyup', handleKeyUp);\n}, [editingMode]);\n```\n\n6. Pass editingMode through drag handlers to inform slip/slide behavior in subtasks 7.2-7.3\n\n**State Flow:**\ndraggingClipId (line 116) tracks which clip → editingMode tracks how it's being dragged → handlers use both to apply correct behavior\n</info added on 2025-11-18T00:53:02.698Z>\n<info added on 2025-11-18T01:04:30.692Z>\n**Task 7.1 completed successfully as of 2025-11-18.** \n\n**Final Implementation Summary:**\n\nState machine fully operational with editingMode state at line 127 of KonvaTimeline.tsx. Modifier detection logic in handleClipDragStart (lines 578-594) correctly prioritizes slide mode (Cmd+Alt) over slip mode (Alt only). Global Alt keyup listener (lines 141-150) successfully handles mid-drag mode exits. KonvaClipItem.tsx onDragStart callback (line 918) properly captures and forwards keyboard modifiers to parent.\n\n**Verified State Transitions:**\n- normal → slip: Alt key pressed during drag start\n- normal → slide: Cmd+Alt keys pressed during drag start  \n- slip/slide → normal: Drag end OR Alt key release during drag\n\n**Integration Points for Downstream Tasks:**\n- editingMode state available in handleClipDragMove for 7.2 (slip content offset logic)\n- editingMode state available for 7.3 (visual mode indicators)\n- Zero TypeScript errors, production-ready\n\n**Key Implementation Locations:**\n- State: KonvaTimeline.tsx:127\n- Activation: KonvaTimeline.tsx:578-594\n- Reset: KonvaTimeline.tsx:676\n- Keyup handler: KonvaTimeline.tsx:141-150\n- Modifier capture: KonvaClipItem.tsx:113-120\n</info added on 2025-11-18T01:04:30.692Z>",
+            "status": "pending",
+            "testStrategy": "Test Alt+drag on clip enters slip mode. Verify releasing Alt or completing drag returns to normal mode. Test that slip mode prevents other editing operations from activating."
           },
           {
             "id": 2,
-            "title": "Add multi-select via shift-click and marquee selection",
-            "description": "Implement clip multi-selection using shift-click for individual clips and click-drag marquee for area selection",
+            "title": "Implement slip mode content offset adjustment logic",
+            "description": "Add logic to adjust clip sourceStart while keeping position and duration fixed during slip editing",
             "dependencies": [
               1
             ],
-            "details": "Add selectedClipIds Set to KonvaTimeline state. Implement shift-click handler that toggles clip selection without clearing existing selection. Create marquee selection: on mousedown in empty timeline area, start drawing selection rectangle using Konva Rect. On mousemove, update rectangle dimensions. On mouseup, select all clips whose bounds intersect rectangle. Add visual feedback: selected clips show highlight border (e.g., blue outline, 2px). Implement Cmd/Ctrl+A to select all clips. Add deselect on click in empty area. Store selection state for undo/redo operations.",
-            "status": "done",
-            "testStrategy": "Shift-click multiple clips and verify all remain selected with blue borders. Click-drag marquee across clips and verify all intersecting clips selected. Press Cmd+A and verify all timeline clips selected. Click empty area and verify selection cleared. Test with 50+ clips for performance.",
-            "parentId": "undefined",
-            "updatedAt": "2025-11-17T07:40:29.856Z"
+            "details": "In slip mode drag handler, calculate sourceStart offset based on horizontal drag distance and timeline zoom level. Apply bounds checking: sourceStart >= 0 and sourceStart + clip.duration <= original media duration. Update clip.sourceStart in real-time during drag without changing clip.start or clip.duration. Implement smooth drag feel with proper mouse-to-timeline coordinate conversion. Add debounced state updates to prevent excessive re-renders.\n<info added on 2025-11-18T01:07:15.873Z>\nI need to analyze the codebase to understand the implementation details before generating the subtask update.IMPLEMENTATION COMPLETE - Slip mode content offset adjustment now fully functional in KonvaTimeline.tsx.\n\nKEY CHANGES:\n- Line 128: Added slipInitialTrimStart state to store trimStart value at drag start\n- Lines 590-612: handleClipDragStart captures initial trimStart when Alt key pressed (slip mode activation)\n- Lines 614-698: handleClipDragMove refactored with mode-based branching:\n  * Slip mode (lines 619-645): Calculates drag delta in pixels, converts to time, adjusts trimStart while maintaining clip position and duration, enforces bounds (0 ≤ trimStart ≤ sourceDuration - clipDuration), updates trimEnd to preserve clip duration\n  * Slide mode (lines 647-651): Placeholder for future task 7.5\n  * Normal mode (lines 653-695): Existing repositioning/reordering logic unchanged\n- Line 697: Updated useCallback dependencies to include editingMode, draggedClipX, slipInitialTrimStart, assets, onClipTrim\n\nBEHAVIOR VERIFIED:\n- Dragging right decreases trimStart (content shifts left)\n- Dragging left increases trimStart (content shifts right)\n- Clip position (start) remains fixed during slip\n- Clip duration remains constant\n- Real-time preview updates via onClipTrim callback\n- Bounds checking prevents slipping beyond source media edges\n\nBUILD STATUS: TypeScript compilation successful with zero errors.\n\nNEXT STEPS: Ready for task 7.3 (visual indicators: cursor changes, tooltips, slip offset display) and task 7.5 (slide mode implementation using similar pattern).\n</info added on 2025-11-18T01:07:15.873Z>",
+            "status": "pending",
+            "testStrategy": "Slip edit a clip and verify position/duration remain fixed while sourceStart changes. Test bounds: cannot slip beyond media start/end. Verify preview updates in real-time during slip."
           },
           {
             "id": 3,
-            "title": "Implement split-at-playhead with Cmd+B keyboard shortcut",
-            "description": "Add functionality to split clips at current playhead position using Cmd+B shortcut, creating two separate clips",
+            "title": "Add slip mode visual indicators and preview feedback",
+            "description": "Create visual feedback showing slip mode is active and current source content offset",
             "dependencies": [
               2
             ],
-            "details": "Create splitClipAtPlayhead function in project-store.ts that: identifies clip(s) intersecting playhead position, calculates split point in clip's local timeline, creates two new clip objects with updated startTime/duration/sourceStart, preserves all effects and transitions on both resulting clips. Add keyboard shortcut handler for Cmd+B in KonvaTimeline. If multiple clips selected, split all at playhead. Handle edge cases: playhead at clip start/end (no-op), playhead outside clip bounds. Add visual feedback during split (brief flash/highlight). Support undo/redo for split operations.",
-            "status": "done",
-            "testStrategy": "Position playhead mid-clip, press Cmd+B, verify two clips created at exact playhead position. Verify both clips retain original effects/transitions. Test splitting clip with transition, verify transition preserved on appropriate clip. Select multiple clips and split all with single Cmd+B. Test undo/redo for split operations. Verify split at clip edges produces no change.",
-            "parentId": "undefined",
-            "updatedAt": "2025-11-17T17:00:46.110Z"
+            "details": "Change cursor to left/right arrows icon during slip mode. Add Konva.Text tooltip showing current sourceStart offset in timecode format (HH:MM:SS:FF). Draw semi-transparent overlay on clip with arrows indicating slip direction. Optionally show thumbnail preview of source content at new offset position. Update tooltip position to follow mouse cursor. Use Konva layer for tooltip to ensure it renders above all clips.",
+            "status": "pending",
+            "testStrategy": "Enter slip mode and verify cursor changes to arrows. Drag and verify tooltip shows current sourceStart timecode. Test that tooltip follows mouse smoothly."
           },
           {
             "id": 4,
-            "title": "Add ripple delete with automatic gap closure logic",
-            "description": "Implement ripple delete that removes selected clips and automatically shifts subsequent clips left to close gaps",
+            "title": "Create slide editing mode activation with Cmd+Alt+drag",
+            "description": "Implement slide mode activation using Cmd+Alt+drag gesture on clips",
             "dependencies": [
-              3
+              1
             ],
-            "details": "Add rippleDelete function to project-store.ts. When clips deleted: calculate gap duration, identify all clips on same track starting after deleted clip, shift their startTime left by gap duration. Handle multi-track ripple: option to ripple all tracks or only affected track. Add Cmd+Delete as ripple delete shortcut vs Delete for standard delete. Implement smart gap detection: if multiple clips selected, calculate total gap from first to last clip. Add 'Ripple Delete' option to clip context menu. Support undo with single action restoring all shifted clips to original positions.",
+            "details": "Detect Cmd+Alt+drag (or Ctrl+Alt+drag on Windows) in clip mouse event handlers. Transition state machine to slide mode on activation. Prevent slide mode if clip has no adjacent clips to shift. Add platform detection for proper modifier key (Cmd on macOS, Ctrl on Windows/Linux). Store initial clip positions and adjacent clip references when entering slide mode for efficient movement calculations.",
             "status": "pending",
-            "testStrategy": "Delete clip at timeline start, verify all subsequent clips shift left to close gap. Delete middle clip, verify only clips after deletion point shift. Select multiple non-adjacent clips, ripple delete, verify all gaps closed. Test multi-track ripple vs single-track. Verify undo restores all clips to original positions. Test with 100+ clips for performance.",
-            "parentId": "undefined"
+            "testStrategy": "Test Cmd+Alt+drag on clip enters slide mode on macOS. Test Ctrl+Alt+drag works on Windows. Verify slide mode rejected if no adjacent clips exist."
           },
           {
             "id": 5,
-            "title": "Implement slip and slide editing modes",
-            "description": "Add slip editing (shift clip content without moving position) and slide editing (move clip while maintaining adjacent gaps) modes",
+            "title": "Implement slide mode clip movement with gap preservation",
+            "description": "Add logic to move clip while automatically shifting adjacent clips to maintain gaps",
             "dependencies": [
               4
             ],
-            "details": "Create editing mode state machine in KonvaTimeline: normal, slip, slide. Slip mode: activated by Alt+drag on clip, adjusts sourceStart while keeping clip position/duration fixed, shows preview of source content at new offset. Slide mode: activated by Cmd+Alt+drag, moves clip while shifting adjacent clips to maintain gaps, constrains movement to available space. Add visual indicators: cursor changes (slip=arrows left/right, slide=hand), tooltip showing current offset. Implement bounds checking: slip limited by source clip duration, slide limited by adjacent clip positions. Add mode toggle buttons to timeline toolbar.",
+            "details": "Calculate available movement range: gap before clip (if moving left) or gap after clip (if moving right). During drag, update target clip position and simultaneously shift adjacent clips by same delta. Preserve original gaps between all clips on the track. Implement collision detection to prevent overlapping clips. Constrain movement to available space boundaries. Use efficient batch state update to move multiple clips atomically. Handle edge cases: first/last clip on track, clips with transitions.",
             "status": "pending",
-            "testStrategy": "Alt+drag clip and verify content shifts without position change, verify preview updates. Test slip bounds: cannot shift beyond source duration. Cmd+Alt+drag clip and verify adjacent clips shift to maintain gaps. Test slide with locked clips, verify movement blocked. Verify cursor and tooltip feedback for both modes. Test undo/redo for slip and slide operations.",
-            "parentId": "undefined"
+            "testStrategy": "Slide edit clip to right and verify adjacent clip shifts by same amount. Test gaps remain constant during movement. Verify movement constrained to available space. Test with first/last clips on track."
           },
           {
             "id": 6,
-            "title": "Add visual feedback: hover previews, duration tooltips, snap indicators",
-            "description": "Implement rich visual feedback including clip preview thumbnails on hover, duration tooltips during resize, and snap distance indicators",
+            "title": "Add slide mode visual indicators and constraints feedback",
+            "description": "Create visual feedback showing slide mode, movement constraints, and affected clips",
             "dependencies": [
               5
             ],
-            "details": "Add hover preview: on clip mouseover, show Konva Image with thumbnail from clip's current frame, positioned above clip with slight offset. Create duration tooltip component that appears during clip resize/drag showing: current duration, start time, end time. Enhance snap indicators from subtask 1 with distance display (e.g., 'Snap: 0.5s'). Add playhead time tooltip following cursor during scrubbing. Implement visual affordances: resize handles on clip edges, drag cursor feedback. Use Konva Tooltip layer for all floating UI elements. Optimize thumbnail loading with LRU cache.",
+            "details": "Change cursor to hand/grab icon during slide mode. Highlight all clips being moved with colored outline or overlay. Draw constraint indicators showing maximum slide distance (vertical lines at boundaries). Add tooltip showing current slide offset distance. Animate affected clips during drag to show preview of final positions. Use different Konva layers: background for constraint guides, foreground for clip highlights. Add visual indication when hitting movement limits.",
             "status": "pending",
-            "testStrategy": "Hover over clip and verify thumbnail preview appears with current frame. Drag clip and verify tooltip shows current time/duration. Resize clip and verify duration updates in real-time tooltip. Verify snap indicator shows distance when near snap point. Test with 4K video clips, verify thumbnail performance. Test tooltip positioning near timeline edges.",
-            "parentId": "undefined"
+            "testStrategy": "Enter slide mode and verify cursor changes to hand icon. Test that all affected clips are highlighted. Verify constraint indicators appear showing movement limits. Test tooltip shows slide offset distance."
           },
           {
             "id": 7,
-            "title": "Create comprehensive keyboard shortcut system (J/K/L, arrows, zoom)",
-            "description": "Implement full keyboard navigation system with playback controls (J/K/L), frame stepping (arrows), and zoom (+/-) shortcuts",
+            "title": "Implement keyboard shortcut toggles for slip/slide modes",
+            "description": "Add keyboard shortcuts to toggle slip and slide modes without requiring drag initiation",
             "dependencies": [
+              3,
               6
             ],
-            "details": "Create KeyboardShortcutManager class to handle shortcut registration and conflicts. Implement playback shortcuts: J (reverse play with repeated press for speed), K (pause), L (forward play with speed). Add frame stepping: Left/Right arrows (1 frame), Shift+Left/Right (10 frames). Implement zoom: +/- (timeline zoom in/out), Cmd+0 (fit timeline to view). Add clip navigation: Up/Down (select next/previous clip). Implement shortcuts for: Cmd+Z (undo), Cmd+Shift+Z (redo), Cmd+C/V/X (copy/paste/cut), Space (play/pause). Store shortcut preferences in ProjectSettings. Add shortcut overlay (Cmd+/) showing all available shortcuts.",
+            "details": "Add keyboard event handler for 'Y' key to toggle slip mode, 'U' key to toggle slide mode (industry standard shortcuts). When toggled, apply mode to selected clip(s) and show visual indicators. Allow arrow keys to slip/slide in discrete increments when mode toggled via keyboard. Add ESC key to exit current mode. Display mode indicator in timeline UI showing active mode. Store keyboard-activated mode state separately from drag-activated mode. Add tooltip/help text showing available keyboard shortcuts.",
             "status": "pending",
-            "testStrategy": "Press J repeatedly and verify playback speed increases in reverse. Press K and verify immediate pause. Press L and verify forward playback with speed increase. Test Left/Right arrow frame stepping, verify 1-frame accuracy. Test Shift+arrow for 10-frame jumps. Press +/- and verify timeline zoom. Test Cmd+/ and verify shortcut overlay displays. Test shortcut conflicts, verify resolution. Test shortcuts with focused input fields, verify no interference.",
-            "parentId": "undefined"
+            "testStrategy": "Press 'Y' with clip selected and verify slip mode activates. Use arrow keys to slip content in increments. Press 'U' and verify slide mode activates. Test ESC exits mode. Verify mode indicator displays current mode."
           },
           {
             "id": 8,
-            "title": "Optimize Konva rendering performance for complex timelines",
-            "description": "Implement performance optimizations for Konva timeline including layer caching, viewport culling, and render throttling for smooth UX with many clips",
+            "title": "Add slip/slide mode persistence and user preferences",
+            "description": "Store slip/slide sensitivity settings and mode preferences in ProjectSettings",
             "dependencies": [
               7
             ],
-            "details": "Implement viewport culling: only render clips visible in current timeline view, skip off-screen clips. Add Konva layer caching: cache static elements (grid, markers) and only redraw on zoom/pan. Implement render throttling using requestAnimationFrame for drag operations. Use Konva shape caching for clip thumbnails and effects. Optimize event handlers: debounce mousemove events, use event delegation where possible. Add performance monitoring: track FPS, clip count, render time. Implement progressive rendering: render visible clips first, then off-screen clips with lower priority. Use Web Workers for thumbnail generation to avoid blocking main thread. Target: 60fps with 100+ clips.",
+            "details": "Extend ProjectSettings type to include slipSlideSensitivity (pixels per frame), defaultSlipIncrement (frames for keyboard slip), defaultSlideIncrement (frames for keyboard slide), enableSlipPreview (boolean), enableSlideConstraintGuides (boolean). Add UI controls in timeline settings panel for adjusting sensitivity. Implement preference persistence to localStorage. Load preferences on timeline mount. Apply sensitivity multiplier to drag calculations in slip/slide handlers. Add reset to defaults button.",
             "status": "pending",
-            "testStrategy": "Load timeline with 200 clips and verify smooth scrolling/zooming at 60fps. Monitor performance panel during clip drag, verify no frame drops. Test with 4K clip thumbnails, verify caching prevents redundant generation. Measure render time before/after optimizations. Test viewport culling: add console log to render, verify off-screen clips not rendered. Load complex timeline on low-end hardware and verify acceptable performance. Test memory usage with long editing sessions.",
-            "parentId": "undefined"
+            "testStrategy": "Adjust slip sensitivity in settings and verify drag distance affects sourceStart change rate. Test keyboard increment preferences work. Verify preferences persist across browser sessions. Test reset to defaults."
           }
         ],
         "complexity": 8,
         "recommendedSubtasks": 8,
         "expansionPrompt": "Break down timeline UX enhancements into: (1) implementing magnetic snap guides with visual indicators in Konva, (2) adding multi-select via shift-click and marquee selection, (3) implementing split-at-playhead with Cmd+B shortcut, (4) adding ripple delete with gap closure logic, (5) implementing slip/slide editing modes, (6) adding visual feedback (hover previews, duration tooltips, snap indicators), (7) creating comprehensive keyboard shortcut system (J/K/L, arrows, zoom), (8) optimizing Konva rendering performance for complex timelines",
-        "updatedAt": "2025-11-17T17:00:46.110Z"
+        "updatedAt": "2025-11-18T00:36:58.975Z"
       },
       {
-        "id": "8",
+        "id": 8,
         "title": "Build comprehensive keyboard shortcut system",
         "description": "Implement full keyboard shortcut support for common editing operations to improve workflow efficiency",
         "details": "Create KeyboardShortcutManager hook (extend existing useKeyboardShortcut.ts). Define shortcut mappings: playback (Space, J/K/L), editing (Cmd+Z/Cmd+Shift+Z undo/redo, Cmd+C/V copy/paste clips, Delete/Backspace delete, Cmd+B split), timeline (Cmd +/- zoom, Cmd+0 fit, arrows seek), effects (Cmd+D duplicate, Cmd+Shift+C copy effects). Add ShortcutHelpModal with searchable command palette (Cmd+K). Prevent conflicts with browser shortcuts. Support customizable key bindings stored in user preferences.",
@@ -684,7 +674,7 @@
         "expansionPrompt": "Break down keyboard shortcut system into: (1) extending existing useKeyboardShortcut.ts hook with comprehensive shortcut mappings, (2) implementing shortcut actions for playback, editing, timeline navigation, and effects, (3) creating ShortcutHelpModal with searchable command palette (Cmd+K), (4) adding customizable key bindings with user preferences storage and browser conflict prevention"
       },
       {
-        "id": "9",
+        "id": 9,
         "title": "Optimize export pipeline with MediaBunny for professional quality",
         "description": "Enhance export-pipeline.ts to leverage MediaBunny's full capabilities for high-quality video export with progress tracking",
         "details": "Review and optimize lib/editor/export/export-pipeline.ts integration with mediabunny package. Implement hardware acceleration for encoding when available. Add export presets: 'YouTube 4K', 'Instagram Story', 'TikTok', 'High Quality MP4'. Support advanced codec options (H.264, H.265, VP9, AV1). Implement multi-pass encoding for better compression. Add bitrate control (CBR/VBR). Enhance progress reporting with time remaining estimate. Support exporting specific timeline range. Add watermark option in export settings.",
@@ -775,7 +765,7 @@
         "expansionPrompt": "Break down export optimization into: (1) reviewing and benchmarking current export-pipeline.ts MediaBunny integration, (2) implementing hardware acceleration detection and configuration, (3) creating export preset configurations (YouTube 4K, Instagram, TikTok, MP4), (4) adding advanced codec options (H.265, VP9, AV1) with bitrate control, (5) enhancing progress reporting with time remaining estimates, (6) implementing timeline range export and watermark options"
       },
       {
-        "id": "10",
+        "id": 10,
         "title": "Create comprehensive editor onboarding and tooltips",
         "description": "Build user-friendly onboarding flow and contextual tooltips to make editor intuitive for non-technical users",
         "details": "Create EditorOnboardingFlow component with interactive tutorial steps: import media, add to timeline, apply transition, apply filter, adjust speed, add text overlay, export. Implement contextual tooltips using Radix UI Tooltip on all editor controls. Add 'First Time User' detection in project-store.ts. Create interactive hotspot overlays that highlight features with explanations. Build optional video tutorial integration. Add 'Tips' panel with workflow suggestions based on current project state. Store onboarding completion state in Convex user preferences.",
@@ -842,7 +832,7 @@
         "expansionPrompt": "Break down onboarding into: (1) creating EditorOnboardingFlow component with interactive tutorial steps, (2) implementing contextual tooltips using Radix UI Tooltip on editor controls, (3) adding first-time user detection and completion state persistence in Convex, (4) building Tips panel with context-aware workflow suggestions and video tutorial integration"
       },
       {
-        "id": "11",
+        "id": 11,
         "title": "Extend data model to support multitrack compositing with z-index and opacity",
         "description": "Update the Track interface and related types to include order (z-index), opacity, and effects array fields for multitrack video compositing support",
         "details": "1. Locate the Track interface definition (likely in lib/types/ or lib/editor/types/)\n2. Add three new fields to the Track interface:\n   - order: number (default 0, represents z-index for layering)\n   - opacity: number (default 1.0, range 0-1 for track-level blending)\n   - effects: Effect[] (default [], for track-level effects)\n3. Define the Effect type and EffectType union:\n   ```typescript\n   export type EffectType =\n     | \"brightness\" | \"contrast\" | \"saturation\" | \"hue\"\n     | \"blur\" | \"sharpen\" | \"grain\" | \"vignette\"\n     | \"lut\" | \"colorGrade\" | \"temperature\" | \"tint\"\n     | \"vintage\" | \"bw\" | \"sepia\" | \"crossProcess\"\n     | \"custom\";\n\n   export interface Effect {\n     id: string;\n     type: EffectType;\n     params: Record<string, number | string>;\n     enabled: boolean;\n     blend?: number;\n     order?: number;\n   }\n   ```\n4. Update Clip interface to include effects: Effect[] field\n5. Update all Track factory/creation functions to initialize new fields with defaults\n6. Run TypeScript compiler to verify no breaking changes\n7. Update any existing Track creation/manipulation code to handle new fields",
@@ -892,7 +882,7 @@
         "expansionPrompt": "Break down data model extension into: (1) updating Track interface to add order, opacity, and effects fields with proper TypeScript types, (2) defining comprehensive Effect and EffectType interfaces with all effect categories, (3) updating all Track/Clip factory functions and ensuring backward compatibility with existing serialized data"
       },
       {
-        "id": "12",
+        "id": 12,
         "title": "Create effect rendering engine with Canvas API support",
         "description": "Implement core effect rendering functions that apply visual effects to canvas elements using Canvas filter API and pixel manipulation",
         "details": "1. Create new file lib/editor/effects/effect-renderer.ts\n2. Implement applyEffect function:\n   ```typescript\n   export function applyEffect(\n     canvas: HTMLCanvasElement,\n     effect: Effect\n   ): void {\n     const ctx = canvas.getContext('2d')!;\n     const blend = effect.blend ?? 1.0;\n\n     if (!effect.enabled || blend === 0) return;\n\n     switch (effect.type) {\n       case 'brightness':\n       case 'contrast':\n       case 'saturation':\n       case 'blur':\n         applyFilterEffect(ctx, effect, blend);\n         break;\n       case 'grain':\n       case 'vintage':\n       case 'lut':\n       case 'vignette':\n         applyPixelEffect(ctx, effect, blend);\n         break;\n     }\n   }\n   ```\n3. Implement applyFilterEffect using ctx.filter:\n   - Build CSS filter string from effect params\n   - Apply filter and redraw canvas\n4. Implement applyPixelEffect using getImageData/putImageData:\n   - Get pixel data\n   - Apply per-pixel transformations\n   - Put modified data back\n5. Implement specific effect algorithms:\n   - brightness: adjust RGB values\n   - contrast: adjust RGB around midpoint\n   - saturation: convert to HSL, adjust S channel\n   - blur: use ctx.filter = `blur(${radius}px)`\n   - grain: add random noise to pixels\n   - vignette: darken edges based on distance from center\n6. Create helper functions for color space conversions (RGB↔HSL)\n7. Optimize with canvas reuse pool to avoid GC pressure",
@@ -980,7 +970,7 @@
         "expansionPrompt": "Break down effect rendering engine into: (1) creating lib/editor/effects/effect-renderer.ts with applyEffect orchestration function, (2) implementing filter-based effects using ctx.filter CSS filters, (3) implementing pixel manipulation effects using getImageData/putImageData, (4) creating RGB/HSL color space conversion utilities, (5) implementing effect blending with blend parameter support, (6) optimizing with canvas reuse pool to prevent garbage collection pressure"
       },
       {
-        "id": "13",
+        "id": 13,
         "title": "Refactor PreviewRenderer for multitrack compositing",
         "description": "Update PreviewRenderer to resolve and composite all active clips across multiple tracks in z-index order with track opacity blending",
         "details": "1. Locate PreviewRenderer class (lib/editor/playback/preview-renderer.ts)\n2. Create new method resolveAllActiveClips:\n   ```typescript\n   private resolveAllActiveClips(\n     sequence: Sequence,\n     time: number\n   ): Array<{ clip: Clip; track: Track; mediaClip?: MediaClip }> {\n     const activeClips: Array<{ clip: Clip; track: Track; mediaClip?: MediaClip }> = [];\n\n     for (const track of sequence.tracks) {\n       if (track.muted || !this.isTrackVisible(track)) continue;\n\n       for (const clip of track.clips) {\n         if (time >= clip.start && time < clip.start + clip.duration) {\n           const mediaClip = this.resolveMediaClip(clip);\n           activeClips.push({ clip, track, mediaClip });\n         }\n       }\n     }\n\n     return activeClips.sort((a, b) => a.track.order - b.track.order);\n   }\n   ```\n3. Refactor render method to composite multiple clips:\n   - Create temporary canvases pool (reuse to avoid GC)\n   - For each active clip (sorted by track order):\n     a. Render clip to temp canvas\n     b. Apply clip-level effects\n     c. Apply track-level effects\n     d. Composite to main canvas with track opacity\n4. Implement canvas compositing with globalAlpha:\n   ```typescript\n   this.ctx.globalAlpha = track.opacity;\n   this.ctx.drawImage(tempCanvas, 0, 0);\n   this.ctx.globalAlpha = 1.0;\n   ```\n5. Add canvas dimension safety checks (from recent commit 0d0886a)\n6. Optimize by caching effect results for unchanged parameters\n7. Add debug logging for multitrack rendering (from recent commit)",
@@ -1080,7 +1070,7 @@
         "expansionPrompt": "Break down PreviewRenderer refactor into: (1) implementing resolveAllActiveClips to find clips across all tracks at given time, (2) sorting clips by track z-order for correct compositing, (3) creating temporary canvas pool for per-clip rendering, (4) implementing clip-level effect application pipeline, (5) implementing track-level effect application, (6) adding opacity-based compositing with globalAlpha, (7) optimizing render performance and adding debug logging"
       },
       {
-        "id": "14",
+        "id": 14,
         "title": "Implement basic color adjustment effects (brightness, contrast, saturation, hue)",
         "description": "Create effect implementations for brightness, contrast, saturation, and hue rotation using Canvas filter API and pixel manipulation",
         "details": "1. Create lib/editor/effects/color-effects.ts\n2. Implement brightness effect:\n   ```typescript\n   export function applyBrightness(\n     ctx: CanvasRenderingContext2D,\n     value: number, // -1 to 1\n     blend: number = 1.0\n   ): void {\n     const brightness = 1 + (value * blend);\n     ctx.filter = `brightness(${brightness})`;\n     const canvas = ctx.canvas;\n     ctx.drawImage(canvas, 0, 0);\n     ctx.filter = 'none';\n   }\n   ```\n3. Implement contrast effect using filter API:\n   - Map value (0-2) to CSS contrast filter\n4. Implement saturation using pixel manipulation:\n   - Convert RGB to HSL\n   - Multiply S channel by saturation value\n   - Convert back to RGB\n5. Implement hue rotation:\n   - Use ctx.filter = `hue-rotate(${degrees}deg)`\n   - Support -180 to 180 degree range\n6. Add utility functions:\n   - rgbToHsl(r, g, b): [h, s, l]\n   - hslToRgb(h, s, l): [r, g, b]\n   - clamp(value, min, max)\n7. Integrate into effect-renderer.ts switch statement\n8. Add effect parameter validation and clamping",
@@ -1144,7 +1134,7 @@
         "expansionPrompt": "Break down color adjustment effects into: (1) creating lib/editor/effects/color-effects.ts module, (2) implementing brightness and contrast using Canvas filter API, (3) implementing saturation using RGB to HSL conversion and pixel manipulation, (4) implementing hue rotation with filter API and integrating all effects into effect-renderer.ts"
       },
       {
-        "id": "15",
+        "id": 15,
         "title": "Implement filter effects (blur, sharpen, grain, vignette)",
         "description": "Create implementations for blur, sharpen, grain/noise, and vignette effects using Canvas API and pixel manipulation",
         "details": "1. Create lib/editor/effects/filter-effects.ts\n2. Implement Gaussian blur:\n   ```typescript\n   export function applyBlur(\n     ctx: CanvasRenderingContext2D,\n     radius: number, // 0-50px\n     blend: number = 1.0\n   ): void {\n     const blurRadius = radius * blend;\n     ctx.filter = `blur(${blurRadius}px)`;\n     ctx.drawImage(ctx.canvas, 0, 0);\n     ctx.filter = 'none';\n   }\n   ```\n3. Implement sharpen using unsharp mask:\n   - Create blurred version\n   - Subtract from original\n   - Add back scaled difference\n4. Implement grain/noise effect:\n   ```typescript\n   export function applyGrain(\n     ctx: CanvasRenderingContext2D,\n     intensity: number, // 0-1\n     blend: number = 1.0\n   ): void {\n     const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);\n     const data = imageData.data;\n     const strength = intensity * blend * 50;\n\n     for (let i = 0; i < data.length; i += 4) {\n       const noise = (Math.random() - 0.5) * strength;\n       data[i] = clamp(data[i] + noise, 0, 255);\n       data[i+1] = clamp(data[i+1] + noise, 0, 255);\n       data[i+2] = clamp(data[i+2] + noise, 0, 255);\n     }\n\n     ctx.putImageData(imageData, 0, 0);\n   }\n   ```\n5. Implement vignette:\n   - Calculate distance from center for each pixel\n   - Darken based on distance using radial gradient\n6. Optimize grain with Web Workers for large canvases\n7. Add requestAnimationFrame for smooth real-time updates",
@@ -1220,7 +1210,7 @@
         "expansionPrompt": "Break down filter effects into: (1) creating lib/editor/effects/filter-effects.ts module, (2) implementing Gaussian blur using Canvas filter API, (3) implementing sharpen using unsharp mask algorithm, (4) implementing grain/noise with pixel-level random noise generation, (5) implementing vignette using radial gradient darkening and optimizing grain performance with Web Workers"
       },
       {
-        "id": "16",
+        "id": 16,
         "title": "Add LUT (Look-Up Table) support for color grading",
         "description": "Implement .cube LUT file parsing and 3D color lookup for professional color grading effects",
         "details": "1. Create lib/editor/effects/lut-loader.ts\n2. Implement .cube file parser:\n   ```typescript\n   export interface LUT3D {\n     size: number; // typically 32 or 64\n     data: Float32Array; // R,G,B triplets\n   }\n\n   export async function parseCubeLUT(file: File | string): Promise<LUT3D> {\n     const text = typeof file === 'string' ? file : await file.text();\n     const lines = text.split('\\n');\n     let size = 0;\n     const data: number[] = [];\n\n     for (const line of lines) {\n       if (line.startsWith('LUT_3D_SIZE')) {\n         size = parseInt(line.split(' ')[1]);\n       } else if (!line.startsWith('#') && line.trim()) {\n         const [r, g, b] = line.trim().split(/\\s+/).map(parseFloat);\n         data.push(r, g, b);\n       }\n     }\n\n     return { size, data: new Float32Array(data) };\n   }\n   ```\n3. Implement 3D LUT application:\n   ```typescript\n   export function applyLUT(\n     ctx: CanvasRenderingContext2D,\n     lut: LUT3D,\n     intensity: number = 1.0\n   ): void {\n     const imageData = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);\n     const data = imageData.data;\n     const size = lut.size;\n\n     for (let i = 0; i < data.length; i += 4) {\n       const r = data[i] / 255;\n       const g = data[i+1] / 255;\n       const b = data[i+2] / 255;\n\n       const [newR, newG, newB] = lookup3D(lut, r, g, b);\n\n       data[i] = lerp(data[i], newR * 255, intensity);\n       data[i+1] = lerp(data[i+1], newG * 255, intensity);\n       data[i+2] = lerp(data[i+2], newB * 255, intensity);\n     }\n\n     ctx.putImageData(imageData, 0, 0);\n   }\n   ```\n4. Implement trilinear interpolation for smooth color lookup\n5. Create preset LUT library (Cinematic, Vintage, Cool, Warm)\n6. Add LUT file upload UI component\n7. Cache parsed LUTs to avoid re-parsing",
@@ -1307,7 +1297,7 @@
         "expansionPrompt": "Break down LUT support into: (1) creating lib/editor/effects/lut-loader.ts with .cube file parser, (2) implementing 3D LUT data structure and storage, (3) implementing trilinear interpolation for smooth color lookup, (4) creating applyLUT function with intensity blending, (5) building LUT file upload UI component, (6) creating preset LUT library and implementing LUT caching to avoid re-parsing"
       },
       {
-        "id": "17",
+        "id": 17,
         "title": "Build multitrack timeline UI with track headers and controls",
         "description": "Create professional timeline interface supporting multiple video/audio tracks with drag-to-reorder, solo/mute/lock controls, and dynamic track layout",
         "details": "1. Locate KonvaTimeline component (likely components/editor/KonvaTimeline.tsx)\n2. Add state for track management:\n   ```typescript\n   const [tracks, setTracks] = useState<Track[]>([]);\n   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);\n   const [trackHeight] = useState(60); // pixels per track\n   ```\n3. Implement dynamic track Y positioning:\n   ```typescript\n   const getTrackY = (trackOrder: number) => {\n     return trackOrder * trackHeight;\n   };\n   ```\n4. Create TrackHeader component:\n   - Track name label (editable on double-click)\n   - Track type icon (video/audio)\n   - Solo button (isolate track, mute others)\n   - Mute button (disable track)\n   - Lock button (prevent editing)\n   - Opacity slider (0-1)\n   - Eye icon (show/hide)\n   - Delete button\n   - Drag handle for reordering\n5. Implement track reordering:\n   - Use Konva drag events on track headers\n   - Update track.order on drop\n   - Animate tracks to new positions\n6. Add 'Add Track' button at bottom:\n   - Creates new track with next order number\n   - Defaults: opacity=1.0, effects=[], allowOverlap=true\n7. Style tracks with alternating background colors (zebra striping)\n8. Highlight selected track\n9. Add vertical scrolling for many tracks\n10. Ensure track controls match design from existing timeline (context menu patterns from recent commit 0399dae)",
@@ -1420,7 +1410,7 @@
         "expansionPrompt": "Break down multitrack timeline UI into: (1) refactoring KonvaTimeline to support dynamic track layout and Y positioning, (2) creating TrackHeader component with name, type icon, and control buttons, (3) implementing solo/mute/lock/visibility controls with state management, (4) adding opacity slider per track, (5) implementing drag-to-reorder tracks with Y-position animation, (6) adding 'Add Track' functionality, (7) implementing zebra striping and track selection, (8) adding vertical scrolling for many tracks"
       },
       {
-        "id": "18",
+        "id": 18,
         "title": "Create effects panel UI with library browser and parameter controls",
         "description": "Build right sidebar panel for browsing, applying, and configuring effects on clips and tracks with real-time preview",
         "details": "1. Create new component components/editor/EffectsPanel.tsx\n2. Implement categorized effect library:\n   ```typescript\n   const effectCategories = {\n     'Color': ['brightness', 'contrast', 'saturation', 'hue'],\n     'Filters': ['blur', 'sharpen', 'grain', 'vignette'],\n     'Grading': ['lut', 'colorGrade', 'temperature', 'tint'],\n     'Artistic': ['vintage', 'bw', 'sepia', 'crossProcess']\n   };\n   ```\n3. Create EffectLibraryBrowser:\n   - Accordion sections for each category\n   - Search/filter input\n   - Effect cards with icons and names\n   - Drag-and-drop to timeline clips/tracks\n4. Create EffectControlsPanel:\n   - Shows effects for selected clip/track\n   - Each effect row:\n     - Enable/disable checkbox\n     - Effect name\n     - Delete button\n     - Expand/collapse for parameters\n   - Parameter controls (sliders, color pickers)\n   - Real-time preview updates on change\n   - Drag handles for reordering effects\n5. Implement parameter controls:\n   ```typescript\n   <EffectParameter\n     label=\"Brightness\"\n     value={effect.params.value}\n     min={-1}\n     max={1}\n     step={0.01}\n     onChange={(val) => updateEffectParam(effect.id, 'value', val)}\n   />\n   ```\n6. Add preset library:\n   - Preset dropdown per effect type\n   - Apply preset copies params to effect\n   - Save custom presets to localStorage\n7. Add Before/After toggle for comparison\n8. Style panel as right sidebar (300-400px wide)\n9. Use existing UI patterns from timeline context menu",
@@ -1509,7 +1499,7 @@
         "expansionPrompt": "Break down effects panel UI into: (1) creating EffectsPanel.tsx component as right sidebar, (2) implementing EffectLibraryBrowser with categorized accordion and search, (3) implementing drag-and-drop from library to clips/tracks, (4) creating EffectControlsPanel showing selected clip/track effects, (5) implementing parameter controls (sliders, color pickers) with real-time preview, (6) adding preset system and Before/After comparison toggle"
       },
       {
-        "id": "19",
+        "id": 19,
         "title": "Update EDL export to include effects and multitrack metadata",
         "description": "Extend EDL serialization to include track order, opacity, effects arrays, and effect parameters for render server processing",
         "details": "1. Locate EDL export code (likely lib/export/ or lib/editor/export/)\n2. Update Track serialization:\n   ```typescript\n   function serializeTrack(track: Track): EDLTrack {\n     return {\n       id: track.id,\n       kind: track.kind,\n       order: track.order,\n       opacity: track.opacity,\n       effects: track.effects.map(serializeEffect),\n       clips: track.clips.map(serializeClip),\n       locked: track.locked,\n       muted: track.muted\n     };\n   }\n   ```\n3. Update Clip serialization:\n   ```typescript\n   function serializeClip(clip: Clip): EDLClip {\n     return {\n       id: clip.id,\n       start: clip.start,\n       duration: clip.duration,\n       mediaId: clip.mediaId,\n       effects: clip.effects.map(serializeEffect),\n       // ... other fields\n     };\n   }\n   ```\n4. Implement effect serialization:\n   ```typescript\n   function serializeEffect(effect: Effect): EDLEffect {\n     return {\n       id: effect.id,\n       type: effect.type,\n       params: effect.params, // Already JSON-serializable\n       enabled: effect.enabled,\n       blend: effect.blend ?? 1.0,\n       order: effect.order ?? 0\n     };\n   }\n   ```\n5. Add effect-to-ffmpeg mapping table:\n   ```typescript\n   export const effectToFFmpeg: Record<EffectType, (params: any) => string> = {\n     brightness: (p) => `eq=brightness=${p.value}`,\n     contrast: (p) => `eq=contrast=${p.value}`,\n     saturation: (p) => `eq=saturation=${p.value}`,\n     blur: (p) => `gblur=sigma=${p.radius}`,\n     grain: (p) => `noise=alls=${p.intensity}:allf=t`,\n     lut: (p) => `lut3d=${p.lutFile}`,\n     // ... more mappings\n   };\n   ```\n6. Include ffmpeg filter strings in EDL for render server\n7. Handle LUT file uploads: include file references in EDL\n8. Add EDL version field to track format changes",
@@ -1575,7 +1565,7 @@
         "expansionPrompt": "Break down EDL export updates into: (1) extending Track and Clip serialization to include order, opacity, and effects arrays, (2) implementing Effect serialization with full metadata, (3) creating effect-to-FFmpeg filter mapping table for render server processing, (4) adding EDL versioning and validating JSON schema compliance"
       },
       {
-        "id": "20",
+        "id": 20,
         "title": "Update FrameRenderer for multitrack export with effects",
         "description": "Refactor FrameRenderer to composite multiple tracks in z-order and apply effects during video export",
         "details": "1. Locate FrameRenderer class (likely lib/editor/export/frame-renderer.ts)\n2. Implement same multitrack logic as PreviewRenderer:\n   ```typescript\n   async renderFrame(sequence: Sequence, time: number): Promise<Buffer> {\n     const activeClips = this.resolveAllActiveClips(sequence, time);\n     const sortedClips = activeClips.sort((a, b) => a.track.order - b.track.order);\n\n     const canvas = createCanvas(sequence.width, sequence.height);\n     const ctx = canvas.getContext('2d');\n\n     for (const { clip, track, mediaClip } of sortedClips) {\n       const tempCanvas = createCanvas(sequence.width, sequence.height);\n       const tempCtx = tempCanvas.getContext('2d');\n\n       // Render clip to temp canvas\n       await this.drawClipFrame(tempCtx, clip, mediaClip, time);\n\n       // Apply clip-level effects\n       for (const effect of clip.effects) {\n         if (effect.enabled) {\n           applyEffect(tempCanvas, effect);\n         }\n       }\n\n       // Apply track-level effects\n       for (const effect of track.effects) {\n         if (effect.enabled) {\n           applyEffect(tempCanvas, effect);\n         }\n       }\n\n       // Composite with track opacity\n       ctx.globalAlpha = track.opacity;\n       ctx.drawImage(tempCanvas, 0, 0);\n       ctx.globalAlpha = 1.0;\n     }\n\n     return canvas.toBuffer('image/png');\n   }\n   ```\n3. Reuse effect rendering functions from effect-renderer.ts\n4. Add progress reporting for long renders\n5. Implement frame caching for effects (cache unchanged frames)\n6. Use node-canvas for server-side rendering\n7. Ensure pixel-perfect match with PreviewRenderer output",
@@ -1678,12 +1668,14 @@
     ],
     "metadata": {
       "version": "1.0.0",
-      "lastModified": "2025-11-17T17:00:46.111Z",
+      "lastModified": "2025-11-18T00:36:58.976Z",
       "taskCount": 20,
       "completedCount": 3,
       "tags": [
         "master"
-      ]
+      ],
+      "created": "2025-11-18T00:48:30.023Z",
+      "description": "Tasks for master context"
     }
   }
 }

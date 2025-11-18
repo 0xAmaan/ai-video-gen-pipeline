@@ -16,7 +16,7 @@ interface KonvaClipItemProps {
   isDragging?: boolean;
   dragX?: number;
   onSelect: (shiftKey: boolean, metaKey: boolean) => void; // Updated to pass shift and meta key state
-  onDragStart?: (startX: number) => void;
+  onDragStart?: (startX: number, altKey: boolean, metaKey: boolean) => void;
   onDragMove?: (currentX: number) => void;
   onDragEnd?: () => void;
   onTrim: (newTrimStart: number, newTrimEnd: number) => void;
@@ -114,7 +114,9 @@ const KonvaClipItemComponent = ({
     if (!onDragStart) return;
     e.cancelBubble = true;
     dragStartXRef.current = e.target.x();
-    onDragStart(clipX);
+    const altKey = e.evt?.altKey || false;
+    const metaKey = e.evt?.metaKey || e.evt?.ctrlKey || false;
+    onDragStart(clipX, altKey, metaKey);
   };
 
   const handleDragMove = (e: any) => {

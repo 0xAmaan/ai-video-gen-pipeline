@@ -123,6 +123,10 @@ const KonvaTimelineComponent = ({
   const [marqueeCurrent, setMarqueeCurrent] = useState<{ x: number; y: number } | null>(null);
   const [isMarqueeSelecting, setIsMarqueeSelecting] = useState(false);
 
+  // Editing mode state machine: normal, slip, slide
+  const [editingMode, setEditingMode] = useState<'normal' | 'slip' | 'slide'>('normal');
+  const [slipInitialTrimStart, setSlipInitialTrimStart] = useState<number>(0); // Store initial trimStart for slip mode
+
   const scrubRafRef = useRef<number | null>(null);
   const pendingScrubTimeRef = useRef<number | null>(null);
   const isScrubbing = useRef(false);
@@ -134,6 +138,17 @@ const KonvaTimelineComponent = ({
   useEffect(() => {
     selectedClipIdsRef.current = selectedClipIds;
   }, [selectedClipIds]);
+
+  // Listen for Alt key release to exit slip/slide mode mid-drag
+  useEffect(() => {
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt' && editingMode !== 'normal' && draggingClipId) {
+        setEditingMode('normal');
+      }
+    };
+    window.addEventListener('keyup', handleKeyUp);
+    return () => window.removeEventListener('keyup', handleKeyUp);
+  }, [editingMode, draggingClipId]);
 
   // Get first video track
   const videoTrack = sequence.tracks.find((t) => t.kind === "video");
@@ -573,7 +588,22 @@ const KonvaTimelineComponent = ({
 
   // Clip drag handlers - memoized to prevent child re-renders
   const handleClipDragStart = useCallback(
-    (clipId: string, startX: number) => {
+    (clipId: string, startX: number, altKey: boolean, metaKey: boolean) => {
+      const clip = clips.find((c) => c.id === clipId);
+
+      // Set editing mode based on keyboard modifiers
+      if (altKey && metaKey) {
+        setEditingMode('slide'); // Cmd+Alt+drag = slide mode
+      } else if (altKey) {
+        setEditingMode('slip'); // Alt+drag = slip mode
+        // Store initial trimStart for slip mode calculations
+        if (clip) {
+          setSlipInitialTrimStart(clip.trimStart);
+        }
+      } else {
+        setEditingMode('normal'); // Normal drag
+      }
+
       setDraggingClipId(clipId);
       setDraggedClipX(startX);
       setVirtualClipOrder((prev) => [...clips]);
@@ -584,23 +614,56 @@ const KonvaTimelineComponent = ({
   const handleClipDragMove = useCallback(
     (clipId: string, currentX: number) => {
       const draggedClip = clips.find((c) => c.id === clipId);
-      if (draggedClip) {
-        // Convert pixel position to time
-        const dragTime = pixelsToTime(currentX);
+      if (!draggedClip) return;
 
-        // Apply snap logic if enabled
-        const snappedTime = calculateSnapPoints(
-          clipId,
-          dragTime,
-          draggedClip.duration
-        );
+      // SLIP MODE: Adjust content offset without moving clip position
+      if (editingMode === 'slip') {
+        // Calculate drag delta in pixels and convert to time
+        const dragDeltaPixels = currentX - draggedClipX;
+        const dragDeltaTime = dragDeltaPixels / PIXELS_PER_SECOND;
 
-        // Convert back to pixels for rendering
-        const snappedX = timeToPixels(snappedTime);
-        setDraggedClipX(snappedX);
-      } else {
-        setDraggedClipX(currentX);
+        // Calculate new trimStart based on initial value and drag delta
+        // Dragging right should shift content left (decrease trimStart)
+        // Dragging left should shift content right (increase trimStart)
+        const newTrimStart = slipInitialTrimStart - dragDeltaTime;
+
+        // Get source media duration to enforce bounds
+        const asset = assets.find((a) => a.id === draggedClip.mediaId);
+        const sourceDuration = asset?.duration ?? draggedClip.duration + draggedClip.trimStart + draggedClip.trimEnd;
+
+        // Enforce bounds: trimStart must be >= 0 and trimStart + duration <= sourceDuration
+        const minTrimStart = 0;
+        const maxTrimStart = sourceDuration - draggedClip.duration;
+        const clampedTrimStart = Math.max(minTrimStart, Math.min(newTrimStart, maxTrimStart));
+
+        // Update trimEnd to maintain clip duration
+        const newTrimEnd = sourceDuration - (clampedTrimStart + draggedClip.duration);
+
+        // Call onClipTrim to update the clip
+        onClipTrim(clipId, clampedTrimStart, newTrimEnd);
+        return;
       }
+
+      // SLIDE MODE: Will be implemented in task 7.5
+      if (editingMode === 'slide') {
+        // TODO: Implement slide mode logic in task 7.5
+        return;
+      }
+
+      // NORMAL MODE: Standard clip repositioning and reordering
+      // Convert pixel position to time
+      const dragTime = pixelsToTime(currentX);
+
+      // Apply snap logic if enabled
+      const snappedTime = calculateSnapPoints(
+        clipId,
+        dragTime,
+        draggedClip.duration
+      );
+
+      // Convert back to pixels for rendering
+      const snappedX = timeToPixels(snappedTime);
+      setDraggedClipX(snappedX);
 
       setVirtualClipOrder((prevOrder) => {
         const draggedClip = prevOrder.find((c) => c.id === clipId);
@@ -631,7 +694,7 @@ const KonvaTimelineComponent = ({
         return newOrder;
       });
     },
-    [PIXELS_PER_SECOND, clips, pixelsToTime, timeToPixels, calculateSnapPoints],
+    [PIXELS_PER_SECOND, clips, pixelsToTime, timeToPixels, calculateSnapPoints, editingMode, draggedClipX, slipInitialTrimStart, assets, onClipTrim],
   );
 
   const handleClipDragEnd = useCallback(
@@ -661,6 +724,7 @@ const KonvaTimelineComponent = ({
       setDraggedClipX(0);
       setVirtualClipOrder([]);
       setSnapGuides([]); // Clear snap guides when drag ends
+      setEditingMode('normal'); // Reset editing mode when drag ends
     },
     [draggingClipId, onClipReorder],
   );
@@ -891,7 +955,7 @@ const KonvaTimelineComponent = ({
                   pixelsPerSecond={PIXELS_PER_SECOND}
                   xOffset={X_OFFSET}
                   onSelect={(shiftKey, metaKey) => handleClipClick(clip.id, shiftKey, metaKey)}
-                  onDragStart={(startX) => handleClipDragStart(clip.id, startX)}
+                  onDragStart={(startX, altKey, metaKey) => handleClipDragStart(clip.id, startX, altKey, metaKey)}
                   onDragMove={(currentX) =>
                     handleClipDragMove(clip.id, currentX)
                   }

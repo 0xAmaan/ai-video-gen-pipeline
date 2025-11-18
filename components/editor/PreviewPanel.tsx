@@ -23,6 +23,8 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs}`;
 };
 
+const PREVIEW_ASPECT_RATIO = 16 / 9;
+
 const PreviewPanelComponent = ({
   canvasRef,
   currentTime,
@@ -35,7 +37,7 @@ const PreviewPanelComponent = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeTimeoutRef = useRef<number | null>(null);
   const lastSizeRef = useRef({ width: 0, height: 0 });
-  const [displaySize, setDisplaySize] = useState({ width: 1280, height: 720 });
+  const [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 });
 
   // Debounced resize handler
   const handleResize = useCallback(
@@ -46,6 +48,15 @@ const PreviewPanelComponent = ({
       const { width, height } = entry.contentRect;
       if (width <= 0 || height <= 0) return;
 
+      const widthLimitedHeight = width / PREVIEW_ASPECT_RATIO;
+      let nextWidth = width;
+      let nextHeight = widthLimitedHeight;
+
+      if (widthLimitedHeight > height) {
+        nextHeight = height;
+        nextWidth = height * PREVIEW_ASPECT_RATIO;
+      }
+
       // Clear previous timeout
       if (resizeTimeoutRef.current !== null) {
         window.clearTimeout(resizeTimeoutRef.current);
@@ -53,24 +64,14 @@ const PreviewPanelComponent = ({
 
       // Debounce resize events (16ms ~= 60fps for smooth resizing)
       resizeTimeoutRef.current = window.setTimeout(() => {
-        const aspectRatio = 16 / 9;
-        const containerAspect = width / height;
+        const canvasWidth = Math.max(1, Math.floor(nextWidth));
+        const canvasHeight = Math.max(1, Math.floor(nextHeight));
 
-        let canvasWidth: number;
-        let canvasHeight: number;
-
-        if (containerAspect > aspectRatio) {
-          // Container wider than 16:9 – fit height
-          canvasHeight = Math.floor(height);
-          canvasWidth = Math.floor(height * aspectRatio);
-        } else {
-          // Container taller – fit width
-          canvasWidth = Math.floor(width);
-          canvasHeight = Math.floor(width / aspectRatio);
-        }
-
-        canvasWidth = Math.max(1, canvasWidth);
-        canvasHeight = Math.max(1, canvasHeight);
+        setCanvasSize((prev) =>
+          prev.width === canvasWidth && prev.height === canvasHeight
+            ? prev
+            : { width: canvasWidth, height: canvasHeight },
+        );
 
         // Only resize if dimensions actually changed
         if (
@@ -78,8 +79,7 @@ const PreviewPanelComponent = ({
           lastSizeRef.current.height !== canvasHeight
         ) {
           lastSizeRef.current = { width: canvasWidth, height: canvasHeight };
-          setDisplaySize({ width: canvasWidth, height: canvasHeight });
-          onCanvasResize(canvasWidth, canvasHeight);
+          onCanvasResize?.(canvasWidth, canvasHeight);
         }
       }, 16);
     },
@@ -103,24 +103,21 @@ const PreviewPanelComponent = ({
 
   return (
     <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
-      {/* Canvas container - maintain centered 16:9 viewport similar to CapCut */}
+      {/* Canvas container - renderer handles aspect ratio + padding */}
       <div
         ref={containerRef}
-        className="flex flex-1 items-center justify-center overflow-hidden bg-black"
+        className="flex-1 relative flex items-center justify-center overflow-hidden bg-black"
       >
         <canvas
           ref={canvasRef}
           className="rounded-md"
-          width={1280}
-          height={720}
+          width={canvasSize.width}
+          height={canvasSize.height}
           style={{
-            width: `${displaySize.width}px`,
-            height: `${displaySize.height}px`,
-            maxWidth: "100%",
-            maxHeight: "100%",
             display: "block",
+            width: `${canvasSize.width}px`,
+            height: `${canvasSize.height}px`,
           }}
-          // TODO: tweak scaling offsets to better match CapCut cropping behavior
         />
       </div>
       <div className="flex items-center gap-3">
