@@ -128,15 +128,24 @@ const KonvaTimelineComponent = ({
   onTrackAdd,
 }: KonvaTimelineProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const trackHeadersContainerRef = useRef<HTMLDivElement>(null);
+  const timelineCanvasContainerRef = useRef<HTMLDivElement>(null);
   const playheadLineRef = useRef<Konva.Line>(null);
   const playheadChevronRef = useRef<HTMLDivElement>(null);
   const [isHovering, setIsHovering] = useState(false);
+  const [scrollY, setScrollY] = useState<number>(0);
   const [scrubberTime, setScrubberTime] = useState(0);
   const [draggingClipId, setDraggingClipId] = useState<string | null>(null);
   const [draggedClipX, setDraggedClipX] = useState<number>(0);
   const [virtualClipOrder, setVirtualClipOrder] = useState<Clip[]>([]);
   const [snapGuides, setSnapGuides] = useState<number[]>([]); // Array of time positions for snap guides
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+
+  // Track drag-to-reorder state
+  const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
+  const [dragStartY, setDragStartY] = useState<number>(0);
+  const [dragCurrentY, setDragCurrentY] = useState<number>(0);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 
   // Marquee selection state
   const [marqueeStart, setMarqueeStart] = useState<{ x: number; y: number } | null>(null);
@@ -336,7 +345,39 @@ const KonvaTimelineComponent = ({
     }
   }, [zoomLevel, containerWidth, pixelsToTime]);
 
-  // Keyboard shortcuts (Cmd/Ctrl+A for select all)
+  // Synchronized scrolling between track headers and timeline canvas
+  useEffect(() => {
+    const trackHeadersContainer = trackHeadersContainerRef.current;
+    const timelineCanvasContainer = timelineCanvasContainerRef.current;
+
+    if (!trackHeadersContainer || !timelineCanvasContainer) return;
+
+    const handleHeadersScroll = () => {
+      const scrollTop = trackHeadersContainer.scrollTop;
+      setScrollY(scrollTop);
+      if (timelineCanvasContainer.scrollTop !== scrollTop) {
+        timelineCanvasContainer.scrollTop = scrollTop;
+      }
+    };
+
+    const handleCanvasScroll = () => {
+      const scrollTop = timelineCanvasContainer.scrollTop;
+      setScrollY(scrollTop);
+      if (trackHeadersContainer.scrollTop !== scrollTop) {
+        trackHeadersContainer.scrollTop = scrollTop;
+      }
+    };
+
+    trackHeadersContainer.addEventListener('scroll', handleHeadersScroll);
+    timelineCanvasContainer.addEventListener('scroll', handleCanvasScroll);
+
+    return () => {
+      trackHeadersContainer.removeEventListener('scroll', handleHeadersScroll);
+      timelineCanvasContainer.removeEventListener('scroll', handleCanvasScroll);
+    };
+  }, []);
+
+  // Keyboard shortcuts (Cmd/Ctrl+A for select all, PageUp/PageDown for scrolling)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd/Ctrl+A: Select all clips
@@ -346,12 +387,50 @@ const KonvaTimelineComponent = ({
           const allClipIds = clips.map((c) => c.id);
           onClipMultiSelect(allClipIds);
         }
+        return;
+      }
+
+      // PageDown: Scroll down by one viewport height
+      if (e.key === "PageDown") {
+        e.preventDefault();
+        if (trackHeadersContainerRef.current) {
+          trackHeadersContainerRef.current.scrollTop += containerHeight;
+        }
+        return;
+      }
+
+      // PageUp: Scroll up by one viewport height
+      if (e.key === "PageUp") {
+        e.preventDefault();
+        if (trackHeadersContainerRef.current) {
+          trackHeadersContainerRef.current.scrollTop -= containerHeight;
+        }
+        return;
+      }
+
+      // Ctrl/Cmd+Home: Scroll to top
+      if ((e.metaKey || e.ctrlKey) && e.key === "Home") {
+        e.preventDefault();
+        if (trackHeadersContainerRef.current) {
+          trackHeadersContainerRef.current.scrollTop = 0;
+        }
+        return;
+      }
+
+      // Ctrl/Cmd+End: Scroll to bottom
+      if ((e.metaKey || e.ctrlKey) && e.key === "End") {
+        e.preventDefault();
+        if (trackHeadersContainerRef.current) {
+          const maxScroll = trackHeadersContainerRef.current.scrollHeight - trackHeadersContainerRef.current.clientHeight;
+          trackHeadersContainerRef.current.scrollTop = maxScroll;
+        }
+        return;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [clips, onClipMultiSelect]);
+  }, [clips, onClipMultiSelect, containerHeight]);
 
   // Handle timeline click for seeking and deselection
   const handleTimelineClick = (e: any) => {
@@ -828,6 +907,82 @@ const KonvaTimelineComponent = ({
     [sortedTracks.length, onTrackAdd]
   );
 
+  // Handle track drag-to-reorder
+  const handleTrackDragStart = useCallback(
+    (trackId: string, startY: number) => {
+      const track = sortedTracks.find((t) => t.id === trackId);
+      if (!track || track.locked) return;
+
+      setDraggingTrackId(trackId);
+      setDragStartY(startY);
+      setDragCurrentY(startY);
+    },
+    [sortedTracks]
+  );
+
+  const handleTrackDragMove = useCallback(
+    (currentY: number) => {
+      if (!draggingTrackId) return;
+
+      setDragCurrentY(currentY);
+
+      // Calculate which track index the drag is over
+      const dragDelta = currentY - dragStartY;
+      const draggedTrack = sortedTracks.find((t) => t.id === draggingTrackId);
+      if (!draggedTrack) return;
+
+      // Calculate drop target index based on mouse Y position
+      const trackIndex = Math.floor((currentY - dragStartY) / TRACK_HEIGHT + draggedTrack.order);
+      const clampedIndex = Math.max(0, Math.min(sortedTracks.length - 1, trackIndex));
+
+      setDropTargetIndex(clampedIndex);
+    },
+    [draggingTrackId, dragStartY, sortedTracks]
+  );
+
+  const handleTrackDragEnd = useCallback(() => {
+    if (!draggingTrackId || dropTargetIndex === null || !onTrackUpdate) {
+      setDraggingTrackId(null);
+      setDragStartY(0);
+      setDragCurrentY(0);
+      setDropTargetIndex(null);
+      return;
+    }
+
+    const draggedTrack = sortedTracks.find((t) => t.id === draggingTrackId);
+    if (!draggedTrack || draggedTrack.order === dropTargetIndex) {
+      // No change needed
+      setDraggingTrackId(null);
+      setDragStartY(0);
+      setDragCurrentY(0);
+      setDropTargetIndex(null);
+      return;
+    }
+
+    // Reorder tracks by updating their order properties
+    const updatedTracks = [...sortedTracks];
+    const oldIndex = draggedTrack.order;
+    const newIndex = dropTargetIndex;
+
+    // Remove dragged track
+    const [movedTrack] = updatedTracks.splice(oldIndex, 1);
+    // Insert at new position
+    updatedTracks.splice(newIndex, 0, movedTrack);
+
+    // Update all track orders
+    updatedTracks.forEach((track, index) => {
+      if (track.order !== index) {
+        onTrackUpdate(track.id, { order: index });
+      }
+    });
+
+    // Clear drag state
+    setDraggingTrackId(null);
+    setDragStartY(0);
+    setDragCurrentY(0);
+    setDropTargetIndex(null);
+  }, [draggingTrackId, dropTargetIndex, sortedTracks, onTrackUpdate]);
+
   // Render clips
   const clipsToRender = draggingClipId ? virtualClipOrder : clips;
 
@@ -892,16 +1047,30 @@ const KonvaTimelineComponent = ({
       <div className="flex-1 flex" style={{ height: `${timelineHeight}px` }}>
         {/* Track Headers Column */}
         <div className="w-[200px] flex-shrink-0 border-r border-border flex flex-col bg-zinc-900">
-          <div className="flex-1 overflow-y-auto">
-            {sortedTracks.map((track) => (
-              <TrackHeader
-                key={track.id}
-                track={track}
-                onTrackUpdate={onTrackUpdate || (() => {})}
-                onTrackDelete={onTrackDelete || (() => {})}
-                isSelected={selectedTrackId === track.id}
-                onSelect={setSelectedTrackId}
-              />
+          <div
+            ref={trackHeadersContainerRef}
+            className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900"
+            style={{ maxHeight: `${containerHeight}px` }}
+          >
+            {sortedTracks.map((track, index) => (
+              <div key={track.id} className="relative">
+                {/* Drop zone indicator - show above track when hovering */}
+                {dropTargetIndex === index && draggingTrackId !== track.id && (
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10" />
+                )}
+
+                <TrackHeader
+                  track={track}
+                  onTrackUpdate={onTrackUpdate || (() => {})}
+                  onTrackDelete={onTrackDelete || (() => {})}
+                  isSelected={selectedTrackId === track.id}
+                  onSelect={setSelectedTrackId}
+                  onDragStart={handleTrackDragStart}
+                  onDragMove={handleTrackDragMove}
+                  onDragEnd={handleTrackDragEnd}
+                  isDragging={draggingTrackId === track.id}
+                />
+              </div>
             ))}
           </div>
           
@@ -944,6 +1113,11 @@ const KonvaTimelineComponent = ({
                     editingMode === 'slide' ? 'move' :
                     draggingClipId ? 'grabbing' : 'default'
           }}
+        >
+        <div
+          ref={timelineCanvasContainerRef}
+          className="overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900"
+          style={{ maxHeight: `${containerHeight}px` }}
         >
         <Stage
           key="konva-timeline-stage"
@@ -1285,6 +1459,7 @@ const KonvaTimelineComponent = ({
             />
           </Layer>
         </Stage>
+        </div>
         </div>
       </div>
 

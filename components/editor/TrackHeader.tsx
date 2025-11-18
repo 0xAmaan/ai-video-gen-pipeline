@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Video, AudioWaveform, Eye, EyeOff, Lock, Unlock, Volume2, VolumeX, Trash2 } from "lucide-react";
+import { Video, AudioWaveform, Eye, EyeOff, Lock, Unlock, Volume2, VolumeX, Trash2, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,10 @@ interface TrackHeaderProps {
   onTrackDelete: (trackId: string) => void;
   isSelected?: boolean;
   onSelect?: (trackId: string) => void;
+  onDragStart?: (trackId: string, startY: number) => void;
+  onDragMove?: (currentY: number) => void;
+  onDragEnd?: () => void;
+  isDragging?: boolean;
 }
 
 export const TrackHeader = ({
@@ -21,10 +25,15 @@ export const TrackHeader = ({
   onTrackDelete,
   isSelected = false,
   onSelect,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  isDragging = false,
 }: TrackHeaderProps) => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(track.name);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragHandleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isEditingName && inputRef.current) {
@@ -32,6 +41,47 @@ export const TrackHeader = ({
       inputRef.current.select();
     }
   }, [isEditingName]);
+
+  // Drag handlers for track reordering
+  useEffect(() => {
+    const dragHandle = dragHandleRef.current;
+    if (!dragHandle || !onDragStart || !onDragMove || !onDragEnd) return;
+
+    let isDraggingTrack = false;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Prevent dragging if track is locked
+      if (track.locked) return;
+
+      isDraggingTrack = true;
+      const startY = e.clientY;
+      onDragStart(track.id, startY);
+
+      // Prevent text selection while dragging
+      e.preventDefault();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingTrack) return;
+      onDragMove(e.clientY);
+    };
+
+    const handleMouseUp = () => {
+      if (!isDraggingTrack) return;
+      isDraggingTrack = false;
+      onDragEnd();
+    };
+
+    dragHandle.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      dragHandle.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [track.id, track.locked, onDragStart, onDragMove, onDragEnd]);
 
   const saveName = () => {
     if (editedName.trim() && editedName !== track.name) {
@@ -59,18 +109,35 @@ export const TrackHeader = ({
     <div
       className={`
         w-[200px] h-[60px] border-r border-b border-zinc-800
-        bg-zinc-900 flex flex-col px-2 py-1
+        bg-zinc-900 flex px-2 py-1
         ${isSelected ? "bg-zinc-800 border-l-2 border-l-blue-500" : ""}
+        ${isDragging ? "opacity-50 shadow-lg" : ""}
+        transition-opacity
       `}
       onClick={handleTrackClick}
     >
-      {/* Track Type Icon and Name */}
-      <div className="flex items-center gap-1.5 mb-1">
-        {track.kind === "video" ? (
-          <Video className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-        ) : (
-          <AudioWaveform className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-        )}
+      {/* Drag Handle */}
+      <div
+        ref={dragHandleRef}
+        className={`
+          flex items-center justify-center w-4 flex-shrink-0 mr-1
+          ${track.locked ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"}
+          hover:bg-zinc-700 rounded
+        `}
+        title={track.locked ? "Track is locked" : "Drag to reorder"}
+      >
+        <GripVertical className="w-3 h-3 text-zinc-500" />
+      </div>
+
+      {/* Track Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Track Type Icon and Name */}
+        <div className="flex items-center gap-1.5 mb-1">
+          {track.kind === "video" ? (
+            <Video className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
+          ) : (
+            <AudioWaveform className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
+          )}
 
         {isEditingName ? (
           <Input
@@ -190,6 +257,7 @@ export const TrackHeader = ({
           className="flex-1 h-4"
           title="Opacity"
         />
+      </div>
       </div>
     </div>
   );
