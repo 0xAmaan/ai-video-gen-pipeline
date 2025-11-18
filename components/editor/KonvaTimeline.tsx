@@ -190,6 +190,28 @@ const KonvaTimelineComponent = ({
     return TIMELINE_HEADER_Y + trackOrder * TRACK_HEIGHT;
   }, []);
 
+  // Virtual rendering: Calculate visible tracks based on scroll position
+  const VIEWPORT_BUFFER = 2; // Render 2 extra tracks above/below viewport for smooth scrolling
+
+  const getVisibleTracks = useCallback(() => {
+    // Calculate how many tracks fit in the viewport
+    const visibleTrackCount = Math.ceil(containerHeight / TRACK_HEIGHT);
+
+    // Calculate which tracks are currently visible based on scroll position
+    const startIndex = Math.max(0, Math.floor(scrollY / TRACK_HEIGHT) - VIEWPORT_BUFFER);
+    const endIndex = Math.min(
+      sortedTracks.length,
+      startIndex + visibleTrackCount + (VIEWPORT_BUFFER * 2)
+    );
+
+    return {
+      visibleTracks: sortedTracks.slice(startIndex, endIndex),
+      startIndex,
+      endIndex,
+      visibleTrackCount
+    };
+  }, [sortedTracks, scrollY, containerHeight]);
+
   // Helper function to find track by clip ID
   const findTrackByClipId = useCallback(
     (clipId: string) => {
@@ -986,6 +1008,9 @@ const KonvaTimelineComponent = ({
   // Render clips
   const clipsToRender = draggingClipId ? virtualClipOrder : clips;
 
+  // Get visible tracks for virtual rendering
+  const { visibleTracks, startIndex: visibleStartIndex } = getVisibleTracks();
+
   return (
     <div className="relative w-full h-full flex flex-col border-t border-border bg-background">
       {/* Time ruler */}
@@ -1143,12 +1168,13 @@ const KonvaTimelineComponent = ({
               onClick={handleTimelineClick}
             />
 
-            {/* Zebra striping for tracks */}
-            {sortedTracks.map((track, index) => {
+            {/* Zebra striping for tracks - only render visible tracks */}
+            {visibleTracks.map((track, index) => {
               const trackY = getTrackY(track.order);
-              const isEven = index % 2 === 0;
+              const globalIndex = track.order; // Use global order for alternating pattern
+              const isEven = globalIndex % 2 === 0;
               const stripeFill = isEven ? "#111827" : "#0f172a"; // Dark mode colors
-              
+
               return (
                 <Rect
                   key={`zebra-${track.id}`}
@@ -1291,23 +1317,31 @@ const KonvaTimelineComponent = ({
               );
             })}
 
-            {/* Clips */}
+            {/* Clips - only render clips on visible tracks */}
             {clipsToRender.map((clip) => {
               const isDragging = clip.id === draggingClipId;
               const asset = assetMap.get(clip.mediaId);
               const track = findTrackByClipId(clip.id);
-              
+
+              // Skip rendering if track is not in visible range (unless dragging)
+              if (track && !isDragging) {
+                const isTrackVisible = visibleTracks.some((vt) => vt.id === track.id);
+                if (!isTrackVisible) {
+                  return null;
+                }
+              }
+
               // Skip rendering if track is not visible
               if (track && !track.visible) {
                 return null;
               }
-              
+
               // Handle solo mode: if any track has solo enabled, only render clips from solo tracks
               const hasSoloTracks = sortedTracks.some((t) => t.solo);
               if (hasSoloTracks && track && !track.solo) {
                 return null;
               }
-              
+
               const yPos = track ? getTrackY(track.order) : TIMELINE_HEADER_Y; // Fallback to header Y if track not found
               const trackOpacity = track?.opacity ?? 1.0;
               
