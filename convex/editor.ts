@@ -60,38 +60,21 @@ export const saveHistorySnapshot = mutation({
     }
 
     const userId = identity.subject;
+    const now = Date.now();
 
-    // Get current history entries of this type
-    const existingHistory = await ctx.db
-      .query("projectHistory")
-      .withIndex("by_project")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("projectId"), args.projectId),
-          q.eq(q.field("historyType"), args.historyType),
-          q.eq(q.field("userId"), userId),
-        ),
-      )
-      .collect();
-
-    // Increment sequence numbers for existing entries
-    for (const entry of existingHistory) {
-      await ctx.db.patch(entry._id, {
-        sequenceNumber: entry.sequenceNumber + 1,
-      });
-    }
-
-    // Insert new snapshot at sequence 0 (most recent)
+    // Insert new snapshot with current timestamp
+    // sequenceNumber is kept for backward compatibility but not actively used
     await ctx.db.insert("projectHistory", {
       projectId: args.projectId,
       userId,
       snapshot: args.snapshot,
       historyType: args.historyType,
-      sequenceNumber: 0,
-      createdAt: Date.now(),
+      sequenceNumber: 0, // Deprecated: kept for schema compatibility
+      createdAt: now,
     });
 
     // Prune old history - keep only last 50 entries per type
+    // Sort by timestamp (most recent first) and delete old entries
     const allHistory = await ctx.db
       .query("projectHistory")
       .withIndex("by_project")
@@ -104,11 +87,13 @@ export const saveHistorySnapshot = mutation({
       )
       .collect();
 
-    const sorted = allHistory.sort(
-      (a, b) => a.sequenceNumber - b.sequenceNumber,
-    );
+    // Sort by createdAt descending (newest first)
+    const sorted = allHistory.sort((a, b) => b.createdAt - a.createdAt);
+    
+    // Delete entries beyond the 50 most recent
     if (sorted.length > 50) {
-      for (const old of sorted.slice(50)) {
+      const toDelete = sorted.slice(50);
+      for (const old of toDelete) {
         await ctx.db.delete(old._id);
       }
     }
@@ -222,8 +207,8 @@ export const loadProjectHistory = mutation({
       )
       .collect();
 
-    // Sort by sequence number and take the limit
-    const sorted = history.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+    // Sort by createdAt timestamp descending (most recent first) and take the limit
+    const sorted = history.sort((a, b) => b.createdAt - a.createdAt);
     return sorted.slice(0, limit).map((h) => h.snapshot);
   },
 });
