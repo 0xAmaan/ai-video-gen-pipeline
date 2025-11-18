@@ -16,8 +16,14 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
   );
   const activeProjectId = projectIdMatch ? projectIdMatch[1] : null;
 
-  // Don't show sidebar on home login page or if not signed in
-  const showSidebar = isSignedIn && pathname !== "/";
+  // Don't show sidebar on home login page, redesign pages, or if not signed in
+  const isRedesignPage = pathname?.startsWith("/project-redesign");
+  const showSidebar = isSignedIn && pathname !== "/" && !isRedesignPage;
+
+  // Redesign pages: clean layout with no nav/dev tools
+  if (isRedesignPage) {
+    return <main className="h-screen overflow-auto">{children}</main>;
+  }
 
   if (!showSidebar) {
     return (

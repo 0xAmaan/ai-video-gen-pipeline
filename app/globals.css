@@ -13,8 +13,8 @@
   --popover: oklch(0.22 0.01 250); /* Popover background matches card */
   --popover-foreground: oklch(0.98 0.003 250); /* Bright white text */
 
-  --primary: oklch(0.68 0.21 35); /* Vibrant warm orange */
-  --primary-foreground: oklch(0.99 0 0); /* Pure white on orange */
+  --primary: oklch(0.68 0.12 230); /* Vibrant blue #5FABE6 */
+  --primary-foreground: oklch(0.99 0 0); /* Pure white on blue */
 
   --button: oklch(0.24 0.01 250); /* Visible button background */
   --button-hover: oklch(0.28 0.012 250); /* Lighter on hover */
@@ -33,8 +33,21 @@
 
   --border: oklch(0.32 0.012 250); /* Clear, visible borders */
   --input: oklch(0.2 0.01 250); /* Distinct input background */
-  --ring: oklch(0.68 0.21 35); /* Orange focus ring */
+  --ring: oklch(0.68 0.12 230); /* Blue focus ring */
   --radius: 0.75rem; /* Rounded corners */
+
+  /* Custom redesign color system */
+  --color-primary: #2baaff;
+  --color-primary-hover: #4a9dd5;
+  --color-primary-active: #3b8ec4;
+
+  /* Dark backgrounds */
+  --bg-base: #0a0a0a;
+  --bg-surface: #171717;
+  --bg-surface-dark: #131414;
+  --bg-input: #2c2d2d;
+  --bg-card: #1a1a1a;
+  --bg-hover: #2a2a2a;
 }
 
 /* Utility classes */
@@ -72,4 +85,32 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+}
+
+/* Custom Scrollbar Styles */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #0a0a0a;
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #3f3f3f;
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+.scrollbar-thumb-gray-700::-webkit-scrollbar-thumb {
+  background: #374151;
+}
+
+.scrollbar-track-gray-900::-webkit-scrollbar-track {
+  background: #111827;
 }
