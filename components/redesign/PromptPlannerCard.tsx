@@ -262,7 +262,7 @@ export const PromptPlannerCard = ({
       ref={setSceneRef}
       style={sceneStyle}
       className={cn(
-        "p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-opacity",
+        "w-full max-w-3xl p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-opacity",
         isSceneDragging && "opacity-50",
       )}
     >

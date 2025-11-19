@@ -19,10 +19,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Zap, DollarSign, Sparkles, Rocket, Scale, Gauge } from "lucide-react";
-import { getDemoMode, setDemoMode, initDemoMode, isDevelopment, type DemoMode } from "@/lib/demo-mode";
+import {
+  Settings,
+  Zap,
+  DollarSign,
+  Sparkles,
+  Rocket,
+  Scale,
+  Gauge,
+} from "lucide-react";
+import {
+  getDemoMode,
+  setDemoMode,
+  initDemoMode,
+  isDevelopment,
+  type DemoMode,
+} from "@/lib/demo-mode";
 import { useModelStore, type ModelPreset } from "@/lib/stores/modelStore";
-import { TEXT_TO_TEXT_MODELS, TEXT_TO_IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS, SPEED_INDICATORS, COST_INDICATORS } from "@/lib/types/models";
+import {
+  TEXT_TO_TEXT_MODELS,
+  TEXT_TO_IMAGE_MODELS,
+  IMAGE_TO_VIDEO_MODELS,
+  SPEED_INDICATORS,
+  COST_INDICATORS,
+} from "@/lib/types/models";
 
 export const DeveloperToolsMenu = () => {
   const [mounted, setMounted] = useState(false);
@@ -30,15 +50,21 @@ export const DeveloperToolsMenu = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   // Model store state
-  const modelSelectionEnabled = useModelStore((state) => state.modelSelectionEnabled);
+  const modelSelectionEnabled = useModelStore(
+    (state) => state.modelSelectionEnabled,
+  );
   const modelPreset = useModelStore((state) => state.modelPreset);
   const setModelPreset = useModelStore((state) => state.setModelPreset);
   const textToTextModel = useModelStore((state) => state.textToTextModel);
   const textToImageModel = useModelStore((state) => state.textToImageModel);
   const imageToVideoModel = useModelStore((state) => state.imageToVideoModel);
   const setTextToTextModel = useModelStore((state) => state.setTextToTextModel);
-  const setTextToImageModel = useModelStore((state) => state.setTextToImageModel);
-  const setImageToVideoModel = useModelStore((state) => state.setImageToVideoModel);
+  const setTextToImageModel = useModelStore(
+    (state) => state.setTextToImageModel,
+  );
+  const setImageToVideoModel = useModelStore(
+    (state) => state.setImageToVideoModel,
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -56,25 +82,28 @@ export const DeveloperToolsMenu = () => {
     setModelPreset(preset);
     console.log(`[Model Preset] Switched to: ${preset}`);
     // Don't close dropdown if switching to custom (user needs to select individual models)
-    if (preset !== 'custom' && shouldClose) {
+    if (preset !== "custom" && shouldClose) {
       setDropdownOpen(false);
     }
   };
 
-  const handleIndividualModelChange = (type: 'text' | 'image' | 'video', modelId: string) => {
+  const handleIndividualModelChange = (
+    type: "text" | "image" | "video",
+    modelId: string,
+  ) => {
     // When user changes individual model, switch to custom preset
-    if (modelPreset !== 'custom') {
-      setModelPreset('custom');
+    if (modelPreset !== "custom") {
+      setModelPreset("custom");
     }
 
     switch (type) {
-      case 'text':
+      case "text":
         setTextToTextModel(modelId);
         break;
-      case 'image':
+      case "image":
         setTextToImageModel(modelId);
         break;
-      case 'video':
+      case "video":
         setImageToVideoModel(modelId);
         break;
     }
@@ -157,7 +186,11 @@ export const DeveloperToolsMenu = () => {
   const DemoIcon = currentDemoConfig.icon;
 
   return (
-    <DropdownMenu modal={false} open={dropdownOpen} onOpenChange={setDropdownOpen}>
+    <DropdownMenu
+      modal={false}
+      open={dropdownOpen}
+      onOpenChange={setDropdownOpen}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
@@ -171,10 +204,15 @@ export const DeveloperToolsMenu = () => {
           </Badge>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96 border-border/50 max-h-[80vh] overflow-y-auto z-[150]">
+      <DropdownMenuContent
+        align="end"
+        className="w-96 border-border/50 max-h-[80vh] overflow-y-auto z-[150]"
+      >
         {/* Demo Mode Section */}
         <div className="text-center py-2">
-          <DropdownMenuLabel className="text-base">Developer Tools</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-base">
+            Developer Tools
+          </DropdownMenuLabel>
           <p className="text-xs text-muted-foreground px-2">
             Demo mode and model configuration
           </p>
@@ -182,8 +220,13 @@ export const DeveloperToolsMenu = () => {
         <DropdownMenuSeparator />
 
         <div className="px-2 py-2">
-          <p className="text-xs font-medium text-muted-foreground mb-2 px-2">Demo Mode</p>
-          <DropdownMenuRadioGroup value={demoMode} onValueChange={(v) => handleDemoModeChange(v as DemoMode)}>
+          <p className="text-xs font-medium text-muted-foreground mb-2 px-2">
+            Demo Mode
+          </p>
+          <DropdownMenuRadioGroup
+            value={demoMode}
+            onValueChange={(v) => handleDemoModeChange(v as DemoMode)}
+          >
             <DropdownMenuRadioItem value="off" className="cursor-pointer">
               <div className="flex flex-col gap-1 py-1">
                 <span className="font-medium text-sm">Off</span>
@@ -197,7 +240,9 @@ export const DeveloperToolsMenu = () => {
               <div className="flex flex-col gap-1 py-1">
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4 text-green-600" />
-                  <span className="font-medium text-sm">No-Cost (Mock Data)</span>
+                  <span className="font-medium text-sm">
+                    No-Cost (Mock Data)
+                  </span>
                 </div>
                 <span className="text-xs text-muted-foreground">
                   Instant mock responses • Zero API costs
@@ -237,188 +282,271 @@ export const DeveloperToolsMenu = () => {
 
             {/* Model Preset Section */}
             <div className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-          <p className="text-xs font-medium text-muted-foreground mb-2 px-2">Model Preset</p>
-          <DropdownMenuRadioGroup 
-            value={modelPreset} 
-            onValueChange={(v) => {
-              const preset = v as ModelPreset;
-              // For custom, we handle it via onSelect to prevent dropdown closing
-              // For other presets, close the dropdown after selection
-              if (preset !== 'custom') {
-                handlePresetChange(preset);
-              } else {
-                // Still update the state, but don't close dropdown
-                setModelPreset(preset);
-              }
-            }}
-          >
-            <DropdownMenuRadioItem value="fast-cheap" className="cursor-pointer">
-              <div className="flex flex-col gap-1 py-1">
-                <div className="flex items-center gap-2">
-                  <Rocket className="w-4 h-4" />
-                  <span className="font-medium text-sm">Fast & Cheap</span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  GPT-OSS-20B • FLUX Schnell • WAN 2.5 Fast
-                </span>
-              </div>
-            </DropdownMenuRadioItem>
-
-            <DropdownMenuRadioItem value="balanced" className="cursor-pointer">
-              <div className="flex flex-col gap-1 py-1">
-                <div className="flex items-center gap-2">
-                  <Scale className="w-4 h-4" />
-                  <span className="font-medium text-sm">Balanced</span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  GPT-4o-mini • Leonardo Phoenix • WAN 2.5 Fast
-                </span>
-              </div>
-            </DropdownMenuRadioItem>
-
-            <DropdownMenuRadioItem value="high-quality" className="cursor-pointer">
-              <div className="flex flex-col gap-1 py-1">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  <span className="font-medium text-sm">High Quality</span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  GPT-4.1 Mini • FLUX Pro • Veo 3.1
-                </span>
-              </div>
-            </DropdownMenuRadioItem>
-
-            <DropdownMenuRadioItem 
-              value="custom" 
-              className="cursor-pointer"
-              onSelect={(e) => {
-                // Prevent dropdown from closing when custom is selected
-                e.preventDefault();
-                handlePresetChange('custom', false);
-              }}
-            >
-              <div className="flex flex-col gap-1 py-1">
-                <div className="flex items-center gap-2">
-                  <Gauge className="w-4 h-4" />
-                  <span className="font-medium text-sm">Custom</span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  Manual model selection
-                </span>
-              </div>
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </div>
-
-        {/* Individual Model Selectors (only shown when Custom is selected) */}
-        {modelPreset === 'custom' && (
-          <>
-            <DropdownMenuSeparator />
-            <div className="px-4 py-3 space-y-3" onClick={(e) => e.stopPropagation()}>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Individual Models</p>
-
-              {/* Questions Model */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Questions</label>
-                <Select
-                  value={textToTextModel}
-                  onValueChange={(v) => handleIndividualModelChange('text', v)}
+              <p className="text-xs font-medium text-muted-foreground mb-2 px-2">
+                Model Preset
+              </p>
+              <DropdownMenuRadioGroup
+                value={modelPreset}
+                onValueChange={(v) => {
+                  const preset = v as ModelPreset;
+                  // For custom, we handle it via onSelect to prevent dropdown closing
+                  // For other presets, close the dropdown after selection
+                  if (preset !== "custom") {
+                    handlePresetChange(preset);
+                  } else {
+                    // Still update the state, but don't close dropdown
+                    setModelPreset(preset);
+                  }
+                }}
+              >
+                <DropdownMenuRadioItem
+                  value="fast-cheap"
+                  className="cursor-pointer"
                 >
-                  <SelectTrigger className="w-full h-8 text-xs cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="!z-[9999]" position="popper" sideOffset={5} side="bottom" align="start" avoidCollisions={true}>
-                    {TEXT_TO_TEXT_MODELS.map((model) => (
-                      <SelectItem key={model.id} value={model.id} className="text-xs">
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span className="truncate">{model.name}</span>
-                          <div className="flex gap-1 flex-shrink-0">
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                              {SPEED_INDICATORS[model.speed]}
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                              {COST_INDICATORS[model.cost]}
-                            </Badge>
-                          </div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="flex flex-col gap-1 py-1">
+                    <div className="flex items-center gap-2">
+                      <Rocket className="w-4 h-4" />
+                      <span className="font-medium text-sm">Fast & Cheap</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      GPT-OSS-20B • FLUX Schnell • WAN 2.5 Fast
+                    </span>
+                  </div>
+                </DropdownMenuRadioItem>
 
-              {/* Storyboard Model */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Storyboard</label>
-                <Select
-                  value={textToImageModel}
-                  onValueChange={(v) => handleIndividualModelChange('image', v)}
+                <DropdownMenuRadioItem
+                  value="balanced"
+                  className="cursor-pointer"
                 >
-                  <SelectTrigger className="w-full h-8 text-xs cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="!z-[9999]" position="popper" sideOffset={5} side="bottom" align="start" avoidCollisions={true}>
-                    {TEXT_TO_IMAGE_MODELS.filter(
-                      (model) => ![
-                        "flux-pro-ultra",
-                        "consistent-character",
-                        "sdxl-lightning",
-                        "sdxl",
-                        "sd3-medium",
-                        "sd3-turbo",
-                        "hidream-i1",
-                      ].includes(model.id)
-                    ).map((model) => (
-                      <SelectItem key={model.id} value={model.id} className="text-xs">
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span className="truncate">{model.name}</span>
-                          <div className="flex gap-1 flex-shrink-0">
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                              {SPEED_INDICATORS[model.speed]}
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                              {COST_INDICATORS[model.cost]}
-                            </Badge>
-                          </div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="flex flex-col gap-1 py-1">
+                    <div className="flex items-center gap-2">
+                      <Scale className="w-4 h-4" />
+                      <span className="font-medium text-sm">Balanced</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      GPT-4o-mini • Leonardo Phoenix • WAN 2.5 Fast
+                    </span>
+                  </div>
+                </DropdownMenuRadioItem>
 
-              {/* Video Model */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Video</label>
-                <Select
-                  value={imageToVideoModel}
-                  onValueChange={(v) => handleIndividualModelChange('video', v)}
+                <DropdownMenuRadioItem
+                  value="high-quality"
+                  className="cursor-pointer"
                 >
-                  <SelectTrigger className="w-full h-8 text-xs cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="!z-[9999]" position="popper" sideOffset={5} side="bottom" align="start" avoidCollisions={true}>
-                    {IMAGE_TO_VIDEO_MODELS.map((model) => (
-                      <SelectItem key={model.id} value={model.id} className="text-xs">
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span className="truncate">{model.name}</span>
-                          <div className="flex gap-1 flex-shrink-0">
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                              {SPEED_INDICATORS[model.speed]}
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                              {COST_INDICATORS[model.cost]}
-                            </Badge>
-                          </div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="flex flex-col gap-1 py-1">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" />
+                      <span className="font-medium text-sm">High Quality</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      GPT-4.1 Mini • FLUX Pro • Veo 3.1
+                    </span>
+                  </div>
+                </DropdownMenuRadioItem>
+
+                <DropdownMenuRadioItem
+                  value="custom"
+                  className="cursor-pointer"
+                  onSelect={(e) => {
+                    // Prevent dropdown from closing when custom is selected
+                    e.preventDefault();
+                    handlePresetChange("custom", false);
+                  }}
+                >
+                  <div className="flex flex-col gap-1 py-1">
+                    <div className="flex items-center gap-2">
+                      <Gauge className="w-4 h-4" />
+                      <span className="font-medium text-sm">Custom</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Manual model selection
+                    </span>
+                  </div>
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
             </div>
-          </>
-        )}
+
+            {/* Individual Model Selectors (only shown when Custom is selected) */}
+            {modelPreset === "custom" && (
+              <>
+                <DropdownMenuSeparator />
+                <div
+                  className="px-4 py-3 space-y-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="text-xs font-medium text-muted-foreground mb-2">
+                    Individual Models
+                  </p>
+
+                  {/* Questions Model */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Questions</label>
+                    <Select
+                      value={textToTextModel}
+                      onValueChange={(v) =>
+                        handleIndividualModelChange("text", v)
+                      }
+                    >
+                      <SelectTrigger
+                        className="w-full h-8 text-xs cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent
+                        className="!z-[9999]"
+                        position="popper"
+                        sideOffset={5}
+                        side="bottom"
+                        align="start"
+                        avoidCollisions={true}
+                      >
+                        {TEXT_TO_TEXT_MODELS.map((model) => (
+                          <SelectItem
+                            key={model.id}
+                            value={model.id}
+                            className="text-xs"
+                          >
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span className="truncate">{model.name}</span>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4"
+                                >
+                                  {SPEED_INDICATORS[model.speed]}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4"
+                                >
+                                  {COST_INDICATORS[model.cost]}
+                                </Badge>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Storyboard Model */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Storyboard</label>
+                    <Select
+                      value={textToImageModel}
+                      onValueChange={(v) =>
+                        handleIndividualModelChange("image", v)
+                      }
+                    >
+                      <SelectTrigger
+                        className="w-full h-8 text-xs cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent
+                        className="!z-[9999]"
+                        position="popper"
+                        sideOffset={5}
+                        side="bottom"
+                        align="start"
+                        avoidCollisions={true}
+                      >
+                        {TEXT_TO_IMAGE_MODELS.filter(
+                          (model) =>
+                            ![
+                              "flux-pro-ultra",
+                              "consistent-character",
+                              "sdxl-lightning",
+                              "sdxl",
+                              "sd3-medium",
+                              "sd3-turbo",
+                              "hidream-i1",
+                            ].includes(model.id),
+                        ).map((model) => (
+                          <SelectItem
+                            key={model.id}
+                            value={model.id}
+                            className="text-xs"
+                          >
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span className="truncate">{model.name}</span>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4"
+                                >
+                                  {SPEED_INDICATORS[model.speed]}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4"
+                                >
+                                  {COST_INDICATORS[model.cost]}
+                                </Badge>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Video Model */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Video</label>
+                    <Select
+                      value={imageToVideoModel}
+                      onValueChange={(v) =>
+                        handleIndividualModelChange("video", v)
+                      }
+                    >
+                      <SelectTrigger
+                        className="w-full h-8 text-xs cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent
+                        className="!z-[9999]"
+                        position="popper"
+                        sideOffset={5}
+                        side="bottom"
+                        align="start"
+                        avoidCollisions={true}
+                      >
+                        {IMAGE_TO_VIDEO_MODELS.map((model) => (
+                          <SelectItem
+                            key={model.id}
+                            value={model.id}
+                            className="text-xs"
+                          >
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span className="truncate">{model.name}</span>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4"
+                                >
+                                  {SPEED_INDICATORS[model.speed]}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4"
+                                >
+                                  {COST_INDICATORS[model.cost]}
+                                </Badge>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
 
@@ -426,7 +554,9 @@ export const DeveloperToolsMenu = () => {
           <>
             <DropdownMenuSeparator />
             <div className="px-2 py-2 text-xs text-muted-foreground text-center">
-              <p className="font-medium mb-1">Active: {currentDemoConfig.label}</p>
+              <p className="font-medium mb-1">
+                Active: {currentDemoConfig.label}
+              </p>
               <p>{currentDemoConfig.description}</p>
             </div>
           </>

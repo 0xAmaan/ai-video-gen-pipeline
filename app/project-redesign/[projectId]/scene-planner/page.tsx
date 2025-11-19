@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   DndContext,
   DragEndEvent,
@@ -37,6 +38,7 @@ import {
   useUpdateSceneShot,
   useReorderSceneShots,
   useProjectProgress,
+  useRedesignProject,
 } from "@/lib/hooks/useProjectRedesign";
 import {
   ProjectScene,
@@ -73,6 +75,8 @@ const PromptPlannerPage = () => {
 
   const projectScenes = useProjectScenes(projectId);
   const projectProgress = useProjectProgress(projectId);
+  const projectData = useRedesignProject(projectId);
+  const [isGeneratingScenes, setIsGeneratingScenes] = useState(false);
 
   const createScene = useCreateProjectScene();
   const updateScene = useUpdateProjectScene();
@@ -107,6 +111,12 @@ const PromptPlannerPage = () => {
   useEffect(() => {
     if (!projectScenes) return;
 
+    // If we were generating and now have scenes, generation is complete
+    if (isGeneratingScenes && projectScenes.length > 0) {
+      setIsGeneratingScenes(false);
+      toast.success(`Generated ${projectScenes.length} scenes with AI!`);
+    }
+
     setPlannerScenes((prev) => {
       const previousState = new Map(prev.map((scene) => [scene._id, scene]));
       return projectScenes
@@ -117,7 +127,26 @@ const PromptPlannerPage = () => {
         }))
         .sort((a, b) => a.sceneNumber - b.sceneNumber);
     });
-  }, [projectScenes]);
+  }, [projectScenes, isGeneratingScenes]);
+
+  // Detect if we should show generating state on initial load
+  useEffect(() => {
+    if (projectScenes !== undefined && projectScenes.length === 0 && projectData) {
+      // Check if there's promptPlannerData (initial ideas) but no scenes yet
+      // This indicates generation might be in progress
+      const hasInitialIdeas = projectData.promptPlannerData && projectData.promptPlannerData.trim().length > 0;
+
+      if (hasInitialIdeas) {
+        // Small delay to let the background request start
+        setTimeout(() => {
+          if (projectScenes?.length === 0) {
+            // Still no scenes, generation is likely in progress
+            setIsGeneratingScenes(true);
+          }
+        }, 300);
+      }
+    }
+  }, [projectId, projectScenes, projectData]);
 
   const handleSceneShotsUpdate = useCallback(
     (sceneId: Id<"projectScenes">, shots: SceneShot[]) => {
@@ -390,16 +419,32 @@ const PromptPlannerPage = () => {
       >
         <div className="flex-1 overflow-auto pb-36">
           <div className="max-w-7xl mx-auto px-8 py-6 flex gap-8">
-            <div className="flex-1 space-y-4">
+            <div className="flex-1 space-y-4 flex flex-col items-center">
               {!hasScenes ? (
-                <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl">
-                  <p className="text-gray-400 mb-4">
-                    No scenes yet. Start mapping your story.
-                  </p>
-                  <Button onClick={handleAddScene} variant="outline">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create First Scene
-                  </Button>
+                <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl w-full max-w-2xl">
+                  {isGeneratingScenes ? (
+                    <>
+                      <div className="flex justify-center mb-4">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+                      </div>
+                      <p className="text-white font-medium mb-2">
+                        Generating your scenes...
+                      </p>
+                      <p className="text-gray-400 text-sm">
+                        AI is creating a scene breakdown from your ideas. This takes 5-10 seconds.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-gray-400 mb-4">
+                        No scenes yet. Start mapping your story.
+                      </p>
+                      <Button onClick={handleAddScene} variant="outline">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create First Scene
+                      </Button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <SortableContext

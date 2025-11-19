@@ -6,13 +6,12 @@ import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Plus } from "lucide-react";
-import { useCreateRedesignProject } from "@/lib/hooks/useProjectRedesign";
+import { NewProjectDialog } from "@/components/NewProjectDialog";
 
 const HomePage = () => {
   const router = useRouter();
   const { isSignedIn, userId } = useAuth();
-  const createProject = useCreateRedesignProject();
-  const [isCreating, setIsCreating] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const projects = useQuery(
     api.video.getUserProjects,
     isSignedIn ? {} : "skip",
@@ -20,26 +19,6 @@ const HomePage = () => {
 
   // Get 3 most recent projects
   const recentProjects = projects?.slice(0, 3) || [];
-
-  const handleNewProject = async () => {
-    if (!userId || isCreating) return;
-    const prompt =
-      window.prompt("What should we call this project?", "New Project") ||
-      undefined;
-    if (!prompt) return;
-
-    try {
-      setIsCreating(true);
-      const projectId = await createProject({
-        userId,
-        prompt,
-        title: prompt,
-      });
-      router.push(`/project-redesign/${projectId}/scene-planner`);
-    } finally {
-      setIsCreating(false);
-    }
-  };
 
   const handleProjectClick = (projectId: string) => {
     router.push(`/project-redesign/${projectId}/scene-planner`);
@@ -86,16 +65,15 @@ const HomePage = () => {
         <div className="flex flex-wrap items-center justify-center gap-5 max-w-5xl">
           {/* New Project Button */}
           <button
-            onClick={handleNewProject}
-            disabled={isCreating}
-            className="group relative w-56 h-36 rounded-3xl bg-gray-600/60 border border-gray-500/40 hover:border-gray-400/60 transition-all duration-300 hover:scale-[1.02] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => setIsDialogOpen(true)}
+            className="group relative w-56 h-36 rounded-3xl bg-gray-600/60 border border-gray-500/40 hover:border-gray-400/60 transition-all duration-300 hover:scale-[1.02] cursor-pointer"
           >
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
               <div className="w-12 h-12 rounded-full bg-gray-500/40 flex items-center justify-center group-hover:bg-gray-400/50 transition-colors">
                 <Plus className="w-6 h-6 text-gray-200" />
               </div>
               <span className="text-gray-200 font-medium text-lg">
-                {isCreating ? "Creating..." : "New project"}
+                New project
               </span>
             </div>
           </button>
@@ -120,6 +98,9 @@ const HomePage = () => {
           ))}
         </div>
       </div>
+
+      {/* New Project Dialog */}
+      <NewProjectDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
     </div>
   );
 };
