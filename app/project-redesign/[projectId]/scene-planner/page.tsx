@@ -21,11 +21,22 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowRight } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Plus, ArrowRight, RefreshCw } from "lucide-react";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { PromptPlannerCard } from "@/components/redesign/PromptPlannerCard";
 import { ChatInput } from "@/components/redesign/ChatInput";
 import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery";
+import { AssetManager } from "@/components/redesign/AssetManager";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   useProjectScenes,
   useSceneShots,
@@ -39,11 +50,15 @@ import {
   useReorderSceneShots,
   useProjectProgress,
   useRedesignProject,
+  useShotPreviewImages,
+  useSelectMasterShot,
 } from "@/lib/hooks/useProjectRedesign";
+import { requestPreviewSeed } from "@/lib/client/requestPreviewSeed";
 import {
   ProjectScene,
   SceneShot,
   ShotSelectionSummary,
+  ShotPreviewImage,
 } from "@/lib/types/redesign";
 
 type PlannerSceneState = ProjectScene & {
@@ -76,6 +91,8 @@ const PromptPlannerPage = () => {
   const projectScenes = useProjectScenes(projectId);
   const projectProgress = useProjectProgress(projectId);
   const projectData = useRedesignProject(projectId);
+  const shotPreviewGroups = useShotPreviewImages(projectId);
+  const selectMasterShot = useSelectMasterShot();
   const [isGeneratingScenes, setIsGeneratingScenes] = useState(false);
 
   const createScene = useCreateProjectScene();
@@ -98,6 +115,11 @@ const PromptPlannerPage = () => {
   const [highlightedShotId, setHighlightedShotId] = useState<
     Id<"sceneShots"> | null
   >(null);
+  const [regenerateTarget, setRegenerateTarget] = useState<SceneShot | null>(null);
+  const [regeneratePrompt, setRegeneratePrompt] = useState("");
+  const [regenerateBusy, setRegenerateBusy] = useState(false);
+  const [seedingMissing, setSeedingMissing] = useState(false);
+  const [seedError, setSeedError] = useState<string | null>(null);
 
   const shotRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -107,6 +129,25 @@ const PromptPlannerPage = () => {
     },
     [],
   );
+
+  const shotPreviewMap = useMemo(() => {
+    const map = new Map<Id<"sceneShots">, ShotPreviewImage[]>();
+    shotPreviewGroups?.forEach((group) => {
+      map.set(group.shotId, group.images);
+    });
+    return map;
+  }, [shotPreviewGroups]);
+
+  const missingPreviewCount = useMemo(() => {
+    return plannerScenes.reduce(
+      (sum, scene) =>
+        sum +
+        scene.shots.filter(
+          (shot) => (shotPreviewMap.get(shot._id)?.length ?? 0) === 0,
+        ).length,
+      0,
+    );
+  }, [plannerScenes, shotPreviewMap]);
 
   useEffect(() => {
     if (!projectScenes) return;
@@ -183,18 +224,68 @@ const PromptPlannerPage = () => {
     );
   };
 
+  const createDefaultShot = async (sceneId: Id<"projectScenes">) => {
+    await createShot({
+      projectId: projectId as Id<"videoProjects">,
+      sceneId,
+      shotNumber: 1,
+      description: "Describe your shot here...",
+      initialPrompt: "Describe your shot here...",
+    });
+  };
+
   const handleAddScene = async () => {
     if (!projectId) return;
     const nextSceneNumber =
       plannerScenes.reduce((max, scene) => Math.max(max, scene.sceneNumber), 0) +
       1;
 
-    await createScene({
+    const sceneId = await createScene({
       projectId,
       sceneNumber: nextSceneNumber,
       title: `Scene ${nextSceneNumber}`,
       description: "Describe your scene here...",
     });
+
+    await createDefaultShot(sceneId);
+  };
+
+  const handleAddSceneBelow = async (currentSceneId: Id<"projectScenes">) => {
+    if (!projectId) return;
+
+    // Find the current scene's position
+    const currentSceneIndex = plannerScenes.findIndex(
+      (s) => s._id === currentSceneId,
+    );
+    if (currentSceneIndex === -1) return;
+
+    // Calculate the new scene number (insert after current scene)
+    const newSceneNumber = plannerScenes[currentSceneIndex].sceneNumber + 1;
+
+    // Create the new scene
+    const newSceneId = await createScene({
+      projectId,
+      sceneNumber: newSceneNumber,
+      title: `Scene ${newSceneNumber}`,
+      description: "Describe your scene here...",
+    });
+
+    await createDefaultShot(newSceneId);
+
+    // Renumber subsequent scenes
+    const scenesToReorder = plannerScenes
+      .slice(currentSceneIndex + 1)
+      .map((scene, idx) => ({
+        sceneId: scene._id,
+        sceneNumber: newSceneNumber + idx + 1,
+      }));
+
+    if (scenesToReorder.length > 0) {
+      await reorderScenes({
+        projectId,
+        sceneOrders: scenesToReorder,
+      });
+    }
   };
 
   const handleDeleteScene = async (sceneId: Id<"projectScenes">) => {
@@ -353,6 +444,85 @@ const PromptPlannerPage = () => {
     );
   };
 
+  const handleSelectShotImage = async (
+    shot: SceneShot,
+    image: ShotPreviewImage,
+  ) => {
+    if (!projectId) return;
+    try {
+      await selectMasterShot({
+        projectId,
+        sceneId: shot.sceneId,
+        shotId: shot._id,
+        selectedImageId: image._id,
+      });
+      toast.success("Shot image selected");
+      setHighlightedShotId(shot._id);
+    } catch (error) {
+      console.error("Failed to select shot image", error);
+      toast.error("Could not select this image");
+    }
+  };
+
+  const handleOpenRegenerate = (shot: SceneShot) => {
+    setRegenerateTarget(shot);
+    setRegeneratePrompt(shot.description || "");
+  };
+
+  const handleRegenerateShot = async () => {
+    if (!projectId || !regenerateTarget || regenerateBusy) return;
+    setRegenerateBusy(true);
+    try {
+      const response = await fetch("/api/project-redesign/generate-shot-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sceneId: regenerateTarget.sceneId,
+          shotId: regenerateTarget._id,
+          fixPrompt: regeneratePrompt.trim() || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Generation failed");
+      }
+      toast.success("Regenerating images...");
+      setRegenerateTarget(null);
+      setRegeneratePrompt("");
+    } catch (error) {
+      console.error("Failed to regenerate shot", error);
+      toast.error(
+        error instanceof Error ? error.message : "Unable to regenerate shot",
+      );
+    } finally {
+      setRegenerateBusy(false);
+    }
+  };
+
+  const handleSeedMissing = async () => {
+    if (!projectId || seedingMissing) return;
+    setSeedingMissing(true);
+    setSeedError(null);
+    try {
+      const summary = await requestPreviewSeed(projectId);
+      if (!summary.success) {
+        setSeedError(
+          summary.failures[0]?.reason ?? "Preview generation failed. Try again.",
+        );
+      } else {
+        toast.success("Generating missing previews…");
+      }
+    } catch (error) {
+      console.error("Failed to trigger preview seeding", error);
+      setSeedError(
+        error instanceof Error ? error.message : "Unable to trigger preview seeding",
+      );
+    } finally {
+      setSeedingMissing(false);
+    }
+  };
+
   const handleGallerySelect = (selection: ShotSelectionSummary) => {
     const shotId = selection.shot._id;
     setHighlightedShotId(shotId);
@@ -387,6 +557,17 @@ const PromptPlannerPage = () => {
           <PageNavigation projectId={projectId} />
 
           <div className="flex items-center gap-3">
+            {projectId && missingPreviewCount > 0 && (
+              <Button
+                variant="outline"
+                onClick={handleSeedMissing}
+                disabled={seedingMissing}
+                className="border-white/20 text-white hover:bg-white/10"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                {seedingMissing ? "Generating previews…" : `Generate missing previews (${missingPreviewCount})`}
+              </Button>
+            )}
             {selectionComplete && projectId && (
               <Button
                 variant="outline"
@@ -418,8 +599,17 @@ const PromptPlannerPage = () => {
         onDragEnd={handleDragEnd}
       >
         <div className="flex-1 overflow-auto pb-36">
-          <div className="max-w-7xl mx-auto px-8 py-6 flex gap-8">
-            <div className="flex-1 space-y-4 flex flex-col items-center">
+          <div className="max-w-7xl mx-auto px-8 py-6 space-y-6">
+            <div className="bg-[#101010] border border-white/10 rounded-3xl p-6">
+              <AssetManager projectId={projectId} />
+              {seedError && (
+                <p className="mt-3 text-sm text-red-400">
+                  Preview generation issues: {seedError}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-8">
+              <div className="flex-1 space-y-4 flex flex-col items-center">
               {!hasScenes ? (
                 <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl w-full max-w-2xl">
                   {isGeneratingScenes ? (
@@ -451,41 +641,67 @@ const PromptPlannerPage = () => {
                   items={plannerScenes.map((scene) => scene._id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {plannerScenes.map((scene, index) => (
-                    <SortableContext
-                      key={scene._id}
-                      items={scene.shots.map((shot) => shot._id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <PromptPlannerCard
-                        scene={scene}
-                        sceneIndex={index}
-                        shots={scene.shots}
-                        isExpanded={scene.isExpanded}
-                        activeShotId={highlightedShotId ?? selectedShot?.shotId}
-                        onToggleExpand={handleToggleExpand}
-                        onShotClick={handleShotClick}
-                        onAddShot={handleAddShot}
-                        onDeleteScene={handleDeleteScene}
-                        onDeleteShot={handleDeleteShot}
-                        onUpdateSceneTitle={handleUpdateSceneTitle}
-                        onUpdateSceneDescription={handleUpdateSceneDescription}
-                        onUpdateShotText={handleUpdateShotText}
-                        onEnterIterator={handleEnterIterator}
-                        registerShotRef={registerShotRef}
-                      />
-                    </SortableContext>
-                  ))}
+                  {plannerScenes.map((scene, index) => {
+                    const isLastScene = index === plannerScenes.length - 1;
+                    return (
+                      <div key={`scene-group-${scene._id}`} className="w-full">
+                        <SortableContext
+                          items={scene.shots.map((shot) => shot._id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <PromptPlannerCard
+                            scene={scene}
+                            sceneIndex={index}
+                            shots={scene.shots}
+                            isExpanded={scene.isExpanded}
+                            activeShotId={highlightedShotId ?? selectedShot?.shotId}
+                            onToggleExpand={handleToggleExpand}
+                            onShotClick={handleShotClick}
+                            onAddShot={handleAddShot}
+                            onAddSceneBelow={handleAddSceneBelow}
+                            onDeleteScene={handleDeleteScene}
+                            onDeleteShot={handleDeleteShot}
+                            onUpdateSceneTitle={handleUpdateSceneTitle}
+                            onUpdateSceneDescription={handleUpdateSceneDescription}
+                            onUpdateShotText={handleUpdateShotText}
+                            onEnterIterator={handleEnterIterator}
+                            registerShotRef={registerShotRef}
+                            getShotPreviewImages={(shotId) =>
+                              shotPreviewMap.get(shotId) ?? []
+                            }
+                            onSelectShotImage={handleSelectShotImage}
+                            onRegenerateShot={handleOpenRegenerate}
+                          />
+                        </SortableContext>
+
+                        {/* Only show Add Scene button after the last scene */}
+                        {isLastScene && (
+                          <Card className="mt-4 p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-all">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleAddSceneBelow(scene._id)}
+                              className="w-full border-dashed border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100"
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Add Scene
+                            </Button>
+                          </Card>
+                        )}
+                      </div>
+                    );
+                  })}
                 </SortableContext>
               )}
             </div>
 
-            <div className="hidden xl:block w-72">
-              <VerticalMediaGallery
-                projectId={projectId}
-                activeShotId={highlightedShotId ?? selectedShot?.shotId}
-                onSelect={handleGallerySelect}
-              />
+              <div className="hidden xl:block w-72">
+                <VerticalMediaGallery
+                  projectId={projectId}
+                  activeShotId={highlightedShotId ?? selectedShot?.shotId}
+                  onSelect={handleGallerySelect}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -510,6 +726,54 @@ const PromptPlannerPage = () => {
         />
       </div>
       </div>
+      <Dialog
+        open={!!regenerateTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRegenerateTarget(null);
+            setRegeneratePrompt("");
+          }
+        }}
+      >
+        <DialogContent className="bg-[#111] border border-white/10 text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Regenerate shot images</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Describe what should change. We&apos;ll generate four new frames for{" "}
+              {regenerateTarget
+                ? `Shot ${regenerateTarget.shotNumber}`
+                : "this shot"}{" "}
+              using your guidance.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={regeneratePrompt}
+            onChange={(e) => setRegeneratePrompt(e.target.value)}
+            className="bg-[#1b1b1b] border-white/10 text-white min-h-[120px]"
+            placeholder="e.g., make it dusk, add dramatic lighting..."
+          />
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRegenerateTarget(null);
+                setRegeneratePrompt("");
+              }}
+              className="border-white/20 text-gray-300"
+              disabled={regenerateBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRegenerateShot}
+              disabled={regenerateBusy}
+              className="bg-white text-black hover:bg-gray-200"
+            >
+              {regenerateBusy ? "Generating..." : "Generate 4 new frames"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

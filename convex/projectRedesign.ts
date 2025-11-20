@@ -50,6 +50,8 @@ export const updateRedesignStatus = mutation({
     projectId: v.id("videoProjects"),
     status: v.union(
       v.literal("prompt_planning"),
+      v.literal("asset_upload"),
+      v.literal("scenes_generating"),
       v.literal("scenes_setup"),
       v.literal("shot_iteration"),
       v.literal("storyboard_final"),
@@ -179,6 +181,16 @@ export const createSceneShot = mutation({
     shotNumber: v.number(),
     description: v.string(),
     initialPrompt: v.string(),
+    referencedAssets: v.optional(v.array(v.id("projectAssets"))),
+    lastImageGenerationAt: v.optional(v.number()),
+    lastImageStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -189,6 +201,9 @@ export const createSceneShot = mutation({
       shotNumber: args.shotNumber,
       description: args.description,
       initialPrompt: args.initialPrompt,
+      referencedAssets: args.referencedAssets,
+      lastImageGenerationAt: args.lastImageGenerationAt,
+      lastImageStatus: args.lastImageStatus,
       createdAt: now,
       updatedAt: now,
     });
@@ -203,6 +218,16 @@ export const updateSceneShot = mutation({
     description: v.optional(v.string()),
     initialPrompt: v.optional(v.string()),
     selectedImageId: v.optional(v.id("shotImages")),
+    referencedAssets: v.optional(v.array(v.id("projectAssets"))),
+    lastImageGenerationAt: v.optional(v.number()),
+    lastImageStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const updates: any = { updatedAt: Date.now() };
@@ -212,6 +237,12 @@ export const updateSceneShot = mutation({
       updates.initialPrompt = args.initialPrompt;
     if (args.selectedImageId !== undefined)
       updates.selectedImageId = args.selectedImageId;
+    if (args.referencedAssets !== undefined)
+      updates.referencedAssets = args.referencedAssets;
+    if (args.lastImageGenerationAt !== undefined)
+      updates.lastImageGenerationAt = args.lastImageGenerationAt;
+    if (args.lastImageStatus !== undefined)
+      updates.lastImageStatus = args.lastImageStatus;
 
     await ctx.db.patch(args.shotId, updates);
   },
@@ -296,6 +327,8 @@ export const createShotImage = mutation({
       ),
     ),
     isFavorite: v.optional(v.boolean()),
+    usedAssets: v.optional(v.array(v.id("projectAssets"))),
+    sourcePromptVersion: v.optional(v.number()),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -314,6 +347,8 @@ export const createShotImage = mutation({
       replicateImageId: args.replicateImageId,
       status: args.status || "complete",
       isFavorite: args.isFavorite || false,
+      usedAssets: args.usedAssets,
+      sourcePromptVersion: args.sourcePromptVersion,
       metadata: args.metadata,
       createdAt: now,
       updatedAt: now,
@@ -337,6 +372,8 @@ export const updateShotImage = mutation({
       ),
     ),
     isFavorite: v.optional(v.boolean()),
+    usedAssets: v.optional(v.array(v.id("projectAssets"))),
+    sourcePromptVersion: v.optional(v.number()),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -347,6 +384,9 @@ export const updateShotImage = mutation({
       updates.imageStorageId = args.imageStorageId;
     if (args.status !== undefined) updates.status = args.status;
     if (args.isFavorite !== undefined) updates.isFavorite = args.isFavorite;
+    if (args.usedAssets !== undefined) updates.usedAssets = args.usedAssets;
+    if (args.sourcePromptVersion !== undefined)
+      updates.sourcePromptVersion = args.sourcePromptVersion;
     if (args.metadata !== undefined) updates.metadata = args.metadata;
 
     await ctx.db.patch(args.imageId, updates);
@@ -402,6 +442,8 @@ export const batchCreateShotImages = mutation({
             v.literal("failed"),
           ),
         ),
+        usedAssets: v.optional(v.array(v.id("projectAssets"))),
+        sourcePromptVersion: v.optional(v.number()),
       }),
     ),
   },
@@ -423,6 +465,8 @@ export const batchCreateShotImages = mutation({
         replicateImageId: img.replicateImageId,
         status: img.status || "complete",
         isFavorite: false,
+        usedAssets: img.usedAssets,
+        sourcePromptVersion: img.sourcePromptVersion,
         createdAt: now,
         updatedAt: now,
       });
@@ -657,6 +701,37 @@ export const getProjectShotSelections = query({
     return enriched
       .filter((item): item is NonNullable<typeof item> => !!item)
       .sort((a, b) => b.selection.updatedAt - a.selection.updatedAt);
+  },
+});
+
+export const getShotPreviewImages = query({
+  args: { projectId: v.id("videoProjects") },
+  handler: async (ctx, args) => {
+    const images = await ctx.db
+      .query("shotImages")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const previews = new Map<Id<"sceneShots">, any[]>();
+
+    for (const image of images) {
+      if (image.iterationNumber !== 0) continue;
+      const list = previews.get(image.shotId) ?? [];
+      if (list.length >= 4) continue;
+      list.push({
+        _id: image._id,
+        shotId: image.shotId,
+        imageUrl: image.imageUrl,
+        status: image.status,
+        variantNumber: image.variantNumber,
+      });
+      previews.set(image.shotId, list);
+    }
+
+    return Array.from(previews.entries()).map(([shotId, imgs]) => ({
+      shotId,
+      images: imgs.sort((a, b) => a.variantNumber - b.variantNumber),
+    }));
   },
 });
 

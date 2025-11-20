@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { ProjectSidebar } from "@/components/ProjectSidebar";
-import { DeveloperToolsMenu } from "@/components/DeveloperToolsMenu";
+import { DeveloperToolsMenu } from "@/components/redesign/DeveloperToolsMenu";
 import { FlowVisualization } from "@/components/FlowVisualization";
 
 export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
@@ -22,7 +22,15 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
 
   // Redesign pages: clean layout with no nav/dev tools
   if (isRedesignPage) {
-    return <main className="h-screen overflow-auto">{children}</main>;
+    return (
+      <main className="h-screen overflow-auto relative">
+        {children}
+        <div className="fixed top-4 right-4 z-60">
+          <DeveloperToolsMenu />
+        </div>
+        <FlowVisualization />
+      </main>
+    );
   }
 
   if (!showSidebar) {

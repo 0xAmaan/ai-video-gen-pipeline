@@ -16,6 +16,7 @@ import {
   MoreVertical,
   ArrowUpRight,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,9 +24,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ProjectScene, SceneShot } from "@/lib/types/redesign";
+import { ProjectScene, SceneShot, ShotPreviewImage } from "@/lib/types/redesign";
 import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { ShotImageGrid } from "./ShotImageGrid";
 
 interface PromptPlannerCardProps {
   scene: ProjectScene;
@@ -36,6 +38,7 @@ interface PromptPlannerCardProps {
   onToggleExpand: (sceneId: Id<"projectScenes">) => void;
   onShotClick: (shot: SceneShot) => void;
   onAddShot: (sceneId: Id<"projectScenes">) => void;
+  onAddSceneBelow: (sceneId: Id<"projectScenes">) => void;
   onDeleteScene: (sceneId: Id<"projectScenes">) => void;
   onDeleteShot: (shotId: Id<"sceneShots">) => void;
   onUpdateSceneTitle: (sceneId: Id<"projectScenes">, title: string) => void;
@@ -46,6 +49,9 @@ interface PromptPlannerCardProps {
   onUpdateShotText: (shotId: Id<"sceneShots">, text: string) => void;
   onEnterIterator: (shot: SceneShot) => void;
   registerShotRef?: (shotId: Id<"sceneShots">, node: HTMLDivElement | null) => void;
+  getShotPreviewImages?: (shotId: Id<"sceneShots">) => ShotPreviewImage[] | undefined;
+  onSelectShotImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
+  onRegenerateShot?: (shot: SceneShot) => void;
 }
 
 interface ShotCardProps {
@@ -59,6 +65,9 @@ interface ShotCardProps {
   onUpdateShotText: (shotId: Id<"sceneShots">, text: string) => void;
   onEnterIterator: (shot: SceneShot) => void;
   registerShotRef?: (shotId: Id<"sceneShots">, node: HTMLDivElement | null) => void;
+  previewImages?: ShotPreviewImage[];
+  onSelectImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
+  onRegenerateShot?: (shot: SceneShot) => void;
 }
 
 const ShotCard = ({
@@ -72,6 +81,9 @@ const ShotCard = ({
   onUpdateShotText,
   onEnterIterator,
   registerShotRef,
+  previewImages,
+  onSelectImage,
+  onRegenerateShot,
 }: ShotCardProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(shot.description);
@@ -145,13 +157,13 @@ const ShotCard = ({
             <Badge
               variant="secondary"
               className={cn(
-                "text-xs flex items-center gap-1",
-                shot.selectedImageId ? "bg-emerald-500/20 text-emerald-300" : "",
+                "text-xs flex items-center gap-1 border",
+                shot.selectedImageId
+                  ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/30"
+                  : "bg-[#111] text-gray-300 border-gray-700",
               )}
             >
-              {shot.selectedImageId && (
-                <CheckCircle2 className="w-3 h-3" />
-              )}
+              {shot.selectedImageId && <CheckCircle2 className="w-3 h-3" />}
               {label}
             </Badge>
           </div>
@@ -199,6 +211,17 @@ const ShotCard = ({
             <Trash2 className="w-4 h-4" />
           </Button>
           <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRegenerateShot?.(shot);
+            }}
+            className="h-8 w-8 text-gray-400 hover:text-gray-100"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+          <Button
             size="icon"
             onClick={(e) => {
               e.stopPropagation();
@@ -209,7 +232,21 @@ const ShotCard = ({
             <ArrowUpRight className="w-4 h-4" />
           </Button>
         </div>
-      </div>
+       </div>
+      <ShotImageGrid
+        images={previewImages}
+        isLoading={shot.lastImageStatus === "processing" || shot.lastImageStatus === "pending"}
+        selectedImageId={shot.selectedImageId}
+        onSelect={(image) => onSelectImage?.(shot, image)}
+        onIterate={() => onEnterIterator(shot)}
+        footer={
+          shot.lastImageStatus === "failed" ? (
+            <p className="text-xs text-red-400">
+              Generation failed. Try regenerating with new guidance.
+            </p>
+          ) : null
+        }
+      />
     </Card>
   );
 };
@@ -223,6 +260,7 @@ export const PromptPlannerCard = ({
   onToggleExpand,
   onShotClick,
   onAddShot,
+  onAddSceneBelow,
   onDeleteScene,
   onDeleteShot,
   onUpdateSceneTitle,
@@ -230,6 +268,9 @@ export const PromptPlannerCard = ({
   onUpdateShotText,
   onEnterIterator,
   registerShotRef,
+  getShotPreviewImages,
+  onSelectShotImage,
+  onRegenerateShot,
 }: PromptPlannerCardProps) => {
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
@@ -262,7 +303,7 @@ export const PromptPlannerCard = ({
       ref={setSceneRef}
       style={sceneStyle}
       className={cn(
-        "w-full max-w-3xl p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-opacity",
+        "p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-opacity",
         isSceneDragging && "opacity-50",
       )}
     >
@@ -360,7 +401,7 @@ export const PromptPlannerCard = ({
       </div>
 
       {isExpanded && (
-        <div className="ml-8 space-y-2">
+        <div className="space-y-2">
           {sortedShots.map((shot, idx) => (
             <ShotCard
               key={shot._id}
@@ -374,6 +415,9 @@ export const PromptPlannerCard = ({
               onUpdateShotText={onUpdateShotText}
               onEnterIterator={onEnterIterator}
               registerShotRef={registerShotRef}
+              previewImages={getShotPreviewImages?.(shot._id)}
+              onSelectImage={onSelectShotImage}
+              onRegenerateShot={onRegenerateShot}
             />
           ))}
 
