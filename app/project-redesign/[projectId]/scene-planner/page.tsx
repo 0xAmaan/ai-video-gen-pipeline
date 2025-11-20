@@ -21,7 +21,7 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowRight } from "lucide-react";
+import { Plus, ArrowRight, Sparkles } from "lucide-react";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { PromptPlannerCard } from "@/components/redesign/PromptPlannerCard";
 import { ChatInput } from "@/components/redesign/ChatInput";
@@ -375,13 +375,20 @@ const PromptPlannerPage = () => {
         />
       ))}
       <div className="h-screen w-full bg-[var(--bg-base)] flex flex-col">
-      <div className="flex-shrink-0 border-b border-gray-800 bg-[var(--bg-base)]/95 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-8 py-4 flex flex-wrap items-center gap-4 justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Prompt Planner</h1>
-            <p className="text-sm text-gray-400 mt-1">
-              Map out your scenes and shots with AI-enhanced prompts
-            </p>
+      <div className="flex-shrink-0 border-b border-gray-800/50 bg-gradient-to-b from-[var(--bg-surface)] to-[var(--bg-base)] backdrop-blur-sm sticky top-0 z-10 shadow-lg">
+        <div className="max-w-7xl mx-auto px-8 py-6 flex flex-wrap items-center gap-6 justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">Prompt Planner</h1>
+                <p className="text-sm text-gray-400">
+                  Map out your scenes and shots with AI-enhanced prompts
+                </p>
+              </div>
+            </div>
           </div>
 
           <PageNavigation projectId={projectId} />
@@ -393,7 +400,7 @@ const PromptPlannerPage = () => {
                 onClick={() =>
                   router.push(`/project-redesign/${projectId}/storyboard`)
                 }
-                className="border-emerald-500/50 text-emerald-200 hover:bg-emerald-500/10"
+                className="border-emerald-500/50 text-emerald-200 hover:bg-emerald-500/10 hover:border-emerald-500/70 transition-all"
               >
                 <ArrowRight className="w-4 h-4 mr-2" />
                 Go to Storyboard
@@ -401,8 +408,20 @@ const PromptPlannerPage = () => {
             )}
 
             <Button
-              onClick={handleAddScene}
-              className="bg-white text-black hover:bg-gray-200"
+              onClick={() => {
+                (async () => {
+                  if (!projectId) return;
+                  const nextSceneNumber =
+                    plannerScenes.reduce((max, scene) => Math.max(max, scene.sceneNumber), 0) + 1;
+                  await createScene({
+                    projectId,
+                    sceneNumber: nextSceneNumber,
+                    title: `Scene ${nextSceneNumber}`,
+                    description: "Describe your scene here...",
+                  });
+                })();
+              }}
+              className="bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all hover:scale-105"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Scene
