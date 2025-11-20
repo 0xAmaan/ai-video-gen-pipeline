@@ -28,6 +28,8 @@ export default defineSchema({
     redesignStatus: v.optional(
       v.union(
         v.literal("prompt_planning"),
+        v.literal("asset_upload"),
+        v.literal("scenes_generating"),
         v.literal("scenes_setup"),
         v.literal("shot_iteration"),
         v.literal("storyboard_final"),
@@ -257,6 +259,35 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_project", ["projectId", "sceneNumber"]),
 
+  projectAssets: defineTable({
+    projectId: v.id("videoProjects"),
+    assetType: v.union(
+      v.literal("logo"),
+      v.literal("product"),
+      v.literal("character"),
+      v.literal("background"),
+      v.literal("prop"),
+      v.literal("reference"),
+      v.literal("other"),
+    ),
+    name: v.string(),
+    description: v.optional(v.string()),
+    usageNotes: v.optional(v.string()),
+    prominence: v.optional(
+      v.union(v.literal("primary"), v.literal("secondary"), v.literal("subtle")),
+    ),
+    referenceColors: v.optional(v.array(v.string())),
+    img2imgStrength: v.optional(v.number()),
+    storageId: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    isActive: v.boolean(),
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_active", ["projectId", "isActive"]),
+
   // Individual shots within a scene (camera angles, moments)
   sceneShots: defineTable({
     projectId: v.id("videoProjects"), // For easy querying
@@ -265,6 +296,16 @@ export default defineSchema({
     description: v.string(), // Shot description/direction
     initialPrompt: v.string(), // Base prompt for first generation
     selectedImageId: v.optional(v.id("shotImages")), // Final chosen image
+    referencedAssets: v.optional(v.array(v.id("projectAssets"))),
+    lastImageGenerationAt: v.optional(v.number()),
+    lastImageStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -290,6 +331,8 @@ export default defineSchema({
       v.literal("failed"),
     ),
     isFavorite: v.boolean(), // User starred this variant
+    usedAssets: v.optional(v.array(v.id("projectAssets"))),
+    sourcePromptVersion: v.optional(v.number()),
     metadata: v.optional(v.any()), // Generation params (model, cfg_scale, etc.)
     createdAt: v.number(),
     updatedAt: v.number(),
