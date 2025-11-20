@@ -129,6 +129,7 @@ const createMockImages = (count: number) => {
 export async function POST(req: Request) {
   const flowTracker = getFlowTracker();
   const startedAt = Date.now();
+  let currentShotId: Id<"sceneShots"> | null = null;
 
   try {
     const body = (await req.json()) as GenerateRequestBody;
@@ -140,6 +141,7 @@ export async function POST(req: Request) {
       parentImageId,
       fixPrompt,
     } = body;
+    currentShotId = shotId;
 
     if (!projectId || !sceneId || !shotId) {
       return apiError("Missing required fields", 400);
@@ -160,7 +162,7 @@ export async function POST(req: Request) {
       },
     );
 
-    const convex = await getConvexClient();
+    const convex = await getConvexClient({ requireUser: false });
     const shotData = await convex.query(api.projectRedesign.getShotWithScene, {
       shotId,
     });
@@ -190,6 +192,12 @@ export async function POST(req: Request) {
       });
     }
 
+    await convex.mutation(api.projectRedesign.updateSceneShot, {
+      shotId,
+      lastImageGenerationAt: Date.now(),
+      lastImageStatus: "processing",
+    });
+
     const latestIteration =
       shotData.images.reduce(
         (max, image) => Math.max(max, image.iterationNumber),
@@ -213,7 +221,7 @@ export async function POST(req: Request) {
       fixPrompt,
     );
 
-    const runs = isInitialRequest ? 2 : 1;
+    const runs = 6;
     let variantPayloads: Array<{
       variantNumber: number;
       imageUrl: string;
@@ -223,7 +231,7 @@ export async function POST(req: Request) {
 
     if (shouldMock) {
       await mockDelay(150);
-      const mockVariants = createMockImages(runs * 2);
+      const mockVariants = createMockImages(6);
       variantPayloads = mockVariants.map((variant, index) => ({
         ...variant,
         variantNumber: index,
@@ -290,7 +298,7 @@ export async function POST(req: Request) {
       }
 
       let variantCounter = 0;
-      variantPayloads = predictionResults.flatMap((result) =>
+      const allVariants = predictionResults.flatMap((result) =>
         result.urls.map((url) => ({
           variantNumber: variantCounter++,
           imageUrl: url,
@@ -298,6 +306,24 @@ export async function POST(req: Request) {
           status: "complete" as const,
         })),
       );
+
+      // Ensure exactly 6 images (take first 6 if more, pad with duplicates if less)
+      if (allVariants.length >= 6) {
+        variantPayloads = allVariants.slice(0, 6).map((v, idx) => ({
+          ...v,
+          variantNumber: idx,
+        }));
+      } else {
+        variantPayloads = allVariants;
+        // If we have fewer than 6, duplicate some to reach 6
+        while (variantPayloads.length < 6) {
+          const sourceIdx = variantPayloads.length % allVariants.length;
+          variantPayloads.push({
+            ...allVariants[sourceIdx],
+            variantNumber: variantPayloads.length,
+          });
+        }
+      }
     }
 
     if (variantPayloads.length === 0) {
@@ -331,6 +357,12 @@ export async function POST(req: Request) {
       insertedIds.some((id) => id === image._id),
     );
 
+    await convex.mutation(api.projectRedesign.updateSceneShot, {
+      shotId,
+      lastImageGenerationAt: Date.now(),
+      lastImageStatus: "complete",
+    });
+
     flowTracker.trackTiming(
       "Shot iteration generation",
       Date.now() - startedAt,
@@ -344,6 +376,18 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("Error generating shot images:", error);
+    if (currentShotId) {
+      try {
+        const convex = await getConvexClient({ requireUser: false });
+        await convex.mutation(api.projectRedesign.updateSceneShot, {
+          shotId: currentShotId,
+          lastImageGenerationAt: Date.now(),
+          lastImageStatus: "failed",
+        });
+      } catch (statusError) {
+        console.error("Failed to mark shot status after error:", statusError);
+      }
+    }
     return apiError(
       "Failed to generate shot images",
       500,

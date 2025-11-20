@@ -29,7 +29,7 @@ export const IterationRow = ({
 
   return (
     <div className="w-full">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-3 gap-6">
         {images.map((image) => {
           const isSelected = selectedImageId === image._id;
           return (
@@ -38,7 +38,7 @@ export const IterationRow = ({
               onClick={() => onSelectImage(image)}
               className={`
                 relative aspect-video rounded-xl overflow-hidden group cursor-pointer
-                transition-all duration-200 border border-gray-800/60
+                transition-all duration-200 border-2 border-gray-800/60
                 ${
                   isSelected
                     ? "ring-4 ring-[var(--color-primary)] scale-[1.02]"
@@ -53,7 +53,7 @@ export const IterationRow = ({
               />
 
               {isSelected && (
-                <div className="absolute top-2 right-2 bg-[var(--color-primary)] text-white px-2 py-1 rounded-full text-xs font-semibold">
+                <div className="absolute top-3 right-3 bg-[var(--color-primary)] text-white px-3 py-1.5 rounded-full text-sm font-semibold">
                   Selected
                 </div>
               )}
@@ -64,9 +64,9 @@ export const IterationRow = ({
                     e.stopPropagation();
                     onIterateFromImage(image);
                   }}
-                  className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors"
+                  className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white px-4 py-3 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors"
                 >
-                  <RefreshCw className="w-3 h-3" />
+                  <RefreshCw className="w-4 h-4" />
                   Iterate
                 </button>
               </div>

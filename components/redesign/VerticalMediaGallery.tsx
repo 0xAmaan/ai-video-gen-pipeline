@@ -22,6 +22,15 @@ export const VerticalMediaGallery = ({
     return null;
   }
 
+  const orderedSelections = [...selections].sort((a, b) => {
+    if (a.scene.sceneNumber !== b.scene.sceneNumber) {
+      return a.scene.sceneNumber - b.scene.sceneNumber;
+    }
+    const shotA = a.shot.shotNumber ?? 0;
+    const shotB = b.shot.shotNumber ?? 0;
+    return shotA - shotB;
+  });
+
   return (
     <aside className="sticky top-32 rounded-3xl bg-[#0c0c0c]/90 border border-white/5 shadow-xl shadow-black/40 p-4 space-y-3 max-h-[70vh] overflow-auto">
       <div className="px-1">
@@ -33,7 +42,7 @@ export const VerticalMediaGallery = ({
         </p>
       </div>
 
-      {selections.map((selection) => {
+      {orderedSelections.map((selection) => {
         const isActive = activeShotId === selection.shot._id;
         return (
           <button

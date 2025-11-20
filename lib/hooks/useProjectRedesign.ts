@@ -16,11 +16,66 @@ import {
   ShotWithSceneData,
   ShotSelectionSummary,
   StoryboardSceneGroup,
+  ProjectAsset,
+  ShotPreviewGroup,
 } from "@/lib/types/redesign";
 
 // ========================================
 // Project Hooks
 // ========================================
+
+export const useProjectAssets = (
+  projectId?: Id<"videoProjects">,
+  options?: { includeInactive?: boolean },
+) => {
+  return useQuery(
+    api.projectAssets.getProjectAssets,
+    projectId
+      ? {
+          projectId,
+          includeInactive: options?.includeInactive,
+        }
+      : "skip",
+  ) as ProjectAsset[] | undefined;
+};
+
+export const useCreateProjectAsset = () => {
+  return useMutation(api.projectAssets.createProjectAsset);
+};
+
+export const useUpdateProjectAsset = () => {
+  return useMutation(api.projectAssets.updateProjectAsset);
+};
+
+export const useToggleProjectAsset = () => {
+  return useMutation(api.projectAssets.toggleAssetActive);
+};
+
+export const useDeleteProjectAsset = () => {
+  return useMutation(api.projectAssets.deleteProjectAsset);
+};
+
+export const useAssetsForShot = (
+  projectId?: Id<"videoProjects">,
+  options?: { includeInactive?: boolean },
+) => {
+  return useQuery(
+    api.projectAssets.getAssetsForShot,
+    projectId
+      ? {
+          projectId,
+          includeInactive: options?.includeInactive,
+        }
+      : "skip",
+  ) as ProjectAsset[] | undefined;
+};
+
+export const useShotPreviewImages = (projectId?: Id<"videoProjects">) => {
+  return useQuery(
+    api.projectRedesign.getShotPreviewImages,
+    projectId ? { projectId } : "skip",
+  ) as ShotPreviewGroup[] | undefined;
+};
 
 export const useCreateRedesignProject = () => {
   return useMutation(api.projectRedesign.createRedesignProject);

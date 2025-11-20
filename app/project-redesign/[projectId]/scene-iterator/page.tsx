@@ -203,41 +203,51 @@ const SceneIteratorPage = () => {
   return (
     <div className="min-h-screen bg-[#050505] w-full pb-40">
       <div className="sticky top-0 z-10 bg-[#050505]/80 backdrop-blur-sm border-b border-gray-900">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-gray-500">
-              Scene {shotData?.scene.sceneNumber ?? "—"}
-            </p>
-            <h1 className="text-2xl font-bold text-white">
-              {shotData?.scene.title || "Scene Iterator"}
-            </h1>
-            <p className="text-sm text-gray-400 mt-1">
-              {shotData?.shot.description ||
-                "Select an image, then iterate to refine your master shot"}
-            </p>
+        <div className="max-w-[1800px] mx-auto px-6 py-4">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs uppercase tracking-wider text-gray-500">
+                Scene {shotData?.scene.sceneNumber ?? "—"}
+              </p>
+              <h1 className="text-2xl font-bold text-white">
+                {shotData?.scene.title || "Scene Iterator"}
+              </h1>
+              <p className="text-sm text-gray-400 mt-1">
+                {shotData?.shot.description ||
+                  "Select an image, then iterate to refine your master shot"}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <PageNavigation projectId={projectId} shotId={shotId} />
+
+              <Button
+                onClick={handleSubmitSelected}
+                disabled={!selectedImageId || isSubmittingSelection}
+                className={cn(
+                  "px-6 py-2 rounded-xl font-semibold whitespace-nowrap",
+                  selectedImageId
+                    ? "bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white"
+                    : "bg-gray-800 text-gray-500 cursor-not-allowed",
+                )}
+              >
+                <Check className="w-4 h-4 mr-2" />
+                Submit Selected
+              </Button>
+            </div>
           </div>
-
-          <PageNavigation projectId={projectId} shotId={shotId} />
-
-          <Button
-            onClick={handleSubmitSelected}
-            disabled={!selectedImageId || isSubmittingSelection}
-            className={cn(
-              "px-6 py-2 rounded-xl font-semibold",
-              selectedImageId
-                ? "bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white"
-                : "bg-gray-800 text-gray-500 cursor-not-allowed",
-            )}
-          >
-            <Check className="w-4 h-4 mr-2" />
-            Submit Selected
-          </Button>
         </div>
       </div>
 
-  <div className="max-w-7xl mx-auto px-6 py-8 flex gap-8">
-        <div className="flex-1 space-y-10">
-          {groupedIterations.length === 0 ? (
+  <div className="max-w-[2000px] mx-auto px-8 py-8 flex gap-8">
+        <div className="flex-1 space-y-10 min-w-0">
+          {groupedIterations.length === 0 && isGenerating ? (
+            <div className="flex flex-col items-center justify-center min-h-[600px] gap-6">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[var(--color-primary)]"></div>
+              <p className="text-xl text-gray-300 font-medium">Generating images...</p>
+              <p className="text-sm text-gray-500">Creating 6 variations for your shot</p>
+            </div>
+          ) : groupedIterations.length === 0 ? (
             <div className="border border-dashed border-gray-800 rounded-3xl p-12 text-center text-gray-500">
               No images yet. Use the chat at the bottom to generate your first batch.
             </div>
@@ -278,7 +288,7 @@ const SceneIteratorPage = () => {
           )}
         </div>
 
-        <div className="hidden xl:block w-72">
+        <div className="hidden xl:block w-72 flex-shrink-0">
           <VerticalMediaGallery
             projectId={projectId}
             activeShotId={shotId}
