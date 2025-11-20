@@ -8,6 +8,8 @@ export type WorkflowVersion = "v1_legacy" | "v2_redesign";
 
 export type RedesignStatus =
   | "prompt_planning"
+  | "asset_upload"
+  | "scenes_generating"
   | "scenes_setup"
   | "shot_iteration"
   | "storyboard_final"
@@ -34,6 +36,40 @@ export interface RedesignProject {
   workflowVersion?: WorkflowVersion;
   promptPlannerData?: string;
   redesignStatus?: RedesignStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ========================================
+// Asset Types
+// ========================================
+
+export type ProjectAssetType =
+  | "logo"
+  | "product"
+  | "character"
+  | "background"
+  | "prop"
+  | "reference"
+  | "other";
+
+export type AssetProminence = "primary" | "secondary" | "subtle";
+
+export interface ProjectAsset {
+  _id: Id<"projectAssets">;
+  _creationTime: number;
+  projectId: Id<"videoProjects">;
+  assetType: ProjectAssetType;
+  name: string;
+  description?: string;
+  usageNotes?: string;
+  prominence?: AssetProminence;
+  referenceColors?: string[];
+  img2imgStrength?: number;
+  storageId?: string;
+  imageUrl?: string;
+  isActive: boolean;
+  metadata?: any;
   createdAt: number;
   updatedAt: number;
 }
@@ -70,6 +106,9 @@ export interface SceneShot {
   description: string;
   initialPrompt: string;
   selectedImageId?: Id<"shotImages">;
+  referencedAssets?: Id<"projectAssets">[];
+  lastImageGenerationAt?: number;
+  lastImageStatus?: ImageGenerationStatus;
   createdAt: number;
   updatedAt: number;
 }
@@ -98,9 +137,24 @@ export interface ShotImage {
   replicateImageId?: string;
   status: ImageGenerationStatus;
   isFavorite: boolean;
+  usedAssets?: Id<"projectAssets">[];
+  sourcePromptVersion?: number;
   metadata?: any;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface ShotPreviewImage {
+  _id: Id<"shotImages">;
+  shotId: Id<"sceneShots">;
+  imageUrl: string;
+  status: ImageGenerationStatus;
+  variantNumber: number;
+}
+
+export interface ShotPreviewGroup {
+  shotId: Id<"sceneShots">;
+  images: ShotPreviewImage[];
 }
 
 export interface ShotImagesByIteration {
