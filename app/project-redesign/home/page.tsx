@@ -1,17 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Plus } from "lucide-react";
-import { NewProjectDialog } from "@/components/NewProjectDialog";
 
 const HomePage = () => {
   const router = useRouter();
   const { isSignedIn, userId } = useAuth();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const projects = useQuery(
     api.video.getUserProjects,
     isSignedIn ? {} : "skip",
@@ -65,7 +62,7 @@ const HomePage = () => {
         <div className="flex flex-wrap items-center justify-center gap-5 max-w-5xl">
           {/* New Project Button */}
           <button
-            onClick={() => setIsDialogOpen(true)}
+            onClick={() => router.push("/project-redesign/input")}
             className="group relative w-56 h-36 rounded-3xl bg-gray-600/60 border border-gray-500/40 hover:border-gray-400/60 transition-all duration-300 hover:scale-[1.02] cursor-pointer"
           >
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
@@ -98,9 +95,6 @@ const HomePage = () => {
           ))}
         </div>
       </div>
-
-      {/* New Project Dialog */}
-      <NewProjectDialog open={isDialogOpen} onOpenChange={setIsDialogOpen} />
     </div>
   );
 };
