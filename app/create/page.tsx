@@ -257,7 +257,10 @@ const CreateVideoPage = () => {
           await updateVideoClip({
             clipId,
             status: "complete",
-            videoUrl: result.videoUrl,
+            videoUrl: result.proxyUrl ?? result.videoUrl,
+            proxyUrl: result.proxyUrl ?? undefined,
+            r2Key: result.r2Key ?? undefined,
+            sourceUrl: result.sourceUrl ?? result.videoUrl,
           });
           console.log(`Clip ${clipId} completed: ${result.videoUrl}`);
         } else if (result.status === "failed") {

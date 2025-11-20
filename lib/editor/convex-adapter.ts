@@ -6,6 +6,7 @@ import type {
   Sequence,
   Track,
 } from "./types";
+import { buildAssetUrl } from "./io/asset-url";
 
 type ConvexProject = Doc<"videoProjects">;
 type ConvexClip = Doc<"videoClips">;
@@ -42,6 +43,8 @@ const buildMediaAsset = (
     ? `Scene ${scene.sceneNumber}: ${scene.description.slice(0, 42)}`
     : `Clip ${index + 1}`;
   const safeDuration = Math.max(clip.duration ?? 0, 0.1);
+  const baseUrl = clip.proxyUrl ?? clip.videoUrl ?? "";
+  const url = buildAssetUrl(clip.r2Key, baseUrl);
   return {
     id: clip._id,
     name,
@@ -50,7 +53,10 @@ const buildMediaAsset = (
     width,
     height,
     fps: DEFAULT_FPS,
-    url: clip.videoUrl ?? "",
+    url,
+    r2Key: clip.r2Key ?? undefined,
+    proxyUrl: clip.proxyUrl ? buildAssetUrl(clip.r2Key, clip.proxyUrl) : undefined,
+    sourceUrl: clip.sourceUrl ?? undefined,
   };
 };
 

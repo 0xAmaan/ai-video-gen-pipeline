@@ -5,6 +5,12 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
 
+const workerBase =
+  process.env.R2_INGEST_URL ||
+  process.env.NEXT_PUBLIC_R2_PROXY_BASE ||
+  "";
+const workerAuth = process.env.R2_INGEST_TOKEN || process.env.AUTH_TOKEN || "";
+
 export async function POST(req: Request) {
   try {
     const { predictionId } = await req.json();
@@ -63,9 +69,14 @@ export async function POST(req: Request) {
         videoUrl = (output as any).url;
       }
 
+      const ingestResult = await maybeIngestToR2(videoUrl, predictionId);
+
       return NextResponse.json({
         status: "complete",
-        videoUrl: videoUrl,
+        videoUrl: ingestResult?.proxyUrl ?? videoUrl,
+        proxyUrl: ingestResult?.proxyUrl ?? null,
+        r2Key: ingestResult?.key ?? null,
+        sourceUrl: videoUrl,
       });
     } else if (
       prediction.status === "failed" ||
@@ -93,5 +104,35 @@ export async function POST(req: Request) {
       },
       { status: 500 },
     );
+  }
+}
+
+async function maybeIngestToR2(sourceUrl: string | null, predictionId: string) {
+  if (!sourceUrl || !workerBase) return null;
+  const base = workerBase.endsWith("/") ? workerBase.slice(0, -1) : workerBase;
+  const endpoint = `${base}/ingest`;
+  const key = `videos/${predictionId}.mp4`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(workerAuth ? { authorization: `Bearer ${workerAuth}` } : {}),
+      },
+      body: JSON.stringify({ sourceUrl, key }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn("R2 ingest failed", response.status, text);
+      return null;
+    }
+    return {
+      key,
+      proxyUrl: `${base}/asset/${encodeURIComponent(key)}`,
+    };
+  } catch (error) {
+    console.warn("R2 ingest error", error);
+    return null;
   }
 }

@@ -478,6 +478,9 @@ export const updateVideoClip = mutation({
       ),
     ),
     videoUrl: v.optional(v.string()),
+    proxyUrl: v.optional(v.string()),
+    r2Key: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -501,6 +504,9 @@ export const updateVideoClip = mutation({
     const updates: any = { updatedAt: Date.now() };
     if (args.status !== undefined) updates.status = args.status;
     if (args.videoUrl !== undefined) updates.videoUrl = args.videoUrl;
+    if (args.proxyUrl !== undefined) updates.proxyUrl = args.proxyUrl;
+    if (args.r2Key !== undefined) updates.r2Key = args.r2Key;
+    if (args.sourceUrl !== undefined) updates.sourceUrl = args.sourceUrl;
     if (args.errorMessage !== undefined)
       updates.errorMessage = args.errorMessage;
 

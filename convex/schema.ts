@@ -66,6 +66,9 @@ export default defineSchema({
     sceneId: v.id("scenes"),
     projectId: v.id("videoProjects"),
     videoUrl: v.optional(v.string()),
+    proxyUrl: v.optional(v.string()),
+    r2Key: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
     replicateVideoId: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
@@ -99,4 +102,25 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
+
+  assets: defineTable({
+    userId: v.string(),
+    projectId: v.optional(v.id("videoProjects")),
+    r2Key: v.string(),
+    proxyUrl: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    predictionId: v.optional(v.string()),
+    kind: v.union(v.literal("video"), v.literal("audio"), v.literal("image")),
+    duration: v.optional(v.number()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    fps: v.optional(v.number()),
+    sampleRate: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_project", ["projectId"])
+    .index("by_key", ["r2Key"])
+    .index("by_prediction", ["predictionId"]),
 });

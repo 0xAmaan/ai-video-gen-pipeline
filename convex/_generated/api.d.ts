@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as assets from "../assets.js";
 import type * as video from "../video.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  assets: typeof assets;
   video: typeof video;
 }>;
 

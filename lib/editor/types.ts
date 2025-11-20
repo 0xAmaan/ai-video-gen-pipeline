@@ -70,6 +70,10 @@ export interface MediaAssetMeta {
   sampleRate?: number;
   url: string;
   waveformUrl?: string;
+  r2Key?: string;
+  proxyUrl?: string;
+  sourceUrl?: string;
+  predictionId?: string;
 }
 
 export interface ProjectSettings {

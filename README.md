@@ -65,6 +65,13 @@ The command above launches Next.js (Turbopack) and Convex simultaneously. Sign i
 - **Audio worklet**: `public/audio/preview-processor.js` is a plain JS module that can be tweaked without rebuilding.
 - **Workers**: TypeScript worker entry points under `lib/editor/workers` are compiled by Next automatically; update and restart dev server if needed.
 
+## Media storage (R2 proxy)
+
+- Deploy `workers/r2-proxy.ts` as a Cloudflare Worker (see `docs/r2-proxy-worker.md`) to stream Range-enabled assets from R2 and to ingest Replicate outputs without buffering.
+- Set `NEXT_PUBLIC_R2_PROXY_BASE` in your environment to the worker origin (e.g., `https://video-editor-proxy.example.workers.dev`). Media URLs built from R2 keys will use `/asset/:key`; uploads can hit `/ingest` with `Authorization: Bearer <AUTH_TOKEN>` when configured.
+- The Replicate polling route optionally ingests finished clips directly into R2 when `R2_INGEST_URL` (or fallback `NEXT_PUBLIC_R2_PROXY_BASE`) is set, plus optional `R2_INGEST_TOKEN` for auth. On success it returns `proxyUrl`/`r2Key` so the editor consumes the R2-hosted asset.
+- Convex `videoClips` now store `r2Key`/`proxyUrl`/`sourceUrl` so downstream editors can load via the R2 worker instead of transient Replicate URLs.
+
 ## Notes
 
 - MediaBunny lives entirely in the demux worker to keep the main thread responsive. Reuse `mediaBunnyManager` rather than touching the worker directly.
