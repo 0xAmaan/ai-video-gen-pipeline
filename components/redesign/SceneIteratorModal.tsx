@@ -24,6 +24,7 @@ interface GroupedIteration {
   iterationNumber: number;
   images: ShotImage[];
   prompt?: string;
+  parentImage?: ShotImage;
 }
 
 interface SceneIteratorModalProps {
@@ -62,15 +63,25 @@ export const SceneIteratorModal = ({
 
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([iterationNumber, images]) => ({
-        iterationNumber,
-        images: images.sort((a, b) => a.variantNumber - b.variantNumber),
-        prompt: images[0]?.iterationPrompt,
-      }));
+      .map(([iterationNumber, images]) => {
+        const sortedImages = images.sort((a, b) => a.variantNumber - b.variantNumber);
+        const parentImageId = sortedImages[0]?.parentImageId;
+        const parentImage = parentImageId
+          ? shotData.images.find((img) => img._id === parentImageId)
+          : undefined;
+
+        return {
+          iterationNumber,
+          images: sortedImages,
+          prompt: sortedImages[0]?.iterationPrompt,
+          parentImage,
+        };
+      });
   }, [shotData?.images]);
 
   useEffect(() => {
-    if (shotData?.shot.selectedImageId) {
+    // Only set initial selection when modal first opens or shot changes
+    if (shotData?.shot.selectedImageId && !selectedImageId) {
       setSelectedImageId(shotData.shot.selectedImageId);
       return;
     }
@@ -80,12 +91,17 @@ export const SceneIteratorModal = ({
         setSelectedImageId(firstImage._id);
       }
     }
-  }, [
-    shotData?.shot.selectedImageId,
-    shotId,
-    groupedIterations,
-    selectedImageId,
-  ]);
+  }, [shotId, shotData?.shot.selectedImageId, groupedIterations.length]);
+
+  // Auto-focus chat input when modal opens
+  useEffect(() => {
+    if (isOpen && selectedImageId) {
+      setTimeout(() => {
+        const textarea = chatInputRef.current?.querySelector("textarea");
+        textarea?.focus();
+      }, 300);
+    }
+  }, [isOpen, selectedImageId]);
 
   const triggerGeneration = async (options?: {
     parentImageId?: Id<"shotImages">;
@@ -129,10 +145,6 @@ export const SceneIteratorModal = ({
 
   const handleSelectImage = (image: ShotImage) => {
     setSelectedImageId(image._id);
-  };
-
-  const handleIterateFromImage = (image: ShotImage) => {
-    setSelectedImageId(image._id);
     chatInputRef.current?.scrollIntoView({ behavior: "smooth" });
     setTimeout(() => {
       const textarea = chatInputRef.current?.querySelector("textarea");
@@ -144,6 +156,8 @@ export const SceneIteratorModal = ({
     if (!selectedImageId || !shotData || !projectId) return;
     try {
       setIsSubmittingSelection(true);
+
+      // Unfavorite all other images
       await Promise.all(
         shotData.images
           .filter((image) => image.isFavorite && image._id !== selectedImageId)
@@ -155,17 +169,22 @@ export const SceneIteratorModal = ({
           ),
       );
 
+      // Mark selected image as favorite
       await updateShotImage({
         imageId: selectedImageId,
         isFavorite: true,
       });
 
+      // Update shot's selectedImageId and create storyboard selection
       await selectMasterShot({
         projectId,
         sceneId: shotData.scene._id,
         shotId: shotData.shot._id,
         selectedImageId,
       });
+
+      // Give a small delay to ensure Convex propagates the update
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       onClose();
     } catch (error) {
@@ -249,9 +268,9 @@ export const SceneIteratorModal = ({
                   <IterationRow
                     iterationNumber={iteration.iterationNumber}
                     images={iteration.images}
+                    parentImage={iteration.parentImage}
                     selectedImageId={selectedImageId}
                     onSelectImage={handleSelectImage}
-                    onIterateFromImage={handleIterateFromImage}
                   />
 
                   {index < groupedIterations.length - 1 && (
@@ -274,16 +293,27 @@ export const SceneIteratorModal = ({
         </div>
 
         {/* Modal Footer - Chat Input */}
-        <div ref={chatInputRef} className="border-t border-gray-900 px-6 py-4 flex-shrink-0 bg-[#050505]">
-          <div className="space-y-2">
-            {generationError && (
-              <div className="text-sm text-red-400">
-                Failed to generate images: {generationError}
-              </div>
-            )}
-            {isGenerating && (
-              <div className="text-sm text-gray-400">Generating images...</div>
-            )}
+        <div className="border-t border-gray-900 flex-shrink-0 bg-[#050505]">
+          {/* Status messages */}
+          {(generationError || isGenerating) && (
+            <div className="px-6 pt-4 pb-2">
+              {generationError && (
+                <div className="text-sm text-red-400 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  Failed to generate images: {generationError}
+                </div>
+              )}
+              {isGenerating && (
+                <div className="text-sm text-gray-400 flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--color-primary)]"></div>
+                  Generating images...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Chat Input Container */}
+          <div ref={chatInputRef} className="px-6 pb-4 pt-4">
             <ChatInput
               onSubmit={(message) => {
                 const trimmed = message.trim();
@@ -296,7 +326,7 @@ export const SceneIteratorModal = ({
               }}
               placeholder={
                 selectedImageId
-                  ? "Describe how you'd like to iterate on this image..."
+                  ? "Type refinement instructions (e.g., 'remove background', 'make brighter')..."
                   : "Select an image above to iterate..."
               }
               disabled={!selectedImageId || isGenerating}

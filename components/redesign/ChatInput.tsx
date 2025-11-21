@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Image, Video, Plus, Sparkles } from "lucide-react";
 import { ChatSettings, GenerationSettings } from "./ChatSettings";
@@ -11,6 +11,8 @@ interface ChatInputProps {
   disabled?: boolean;
   initialMessage?: string;
   onMessageChange?: (message: string) => void;
+  shouldFocus?: boolean;
+  selectedShotId?: string;
 }
 
 export const ChatInput = ({
@@ -19,10 +21,44 @@ export const ChatInput = ({
   disabled = false,
   initialMessage,
   onMessageChange,
+  shouldFocus = false,
+  selectedShotId,
 }: ChatInputProps) => {
   const [message, setMessage] = useState(initialMessage || "");
   const [mode, setMode] = useState<"image" | "video">("image");
   const [showSettings, setShowSettings] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (shouldFocus && !disabled && selectedShotId) {
+      // Use requestAnimationFrame to ensure DOM is ready after paint
+      // This is critical when the component transitions from disabled to enabled
+      const id = requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          console.log('[ChatInput] Attempting to focus textarea', {
+            shouldFocus,
+            disabled,
+            selectedShotId,
+            element: textareaRef.current
+          });
+          textareaRef.current.focus();
+
+          // Verify focus was successful
+          setTimeout(() => {
+            const isFocused = document.activeElement === textareaRef.current;
+            console.log('[ChatInput] Focus result:', isFocused);
+            if (!isFocused) {
+              console.warn('[ChatInput] Focus failed, retrying...');
+              textareaRef.current?.focus();
+            }
+          }, 100);
+        } else {
+          console.warn('[ChatInput] textareaRef.current is null');
+        }
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [shouldFocus, disabled, selectedShotId]);
 
   const currentMessage =
     initialMessage !== undefined ? initialMessage : message;
@@ -124,6 +160,7 @@ export const ChatInput = ({
 
                 {/* Textarea */}
                 <textarea
+                  ref={textareaRef}
                   value={currentMessage}
                   onChange={(e) => {
                     const newValue = e.target.value;
@@ -137,7 +174,7 @@ export const ChatInput = ({
                   placeholder={placeholder}
                   disabled={disabled}
                   rows={3}
-                  className="flex-1 bg-[#171717] text-gray-100 placeholder:text-gray-500 resize-none focus:outline-none py-2 px-3 rounded-lg text-xs"
+                  className="flex-1 bg-[#171717] text-gray-100 placeholder:text-gray-500 resize-none py-2 px-3 rounded-lg text-xs transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 focus:border-cyan-400/40"
                 />
 
                 {/* Generate button - square */}
