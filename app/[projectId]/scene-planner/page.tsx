@@ -9,7 +9,6 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   closestCorners,
   useSensor,
   useSensors,
@@ -20,17 +19,16 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, ArrowRight, RefreshCw, GripVertical } from "lucide-react";
+import { Plus, GripVertical } from "lucide-react";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { PromptPlannerCard } from "@/components/redesign/PromptPlannerCard";
 import { ChatInput } from "@/components/redesign/ChatInput";
 import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery";
-import { AssetManager } from "@/components/redesign/AssetManager";
 import { SceneIteratorModal } from "@/components/redesign/SceneIteratorModal";
 import {
   Dialog,
@@ -58,8 +56,8 @@ import {
   useShotPreviewImages,
   useSelectMasterShot,
   useAllMasterShotsSet,
+  useAssetsForShot,
 } from "@/lib/hooks/useProjectRedesign";
-import { requestPreviewSeed } from "@/lib/client/requestPreviewSeed";
 import {
   ProjectScene,
   SceneShot,
@@ -91,7 +89,6 @@ const SceneShotsSynchronizer = ({
 
 const PromptPlannerPage = () => {
   const params = useParams<{ projectId: string }>();
-  const router = useRouter();
   const projectId = params?.projectId as Id<"videoProjects"> | undefined;
 
   const projectScenes = useProjectScenes(projectId);
@@ -100,6 +97,7 @@ const PromptPlannerPage = () => {
   const shotPreviewGroups = useShotPreviewImages(projectId);
   const selectMasterShot = useSelectMasterShot();
   const allMasterShotsSet = useAllMasterShotsSet(projectId);
+  const projectAssets = useAssetsForShot(projectId, { includeInactive: true });
   const [isGeneratingScenes, setIsGeneratingScenes] = useState(false);
 
   const createScene = useCreateProjectScene();
@@ -127,8 +125,6 @@ const PromptPlannerPage = () => {
   const [regenerateTarget, setRegenerateTarget] = useState<SceneShot | null>(null);
   const [regeneratePrompt, setRegeneratePrompt] = useState("");
   const [regenerateBusy, setRegenerateBusy] = useState(false);
-  const [seedingMissing, setSeedingMissing] = useState(false);
-  const [seedError, setSeedError] = useState<string | null>(null);
   const [iteratorShotId, setIteratorShotId] = useState<Id<"sceneShots"> | null>(null);
 
   const shotRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -369,6 +365,25 @@ const PromptPlannerPage = () => {
       shotId,
       description: text,
       initialPrompt: text,
+    });
+  };
+
+  const handleUpdateShotAssets = async (
+    shotId: Id<"sceneShots">,
+    assetIds: Id<"projectAssets">[],
+  ) => {
+    setPlannerScenes((prev) =>
+      prev.map((scene) => ({
+        ...scene,
+        shots: scene.shots.map((shot) =>
+          shot._id === shotId ? { ...shot, referencedAssets: assetIds } : shot,
+        ),
+      })),
+    );
+
+    await updateShot({
+      shotId,
+      referencedAssets: assetIds,
     });
   };
 
@@ -650,29 +665,6 @@ const PromptPlannerPage = () => {
     }
   };
 
-  const handleSeedMissing = async () => {
-    if (!projectId || seedingMissing) return;
-    setSeedingMissing(true);
-    setSeedError(null);
-    try {
-      const summary = await requestPreviewSeed(projectId);
-      if (!summary.success) {
-        setSeedError(
-          summary.failures[0]?.reason ?? "Preview generation failed. Try again.",
-        );
-      } else {
-        toast.success("Generating missing previews…");
-      }
-    } catch (error) {
-      console.error("Failed to trigger preview seeding", error);
-      setSeedError(
-        error instanceof Error ? error.message : "Unable to trigger preview seeding",
-      );
-    } finally {
-      setSeedingMissing(false);
-    }
-  };
-
   const handleGallerySelect = (selection: ShotSelectionSummary) => {
     const shotId = selection.shot._id;
     setHighlightedShotId(shotId);
@@ -749,105 +741,96 @@ const PromptPlannerPage = () => {
       >
         <div className="flex-1 overflow-auto pb-36 relative">
           <div className="max-w-7xl mx-auto px-8 py-6">
-              <div className="max-w-3xl mx-auto space-y-6">
-                {/* Brand Assets */}
-                <div className="bg-[#101010] border border-white/10 rounded-3xl p-6">
-                  <AssetManager projectId={projectId} />
-                  {seedError && (
-                    <p className="mt-3 text-sm text-red-400">
-                      Preview generation issues: {seedError}
-                    </p>
-                  )}
-                </div>
+            <div className="max-w-3xl mx-auto">
+              <div className="space-y-4">
+                {!hasScenes ? (
+                  <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl w-full">
+                    {isGeneratingScenes ? (
+                      <>
+                        <div className="flex justify-center mb-4">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+                        </div>
+                        <p className="text-white font-medium mb-2">
+                          Generating your scenes...
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          AI is creating a scene breakdown from your ideas. This takes 5-10 seconds.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-gray-400 mb-4">
+                          No scenes yet. Start mapping your story.
+                        </p>
+                        <Button onClick={handleAddScene} variant="outline">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create First Scene
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <SortableContext
+                    items={plannerScenes.map((scene) => scene._id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {plannerScenes.map((scene, index) => {
+                      const isLastScene = index === plannerScenes.length - 1;
+                      return (
+                        <div key={`scene-group-${scene._id}`} className="w-full">
+                          <SortableContext
+                            items={scene.shots.map((shot) => shot._id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <PromptPlannerCard
+                              scene={scene}
+                              sceneIndex={index}
+                              shots={scene.shots}
+                              isExpanded={scene.isExpanded}
+                              activeShotId={highlightedShotId ?? selectedShot?.shotId}
+                              onToggleExpand={handleToggleExpand}
+                              onShotClick={handleShotClick}
+                              onAddShot={handleAddShot}
+                              onAddSceneBelow={handleAddSceneBelow}
+                              onDeleteScene={handleDeleteScene}
+                              onDeleteShot={handleDeleteShot}
+                              onUpdateSceneTitle={handleUpdateSceneTitle}
+                              onUpdateSceneDescription={handleUpdateSceneDescription}
+                              onUpdateShotText={handleUpdateShotText}
+                              onEnterIterator={handleEnterIterator}
+                              registerShotRef={registerShotRef}
+                              getShotPreviewImages={(shotId) =>
+                                shotPreviewMap.get(shotId) ?? []
+                              }
+                              onSelectShotImage={handleSelectShotImage}
+                              onRegenerateShot={handleOpenRegenerate}
+                              onGeneratePreview={handleGeneratePreview}
+                              onUpdateShotAssets={handleUpdateShotAssets}
+                              assets={projectAssets}
+                            />
+                          </SortableContext>
 
-                {/* Scene Planner */}
-                <div className="space-y-4">
-              {!hasScenes ? (
-                <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl w-full">
-                  {isGeneratingScenes ? (
-                    <>
-                      <div className="flex justify-center mb-4">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
-                      </div>
-                      <p className="text-white font-medium mb-2">
-                        Generating your scenes...
-                      </p>
-                      <p className="text-gray-400 text-sm">
-                        AI is creating a scene breakdown from your ideas. This takes 5-10 seconds.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-gray-400 mb-4">
-                        No scenes yet. Start mapping your story.
-                      </p>
-                      <Button onClick={handleAddScene} variant="outline">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create First Scene
-                      </Button>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <SortableContext
-                  items={plannerScenes.map((scene) => scene._id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {plannerScenes.map((scene, index) => {
-                    const isLastScene = index === plannerScenes.length - 1;
-                    return (
-                      <div key={`scene-group-${scene._id}`} className="w-full">
-                        <SortableContext
-                          items={scene.shots.map((shot) => shot._id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <PromptPlannerCard
-                            scene={scene}
-                            sceneIndex={index}
-                            shots={scene.shots}
-                            isExpanded={scene.isExpanded}
-                            activeShotId={highlightedShotId ?? selectedShot?.shotId}
-                            onToggleExpand={handleToggleExpand}
-                            onShotClick={handleShotClick}
-                            onAddShot={handleAddShot}
-                            onAddSceneBelow={handleAddSceneBelow}
-                            onDeleteScene={handleDeleteScene}
-                            onDeleteShot={handleDeleteShot}
-                            onUpdateSceneTitle={handleUpdateSceneTitle}
-                            onUpdateSceneDescription={handleUpdateSceneDescription}
-                            onUpdateShotText={handleUpdateShotText}
-                            onEnterIterator={handleEnterIterator}
-                            registerShotRef={registerShotRef}
-                            getShotPreviewImages={(shotId) =>
-                              shotPreviewMap.get(shotId) ?? []
-                            }
-                            onSelectShotImage={handleSelectShotImage}
-                            onRegenerateShot={handleOpenRegenerate}
-                            onGeneratePreview={handleGeneratePreview}
-                          />
-                        </SortableContext>
-
-                        {/* Only show Add Scene button after the last scene */}
-                        {isLastScene && (
-                          <Card className="mt-4 p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-all">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleAddSceneBelow(scene._id)}
-                              className="w-full border-dashed border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100"
-                            >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Add Scene
-                            </Button>
-                          </Card>
-                        )}
-                      </div>
-                    );
-                  })}
-                </SortableContext>
-              )}
-                </div>
+                          {/* Only show Add Scene button after the last scene */}
+                          {isLastScene && (
+                            <Card className="mt-4 p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-all">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleAddSceneBelow(scene._id)}
+                                className="w-full border-dashed border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100"
+                              >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Add Scene
+                              </Button>
+                            </Card>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </SortableContext>
+                )}
               </div>
+            </div>
           </div>
 
           {/* Fixed Thumbnail Sidebar */}
