@@ -6,6 +6,7 @@ interface UseVoiceDictationOptions {
   continuous?: boolean;
   interimResults?: boolean;
   lang?: string;
+  existingText?: string; // Text to preserve when starting dictation
 }
 
 interface UseVoiceDictationReturn {
@@ -28,6 +29,7 @@ export const useVoiceDictation = (
     continuous = true,
     interimResults = true,
     lang = "en-US",
+    existingText = "",
   } = options;
 
   const [isListening, setIsListening] = useState(false);
@@ -37,6 +39,7 @@ export const useVoiceDictation = (
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const finalTranscriptRef = useRef("");
+  const existingTextRef = useRef(""); // Store text that existed before dictation started
 
   // Check for browser support
   useEffect(() => {
@@ -71,7 +74,11 @@ export const useVoiceDictation = (
           }
 
           finalTranscriptRef.current = finalTranscript;
-          const fullTranscript = finalTranscript + interimTranscript;
+          // Prepend existing text to the new speech
+          const newSpeech = finalTranscript + interimTranscript;
+          const fullTranscript = existingTextRef.current 
+            ? existingTextRef.current + (existingTextRef.current.endsWith(' ') ? '' : ' ') + newSpeech
+            : newSpeech;
           setTranscript(fullTranscript);
 
           if (onTranscript) {
@@ -128,8 +135,11 @@ export const useVoiceDictation = (
 
     if (recognitionRef.current && !isListening) {
       try {
+        // Store existing text to preserve it
+        existingTextRef.current = existingText;
+        // Only reset the new speech part, not existing text
         finalTranscriptRef.current = "";
-        setTranscript("");
+        setTranscript(existingText); // Start with existing text
         setError(null);
         recognitionRef.current.start();
       } catch (err) {
@@ -137,7 +147,7 @@ export const useVoiceDictation = (
         setError("Failed to start voice recognition");
       }
     }
-  }, [isSupported, isListening, onError]);
+  }, [isSupported, isListening, onError, existingText]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
