@@ -283,6 +283,8 @@ export default defineSchema({
     img2imgStrength: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
     isActive: v.optional(v.boolean()),
+    imageUrl: v.optional(v.string()),
+    storageId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
