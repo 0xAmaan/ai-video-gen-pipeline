@@ -268,7 +268,6 @@ const SceneIteratorPage = () => {
                   images={iteration.images}
                   selectedImageId={selectedImageId}
                   onSelectImage={handleSelectImage}
-                  onIterateFromImage={handleIterateFromImage}
                 />
 
                 {index < groupedIterations.length - 1 && (

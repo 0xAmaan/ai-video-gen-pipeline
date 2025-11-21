@@ -252,7 +252,7 @@ const StoryboardPage = () => {
       }));
 
   return (
-    <PhaseGuard requiredPhase="storyboard">
+    <>
       {isGenerating ? (
         <StoryboardGeneratingPhase
           scenes={scenesForComponent}
@@ -272,7 +272,7 @@ const StoryboardPage = () => {
           project={project}
         />
       )}
-    </PhaseGuard>
+    </>
   );
 };
 

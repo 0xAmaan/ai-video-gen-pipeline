@@ -25,7 +25,7 @@ interface UseVoiceDictationReturn {
 }
 
 export const useVoiceDictation = (
-  options: UseVoiceDictationOptions = {}
+  options: UseVoiceDictationOptions = {},
 ): UseVoiceDictationReturn => {
   const {
     onTranscript,
@@ -80,8 +80,10 @@ export const useVoiceDictation = (
           finalTranscriptRef.current = finalTranscript;
           // Prepend existing text to the new speech
           const newSpeech = finalTranscript + interimTranscript;
-          const fullTranscript = existingTextRef.current 
-            ? existingTextRef.current + (existingTextRef.current.endsWith(' ') ? '' : ' ') + newSpeech
+          const fullTranscript = existingTextRef.current
+            ? existingTextRef.current +
+              (existingTextRef.current.endsWith(" ") ? "" : " ") +
+              newSpeech
             : newSpeech;
           setTranscript(fullTranscript);
 

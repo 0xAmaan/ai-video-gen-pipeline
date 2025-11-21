@@ -21,7 +21,9 @@ export default defineSchema({
       v.literal("storyboard_created"),
       v.literal("video_generated"),
     ),
-    workflowVersion: v.optional(v.union(v.literal("v1_legacy"), v.literal("v2_redesign"))),
+    workflowVersion: v.optional(
+      v.union(v.literal("v1_legacy"), v.literal("v2_redesign")),
+    ),
     promptPlannerData: v.optional(v.string()),
     redesignStatus: v.optional(
       v.union(
@@ -49,14 +51,35 @@ export default defineSchema({
     imageModelId: v.optional(v.string()),
     videoModelId: v.optional(v.string()),
     backgroundMusicUrl: v.optional(v.string()),
-    backgroundMusicSource: v.optional(v.union(v.literal("generated"), v.literal("freesound"), v.literal("uploaded"))),
+    backgroundMusicSource: v.optional(
+      v.union(
+        v.literal("generated"),
+        v.literal("freesound"),
+        v.literal("uploaded"),
+      ),
+    ),
     backgroundMusicPrompt: v.optional(v.string()),
     backgroundMusicMood: v.optional(v.string()),
     audioTrackSettings: v.optional(
       v.object({
-        audioNarration: v.optional(v.object({ volume: v.optional(v.number()), muted: v.optional(v.boolean()) })),
-        audioBgm: v.optional(v.object({ volume: v.optional(v.number()), muted: v.optional(v.boolean()) })),
-        audioSfx: v.optional(v.object({ volume: v.optional(v.number()), muted: v.optional(v.boolean()) })),
+        audioNarration: v.optional(
+          v.object({
+            volume: v.optional(v.number()),
+            muted: v.optional(v.boolean()),
+          }),
+        ),
+        audioBgm: v.optional(
+          v.object({
+            volume: v.optional(v.number()),
+            muted: v.optional(v.boolean()),
+          }),
+        ),
+        audioSfx: v.optional(
+          v.object({
+            volume: v.optional(v.number()),
+            muted: v.optional(v.boolean()),
+          }),
+        ),
       }),
     ),
     compositionState: v.optional(v.any()),
@@ -92,8 +115,9 @@ export default defineSchema({
   scenes: defineTable({
     projectId: v.id("videoProjects"),
     sceneNumber: v.number(),
-    description: v.string(),
-    visualPrompt: v.optional(v.string()),
+    description: v.string(), // Short narrative description for UI display
+    visualPrompt: v.optional(v.string()), // Detailed 150-250 word prompt for video generation
+    redesignShotId: v.optional(v.id("sceneShots")),
     imageStorageId: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     narrationUrl: v.optional(v.string()),
@@ -102,16 +126,31 @@ export default defineSchema({
     voiceName: v.optional(v.string()),
     duration: v.number(),
     lipsyncVideoUrl: v.optional(v.string()),
-    lipsyncStatus: v.optional(v.union(v.literal("pending"), v.literal("processing"), v.literal("complete"), v.literal("failed"))),
+    lipsyncStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
     lipsyncPredictionId: v.optional(v.string()),
     replicateImageId: v.optional(v.string()),
     backgroundMusicUrl: v.optional(v.string()),
-    backgroundMusicSource: v.optional(v.union(v.literal("generated"), v.literal("freesound"), v.literal("uploaded"))),
+    backgroundMusicSource: v.optional(
+      v.union(
+        v.literal("generated"),
+        v.literal("freesound"),
+        v.literal("uploaded"),
+      ),
+    ),
     backgroundMusicPrompt: v.optional(v.string()),
     backgroundMusicMood: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_redesignShot", ["redesignShotId"]),
 
   projectVoiceSettings: defineTable({
     projectId: v.id("videoProjects"),
@@ -121,7 +160,9 @@ export default defineSchema({
     emotion: v.optional(v.string()),
     speed: v.optional(v.number()),
     pitch: v.optional(v.number()),
-    voiceProvider: v.optional(v.union(v.literal("replicate"), v.literal("elevenlabs"))),
+    voiceProvider: v.optional(
+      v.union(v.literal("replicate"), v.literal("elevenlabs")),
+    ),
     voiceModelKey: v.optional(v.string()),
     providerVoiceId: v.optional(v.string()),
     createdAt: v.number(),
@@ -180,8 +221,18 @@ export default defineSchema({
   audioAssets: defineTable({
     projectId: v.id("videoProjects"),
     sceneId: v.optional(v.id("scenes")),
-    type: v.union(v.literal("bgm"), v.literal("sfx"), v.literal("narration"), v.literal("voiceover")),
-    source: v.union(v.literal("generated"), v.literal("freesound"), v.literal("uploaded"), v.literal("external")),
+    type: v.union(
+      v.literal("bgm"),
+      v.literal("sfx"),
+      v.literal("narration"),
+      v.literal("voiceover"),
+    ),
+    source: v.union(
+      v.literal("generated"),
+      v.literal("freesound"),
+      v.literal("uploaded"),
+      v.literal("external"),
+    ),
     provider: v.optional(v.string()),
     modelKey: v.optional(v.string()),
     url: v.string(),
@@ -221,11 +272,19 @@ export default defineSchema({
     name: v.string(),
     description: v.optional(v.string()),
     usageNotes: v.optional(v.string()),
-    prominence: v.optional(v.union(v.literal("primary"), v.literal("secondary"), v.literal("subtle"))),
+    prominence: v.optional(
+      v.union(
+        v.literal("primary"),
+        v.literal("secondary"),
+        v.literal("subtle"),
+      ),
+    ),
     referenceColors: v.optional(v.array(v.string())),
     img2imgStrength: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
     isActive: v.optional(v.boolean()),
+    imageUrl: v.optional(v.string()),
+    storageId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -283,7 +342,12 @@ export default defineSchema({
     iterationPrompt: v.string(),
     parentImageId: v.optional(v.id("shotImages")),
     replicateImageId: v.optional(v.string()),
-    status: v.union(v.literal("pending"), v.literal("processing"), v.literal("complete"), v.literal("failed")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
     isFavorite: v.boolean(),
     usedAssets: v.optional(v.array(v.id("projectAssets"))),
     sourcePromptVersion: v.optional(v.number()),
@@ -301,7 +365,12 @@ export default defineSchema({
     shotId: v.id("sceneShots"),
     selectedImageId: v.id("shotImages"),
     animationStatus: v.optional(
-      v.union(v.literal("pending"), v.literal("processing"), v.literal("complete"), v.literal("failed")),
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
     ),
     animatedVideoUrl: v.optional(v.string()),
     replicateVideoId: v.optional(v.string()),
@@ -319,7 +388,13 @@ export default defineSchema({
     resolution: v.string(),
     clipCount: v.number(),
     totalCost: v.optional(v.number()),
-    status: v.union(v.literal("pending"), v.literal("processing"), v.literal("complete"), v.literal("failed"), v.literal("cancelled")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
     errorMessage: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -331,7 +406,12 @@ export default defineSchema({
     sceneId: v.optional(v.id("scenes")),
     replicateId: v.optional(v.string()),
     predictionId: v.optional(v.string()),
-    status: v.union(v.literal("pending"), v.literal("processing"), v.literal("complete"), v.literal("failed")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
     r2Key: v.optional(v.string()),
     proxyUrl: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),

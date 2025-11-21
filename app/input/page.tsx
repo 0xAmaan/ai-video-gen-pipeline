@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Upload } from "lucide-react";
 import { VoiceDictationButton } from "@/components/ui/voice-dictation-button";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import {
@@ -11,7 +11,8 @@ import {
   useCreateRedesignProject,
 } from "@/lib/hooks/useProjectRedesign";
 import { toast } from "sonner";
-import { BrandAssetUploadDialog } from "@/components/redesign/BrandAssetUploadDialog";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 type DraftAsset = {
   id: string;
@@ -19,6 +20,8 @@ type DraftAsset = {
   name: string;
   assetType: "logo";
 };
+
+const MAX_ASSETS = 20;
 
 const createDraftId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -31,11 +34,14 @@ const RawInputPage = () => {
   const [input, setInput] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [assetDrafts, setAssetDrafts] = useState<DraftAsset[]>([]);
-  const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragCounter = useRef(0);
   const router = useRouter();
   const { userId, isSignedIn } = useAuth();
   const createProject = useCreateRedesignProject();
   const createAsset = useCreateProjectAsset();
+  const generateUploadUrl = useMutation(api.projectAssets.generateUploadUrl);
 
   // Voice dictation
   const {
@@ -54,8 +60,85 @@ const RawInputPage = () => {
     }
   }, [transcript, isListening]);
 
-  const handleOpenAssetDialog = () => {
-    setAssetDialogOpen(true);
+  const handleFiles = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList?.length) return;
+      const imageFiles = Array.from(fileList).filter((file) =>
+        file.type.startsWith("image/"),
+      );
+      if (imageFiles.length === 0) return;
+
+      const availableSlots = Math.max(0, MAX_ASSETS - assetDrafts.length);
+      if (availableSlots <= 0) {
+        toast.info(`You can only upload up to ${MAX_ASSETS} images for now.`);
+        return;
+      }
+
+      const filesToAdd = imageFiles.slice(0, availableSlots);
+      const skippedCount = imageFiles.length - filesToAdd.length;
+
+      filesToAdd.forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result !== "string") return;
+          const imageUrl = reader.result;
+          setAssetDrafts((prev) => {
+            if (prev.length >= MAX_ASSETS) return prev;
+            return [
+              ...prev,
+              {
+                id: createDraftId(),
+                imageUrl,
+                name: `Brand asset ${prev.length + 1}`,
+                assetType: "logo" as const,
+              },
+            ];
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+
+      if (skippedCount > 0) {
+        toast.info(`You can only upload up to ${MAX_ASSETS} images for now.`);
+      }
+    },
+    [assetDrafts.length],
+  );
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    handleFiles(event.target.files);
+    event.target.value = "";
+  };
+
+  const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragCounter.current += 1;
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current <= 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    handleFiles(event.dataTransfer.files);
   };
 
   const handleRemoveDraft = (draftId: string) => {
@@ -63,15 +146,8 @@ const RawInputPage = () => {
   };
 
   const handleSubmit = async () => {
-    if (!input.trim()) {
-      toast.error("Please enter a description of your commercial");
-      return;
-    }
-
-    if (!userId) {
-      toast.error("You must be signed in to create a project");
-      return;
-    }
+    if (!input.trim()) return;
+    if (!userId) return;
 
     setIsCreating(true);
     try {
@@ -85,21 +161,41 @@ const RawInputPage = () => {
 
       if (assetDrafts.length) {
         await Promise.all(
-           assetDrafts.map((asset) =>
-             createAsset({
+           assetDrafts.map(async (asset) => {
+             let storageId: string | undefined;
+             let imageUrl: string | undefined;
+
+             if (asset.imageUrl.startsWith("data:")) {
+               try {
+                 const uploadUrl = await generateUploadUrl();
+                 const response = await fetch(asset.imageUrl);
+                 const blob = await response.blob();
+                 const result = await fetch(uploadUrl, {
+                   method: "POST",
+                   headers: { "Content-Type": blob.type },
+                   body: blob,
+                 });
+                 const { storageId: id } = await result.json();
+                 storageId = id;
+               } catch (error) {
+                 console.error("Failed to upload asset:", error);
+                 imageUrl = asset.imageUrl.slice(0, 200);
+               }
+             } else {
+               imageUrl = asset.imageUrl;
+             }
+
+             return createAsset({
                projectId,
                assetType: asset.assetType,
                name: asset.name,
-               imageUrl: asset.imageUrl,
-             }),
-           ),
+               storageId,
+               imageUrl,
+             });
+           }),
         );
       }
 
-      toast.success("Project created!");
-      if (assetDrafts.length) {
-        toast.success(`Saved ${assetDrafts.length} brand asset${assetDrafts.length > 1 ? "s" : ""}`);
-      }
       setAssetDrafts([]);
 
       // Navigate to loading screen
@@ -119,7 +215,6 @@ const RawInputPage = () => {
       });
     } catch (error) {
       console.error("Failed to create project:", error);
-      toast.error("Failed to create project. Please try again.");
     } finally {
       setIsCreating(false);
     }
@@ -173,30 +268,53 @@ const RawInputPage = () => {
           </div>
 
           {/* Asset Drafts */}
-          <div className="mt-6 bg-white/[0.03] border border-white/10 rounded-2xl p-5">
+          <div
+            className={`mt-6 bg-white/[0.03] border rounded-2xl p-5 relative transition-colors ${
+              isDragging ? "border-blue-400/60 bg-blue-500/5" : "border-white/10"
+            }`}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm text-gray-500">Brand Assets</p>
-                <p className="text-xs text-gray-500">
-                  Upload logos or products.
+                <p className="text-sm text-gray-500">
+                  Brand Assets
                 </p>
               </div>
               <button
-                onClick={handleOpenAssetDialog}
+                onClick={handleUploadClick}
                 disabled={isCreating}
                 className="flex items-center justify-center rounded-xl border border-white/20 px-3 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-50"
+                aria-label="Upload brand assets"
               >
-                <Plus className="w-4 h-4" />
+                <Upload className="w-4 h-4" />
               </button>
             </div>
 
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleFileInputChange}
+            />
+
+            {isDragging && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400/60 bg-blue-500/10 text-sm text-blue-100">
+                Drop images to upload
+              </div>
+            )}
+
             {assetDrafts.length === 0 ? (
               <p className="text-sm text-gray-500 mt-4">
-                No assets yet.
+                No assets yet. Drag and drop here or click the upload button.
               </p>
             ) : (
               <div className="mt-4 flex items-center gap-4 overflow-x-auto pb-3">
-                {assetDrafts.slice(0, 3).map((draft) => (
+                {assetDrafts.map((draft) => (
                   <div
                     key={draft.id}
                     className="relative group h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40"
@@ -242,26 +360,6 @@ const RawInputPage = () => {
           </p>
         </div>
       </div>
-      <BrandAssetUploadDialog
-        open={assetDialogOpen}
-        onOpenChange={(open) => {
-          setAssetDialogOpen(open);
-        }}
-        onConfirm={(imageDataUrls) => {
-          setAssetDrafts((prev) => {
-            const availableSlots = Math.max(0, 3 - prev.length);
-            const newAssets = imageDataUrls
-              .slice(0, availableSlots)
-              .map((url, index) => ({
-                id: createDraftId(),
-                imageUrl: url,
-                name: `Brand asset ${prev.length + index + 1}`,
-                assetType: "logo" as const,
-              }));
-            return [...prev, ...newAssets];
-          });
-        }}
-      />
     </div>
   );
 };

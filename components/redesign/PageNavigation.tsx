@@ -9,6 +9,10 @@ interface PageNavigationProps {
   projectId?: string;
   storyboardLocked?: boolean;
   storyboardLockMessage?: string;
+  videoLocked?: boolean;
+  videoLockMessage?: string;
+  editorLocked?: boolean;
+  editorLockMessage?: string;
 }
 
 interface NavItem {
@@ -22,8 +26,35 @@ interface NavItem {
 
 const DEFAULT_PATH = "/home";
 
-export const PageNavigation = ({ projectId, storyboardLocked, storyboardLockMessage }: PageNavigationProps) => {
+interface NavItem {
+  name: string;
+  icon: typeof Sparkles;
+  href: string;
+  match: string;
+  disabled?: boolean;
+  disabledMessage?: string;
+}
+
+export const PageNavigation = ({
+  projectId,
+  storyboardLocked,
+  storyboardLockMessage,
+  videoLocked,
+  videoLockMessage,
+  editorLocked,
+  editorLockMessage,
+}: PageNavigationProps) => {
   const pathname = usePathname();
+
+  if (typeof window !== "undefined") {
+    console.log("[PageNavigation] props", {
+      projectId,
+      storyboardLocked,
+      videoLocked,
+      editorLocked,
+      pathname,
+    });
+  }
 
   const navItems: Array<NavItem | false> = [
     {
@@ -56,6 +87,8 @@ export const PageNavigation = ({ projectId, storyboardLocked, storyboardLockMess
           icon: Film,
           href: `/${projectId}/video`,
           match: "/video",
+          disabled: videoLocked,
+          disabledMessage: videoLockMessage,
         }
       : false,
     projectId
@@ -64,6 +97,8 @@ export const PageNavigation = ({ projectId, storyboardLocked, storyboardLockMess
           icon: Scissors,
           href: `/${projectId}/editor`,
           match: "/editor",
+          disabled: editorLocked,
+          disabledMessage: editorLockMessage,
         }
       : false,
   ];

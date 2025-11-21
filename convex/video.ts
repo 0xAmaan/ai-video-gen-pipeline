@@ -30,7 +30,10 @@ export const createProject = mutation({
 
 // ===== Editor persistence (Twick/WebGPU) =====
 
-const ensureOwnedProject = async (ctx: { db: DatabaseReader; auth: any }, projectId: Id<"videoProjects">) => {
+const ensureOwnedProject = async (
+  ctx: { db: DatabaseReader; auth: any },
+  projectId: Id<"videoProjects">,
+) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Not authenticated");
@@ -57,7 +60,9 @@ export const saveEditorState = mutation({
       .query("editorProjects")
       .withIndex("by_user", (q) => q.eq("userId", identity.subject))
       .collect();
-    const match = existing.find((row) => row.projectData?.id === args.projectData?.id);
+    const match = existing.find(
+      (row) => row.projectData?.id === args.projectData?.id,
+    );
 
     if (match) {
       await ctx.db.patch(match._id, {
@@ -91,7 +96,9 @@ export const saveEditorState = mutation({
       .query("projectHistory")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
-    const past = history.filter((h) => h.historyType === "past").sort((a, b) => b.sequenceNumber - a.sequenceNumber);
+    const past = history
+      .filter((h) => h.historyType === "past")
+      .sort((a, b) => b.sequenceNumber - a.sequenceNumber);
     for (const h of past.slice(20)) {
       await ctx.db.delete(h._id);
     }
@@ -117,14 +124,19 @@ export const loadEditorState = query({
 
     // Pick the row matching current composition id if present, else newest
     const current =
-      editor.find((row) => row.projectData?.id === project.compositionState?.id) ??
-      editor.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      editor.find(
+        (row) => row.projectData?.id === project.compositionState?.id,
+      ) ?? editor.sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
     return {
       projectData: current?.projectData ?? null,
       history: {
-        past: history.filter((h) => h.historyType === "past").map((h) => h.snapshot),
-        future: history.filter((h) => h.historyType === "future").map((h) => h.snapshot),
+        past: history
+          .filter((h) => h.historyType === "past")
+          .map((h) => h.snapshot),
+        future: history
+          .filter((h) => h.historyType === "future")
+          .map((h) => h.snapshot),
       },
     };
   },
@@ -351,6 +363,17 @@ export const saveScenes = mutation({
         imageUrl: v.optional(v.string()),
         duration: v.number(),
         replicateImageId: v.optional(v.string()),
+        backgroundMusicUrl: v.optional(v.string()),
+        backgroundMusicSource: v.optional(
+          v.union(
+            v.literal("generated"),
+            v.literal("freesound"),
+            v.literal("uploaded"),
+          ),
+        ),
+        backgroundMusicPrompt: v.optional(v.string()),
+        backgroundMusicMood: v.optional(v.string()),
+        redesignShotId: v.optional(v.id("sceneShots")),
       }),
     ),
   },
@@ -379,6 +402,11 @@ export const saveScenes = mutation({
         imageUrl: scene.imageUrl,
         duration: scene.duration,
         replicateImageId: scene.replicateImageId,
+        backgroundMusicUrl: scene.backgroundMusicUrl,
+        backgroundMusicSource: scene.backgroundMusicSource,
+        backgroundMusicPrompt: scene.backgroundMusicPrompt,
+        backgroundMusicMood: scene.backgroundMusicMood,
+        redesignShotId: scene.redesignShotId,
         createdAt: now,
         updatedAt: now,
       });
@@ -431,6 +459,17 @@ export const updateScene = mutation({
     imageUrl: v.optional(v.string()),
     duration: v.optional(v.number()),
     replicateImageId: v.optional(v.string()),
+    backgroundMusicUrl: v.optional(v.string()),
+    backgroundMusicSource: v.optional(
+      v.union(
+        v.literal("generated"),
+        v.literal("freesound"),
+        v.literal("uploaded"),
+      ),
+    ),
+    backgroundMusicPrompt: v.optional(v.string()),
+    backgroundMusicMood: v.optional(v.string()),
+    redesignShotId: v.optional(v.id("sceneShots")),
     visualPrompt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -460,7 +499,18 @@ export const updateScene = mutation({
     if (args.duration !== undefined) updates.duration = args.duration;
     if (args.replicateImageId !== undefined)
       updates.replicateImageId = args.replicateImageId;
-    if (args.visualPrompt !== undefined) updates.visualPrompt = args.visualPrompt;
+    if (args.backgroundMusicUrl !== undefined)
+      updates.backgroundMusicUrl = args.backgroundMusicUrl;
+    if (args.backgroundMusicSource !== undefined)
+      updates.backgroundMusicSource = args.backgroundMusicSource;
+    if (args.backgroundMusicPrompt !== undefined)
+      updates.backgroundMusicPrompt = args.backgroundMusicPrompt;
+    if (args.backgroundMusicMood !== undefined)
+      updates.backgroundMusicMood = args.backgroundMusicMood;
+    if (args.redesignShotId !== undefined)
+      updates.redesignShotId = args.redesignShotId;
+    if (args.visualPrompt !== undefined)
+      updates.visualPrompt = args.visualPrompt;
 
     await ctx.db.patch(args.sceneId, updates);
 
@@ -513,7 +563,10 @@ export const updateProjectTitle = mutation({
     if (!project || project.userId !== identity.subject) {
       throw new Error("Project not found or unauthorized");
     }
-    await ctx.db.patch(args.projectId, { title: args.title, updatedAt: Date.now() });
+    await ctx.db.patch(args.projectId, {
+      title: args.title,
+      updatedAt: Date.now(),
+    });
     return args.projectId;
   },
 });
@@ -551,7 +604,11 @@ export const deleteProject = mutation({
       // Many tables share projectId field; fall back to index where available
       let records: any[] = [];
       try {
-        records = await query.withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect();
+        records = await query
+          .withIndex("by_project", (q: any) =>
+            q.eq("projectId", args.projectId),
+          )
+          .collect();
       } catch {
         records = await query.collect();
       }
@@ -1035,7 +1092,11 @@ export const updateProjectBackgroundMusic = mutation({
     projectId: v.id("videoProjects"),
     backgroundMusicUrl: v.optional(v.string()),
     backgroundMusicSource: v.optional(
-      v.union(v.literal("generated"), v.literal("freesound"), v.literal("uploaded")),
+      v.union(
+        v.literal("generated"),
+        v.literal("freesound"),
+        v.literal("uploaded"),
+      ),
     ),
     backgroundMusicPrompt: v.optional(v.string()),
     backgroundMusicMood: v.optional(v.string()),
@@ -1063,9 +1124,24 @@ export const updateProjectBackgroundMusic = mutation({
 export const updateProjectAudioTrackSettings = mutation({
   args: {
     projectId: v.id("videoProjects"),
-    audioNarration: v.optional(v.object({ volume: v.optional(v.number()), muted: v.optional(v.boolean()) })),
-    audioBgm: v.optional(v.object({ volume: v.optional(v.number()), muted: v.optional(v.boolean()) })),
-    audioSfx: v.optional(v.object({ volume: v.optional(v.number()), muted: v.optional(v.boolean()) })),
+    audioNarration: v.optional(
+      v.object({
+        volume: v.optional(v.number()),
+        muted: v.optional(v.boolean()),
+      }),
+    ),
+    audioBgm: v.optional(
+      v.object({
+        volume: v.optional(v.number()),
+        muted: v.optional(v.boolean()),
+      }),
+    ),
+    audioSfx: v.optional(
+      v.object({
+        volume: v.optional(v.number()),
+        muted: v.optional(v.boolean()),
+      }),
+    ),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -1134,7 +1210,11 @@ export const resetProjectPhase = mutation({
       for (const qRecord of questions) {
         await ctx.db.delete(qRecord._id);
       }
-      await ctx.db.patch(args.projectId, { status: "draft", textModelId: undefined, updatedAt: Date.now() });
+      await ctx.db.patch(args.projectId, {
+        status: "draft",
+        textModelId: undefined,
+        updatedAt: Date.now(),
+      });
       return args.projectId;
     }
     // video stage: clear clips and related status
@@ -1190,7 +1270,12 @@ export const updateSceneLipsync = mutation({
   args: {
     sceneId: v.id("scenes"),
     lipsyncStatus: v.optional(
-      v.union(v.literal("pending"), v.literal("processing"), v.literal("complete"), v.literal("failed")),
+      v.union(
+        v.literal("pending"),
+        v.literal("processing"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
     ),
     lipsyncVideoUrl: v.optional(v.string()),
     lipsyncPredictionId: v.optional(v.string()),
@@ -1247,7 +1332,8 @@ export const updateVideoClipLipsync = mutation({
       throw new Error("Project not found or unauthorized");
     }
     const updates: any = { updatedAt: Date.now() };
-    if (args.lipsyncVideoUrl !== undefined) updates.lipsyncVideoUrl = args.lipsyncVideoUrl;
+    if (args.lipsyncVideoUrl !== undefined)
+      updates.lipsyncVideoUrl = args.lipsyncVideoUrl;
     if (args.hasLipsync !== undefined) updates.hasLipsync = args.hasLipsync;
     if (args.status !== undefined) updates.status = args.status;
     await ctx.db.patch(args.clipId, updates);
@@ -1324,8 +1410,18 @@ export const createAudioAsset = mutation({
   args: {
     projectId: v.id("videoProjects"),
     sceneId: v.optional(v.id("scenes")),
-    type: v.union(v.literal("bgm"), v.literal("sfx"), v.literal("narration"), v.literal("voiceover")),
-    source: v.union(v.literal("generated"), v.literal("freesound"), v.literal("uploaded"), v.literal("external")),
+    type: v.union(
+      v.literal("bgm"),
+      v.literal("sfx"),
+      v.literal("narration"),
+      v.literal("voiceover"),
+    ),
+    source: v.union(
+      v.literal("generated"),
+      v.literal("freesound"),
+      v.literal("uploaded"),
+      v.literal("external"),
+    ),
     url: v.string(),
     duration: v.optional(v.number()),
     prompt: v.optional(v.string()),
@@ -1334,7 +1430,9 @@ export const createAudioAsset = mutation({
     modelKey: v.optional(v.string()),
     timelineStart: v.optional(v.number()),
     timelineEnd: v.optional(v.number()),
-    beatMarkers: v.optional(v.array(v.object({ time: v.number(), strength: v.optional(v.number()) }))),
+    beatMarkers: v.optional(
+      v.array(v.object({ time: v.number(), strength: v.optional(v.number()) })),
+    ),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -1371,8 +1469,22 @@ export const createAudioAsset = mutation({
 export const updateAudioAsset = mutation({
   args: {
     assetId: v.id("audioAssets"),
-    type: v.optional(v.union(v.literal("bgm"), v.literal("sfx"), v.literal("narration"), v.literal("voiceover"))),
-    source: v.optional(v.union(v.literal("generated"), v.literal("freesound"), v.literal("uploaded"), v.literal("external"))),
+    type: v.optional(
+      v.union(
+        v.literal("bgm"),
+        v.literal("sfx"),
+        v.literal("narration"),
+        v.literal("voiceover"),
+      ),
+    ),
+    source: v.optional(
+      v.union(
+        v.literal("generated"),
+        v.literal("freesound"),
+        v.literal("uploaded"),
+        v.literal("external"),
+      ),
+    ),
     provider: v.optional(v.string()),
     modelKey: v.optional(v.string()),
     sceneId: v.optional(v.id("scenes")),
@@ -1383,7 +1495,9 @@ export const updateAudioAsset = mutation({
     timelineStart: v.optional(v.number()),
     timelineEnd: v.optional(v.number()),
     metadata: v.optional(v.any()),
-    beatMarkers: v.optional(v.array(v.object({ time: v.number(), strength: v.optional(v.number()) }))),
+    beatMarkers: v.optional(
+      v.array(v.object({ time: v.number(), strength: v.optional(v.number()) })),
+    ),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();

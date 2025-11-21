@@ -33,6 +33,12 @@ export const VideoGeneratingPhase = ({
   const hasCalledComplete = useRef(false);
   const [cancelling, setCancelling] = useState<Set<Id<"videoClips">>>(new Set());
 
+  useEffect(() => {
+    if (videoClips) {
+      console.log("[VideoGeneratingPhase] Clips update", videoClips);
+    }
+  }, [videoClips]);
+
   const handleCancelClip = async (clipId: Id<"videoClips">, predictionId?: string) => {
     try {
       setCancelling((prev) => new Set(prev).add(clipId));
@@ -218,6 +224,49 @@ export const VideoGeneratingPhase = ({
                   : "Queueing clips..."}
             </span>
           </div>
+        </Card>
+
+        <Card className="p-4 mb-6">
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            Debug Details
+          </h3>
+          <p className="text-xs text-muted-foreground mb-2">
+            Total clips: {videoClips?.length ?? 0} • Pending/polling:{" "}
+            {videoClips?.filter(
+              (clip) => clip.status === "pending" || clip.status === "processing",
+            ).length ?? 0}
+          </p>
+          {videoClips && videoClips.length > 0 ? (
+            <div className="max-h-48 overflow-auto rounded border border-muted bg-muted/20 text-xs">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left">
+                    <th className="px-2 py-1">Scene</th>
+                    <th className="px-2 py-1">Status</th>
+                    <th className="px-2 py-1">Prediction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {videoClips.map((clip) => (
+                    <tr key={clip._id}>
+                      <td className="px-2 py-1 text-muted-foreground">
+                        #{clip.sceneId}
+                      </td>
+                      <td className="px-2 py-1">{clip.status}</td>
+                      <td className="px-2 py-1 text-muted-foreground">
+                        {clip.replicateVideoId || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Waiting for clip records to be created…
+            </p>
+          )}
         </Card>
 
         {/* Video Clips Grid */}

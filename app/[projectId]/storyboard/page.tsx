@@ -1,13 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { StoryboardSceneRow } from "@/components/redesign/StoryboardSceneRow";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Film } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
-import { useStoryboardRows, useAllMasterShotsSet } from "@/lib/hooks/useProjectRedesign";
+import {
+  useStoryboardRows,
+  useAllMasterShotsSet,
+  useProjectProgress,
+  useSyncShotToLegacyScene,
+} from "@/lib/hooks/useProjectRedesign";
 
 const StoryboardPage = () => {
   const params = useParams<{ projectId: string }>();
@@ -15,8 +20,60 @@ const StoryboardPage = () => {
   const projectId = params?.projectId as Id<"videoProjects"> | undefined;
   const storyboardRows = useStoryboardRows(projectId);
   const allMasterShotsSet = useAllMasterShotsSet(projectId);
-  const [isPromoting, setIsPromoting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const projectProgress = useProjectProgress(projectId);
+  const selectionsComplete = Boolean(projectProgress?.isSelectionComplete);
+  const canGenerateVideo = Boolean(projectId) && selectionsComplete;
+  const syncShotToLegacyScene = useSyncShotToLegacyScene();
+  const syncedShotIds = useRef<Set<string>>(new Set());
+
+  if (typeof window !== "undefined") {
+    console.log("[StoryboardPage] projectId", projectId);
+    console.log("[StoryboardPage] projectProgress", projectProgress);
+    console.log("[StoryboardPage] storyboardRows", storyboardRows);
+    console.log("[StoryboardPage] selectionsComplete", selectionsComplete);
+  }
+
+  const [selectedSceneId, setSelectedSceneId] =
+    useState<Id<"projectScenes"> | null>(null);
+  const [selectedShotId, setSelectedShotId] = useState<Id<"sceneShots"> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (storyboardRows && storyboardRows.length > 0) {
+      setSelectedSceneId((prev) => prev ?? storyboardRows[0].scene._id);
+    }
+  }, [storyboardRows]);
+
+  useEffect(() => {
+    if (!storyboardRows || !projectId) return;
+
+    storyboardRows.forEach((row) => {
+      row.shots.forEach((shotWrapper) => {
+        if (!shotWrapper.selectedImage) return;
+        const shotId = shotWrapper.shot._id;
+        if (syncedShotIds.current.has(shotId)) return;
+
+        syncedShotIds.current.add(shotId);
+        console.log("[StoryboardPage] Syncing shot to legacy scene", {
+          projectId,
+          sceneId: row.scene._id,
+          shotId,
+          imageId: shotWrapper.selectedImage._id,
+        });
+
+        syncShotToLegacyScene({
+          projectId,
+          sceneId: row.scene._id,
+          shotId,
+          selectedImageId: shotWrapper.selectedImage._id,
+        }).catch((error) => {
+          console.error("[StoryboardPage] Failed syncing shot", error);
+          syncedShotIds.current.delete(shotId);
+        });
+      });
+    });
+  }, [storyboardRows, projectId, syncShotToLegacyScene]);
 
   if (!projectId) {
     return (
@@ -33,28 +90,6 @@ const StoryboardPage = () => {
   const lockMessage = !allMasterShotsSet
     ? "Set up master shots for all scenes in Scene Planner"
     : undefined;
-
-  const handleGenerateVideo = async () => {
-    if (!projectId) return;
-    setIsPromoting(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/promote-storyboard-scenes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error ?? "Failed to promote scenes");
-      }
-      router.push(`/${projectId}/video`);
-    } catch (err) {
-      console.error("Failed to generate video clips", err);
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setIsPromoting(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-black text-white pb-24">
@@ -74,6 +109,10 @@ const StoryboardPage = () => {
             projectId={projectId}
             storyboardLocked={false}
             storyboardLockMessage={lockMessage}
+            videoLocked={!selectionsComplete}
+            videoLockMessage="Select master shots for every scene to unlock video generation"
+            editorLocked={projectProgress?.projectStatus !== "video_generated"}
+            editorLockMessage="Generate video clips before editing"
           />
 
           <div className="flex items-center gap-2">
@@ -86,20 +125,21 @@ const StoryboardPage = () => {
               Back to Planner
             </Button>
             <Button
-              onClick={handleGenerateVideo}
-              disabled={!hasRows || isPromoting}
-              className="bg-white text-black hover:bg-gray-200 flex items-center gap-2"
+              className="bg-white text-black hover:bg-gray-200"
+              disabled={!canGenerateVideo}
+              onClick={() => {
+                console.log("[StoryboardPage] Generate Video clicked", {
+                  projectId,
+                  canGenerateVideo,
+                  selectionsComplete,
+                });
+                projectId && router.push(`/${projectId}/video`);
+              }}
             >
-              <Film className="w-4 h-4" />
-              {isPromoting ? "Preparing scenes..." : "Generate video"}
+              Generate Video
             </Button>
           </div>
         </div>
-        {error && (
-          <div className="text-sm text-red-400 mt-2">
-            {error}
-          </div>
-        )}
       </div>
 
       <div className="px-8 py-8 space-y-4">
@@ -117,6 +157,10 @@ const StoryboardPage = () => {
             <StoryboardSceneRow
               key={row.scene._id}
               scene={row}
+              isSelected={selectedSceneId === row.scene._id}
+              selectedShotId={selectedShotId}
+              onSceneSelect={(sceneId) => setSelectedSceneId(sceneId)}
+              onShotSelect={(shotId) => setSelectedShotId(shotId)}
             />
           ))
         )}

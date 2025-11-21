@@ -8,12 +8,19 @@ interface StoryboardPartProps {
   shotNumber: number;
   prompt: string;
   imageUrl?: string | null;
+  isSelected?: boolean;
+  onSelect?: (shotId: Id<"sceneShots">) => void;
+  onAction?: () => void;
 }
 
 export const StoryboardPart = ({
+  shotId,
   shotNumber,
   prompt,
   imageUrl,
+  isSelected,
+  onSelect,
+  onAction,
 }: StoryboardPartProps) => {
   const src = proxiedImageUrl(imageUrl);
   return (

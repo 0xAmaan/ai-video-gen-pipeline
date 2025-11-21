@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["convex"],
   turbopack: {
     // Ensure Turbopack roots the build in this workspace (avoids parent lockfiles).
     root: __dirname,
