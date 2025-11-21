@@ -8,11 +8,24 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
 
-const workerBase =
+const rawWorkerBase =
   process.env.R2_INGEST_URL ||
   process.env.NEXT_PUBLIC_R2_PROXY_BASE ||
   "";
 const workerAuth = process.env.R2_INGEST_TOKEN || process.env.AUTH_TOKEN || "";
+
+const normalizeWorkerBase = (value: string) => {
+  if (!value) return "";
+  // Remove trailing /ingest or slashes
+  let trimmed = value.replace(/\/ingest\/?$/, "").replace(/\/+$/, "");
+  // Prepend https:// if missing scheme
+  if (!/^https?:\/\//i.test(trimmed)) {
+    trimmed = `https://${trimmed}`;
+  }
+  return trimmed;
+};
+
+const workerBase = normalizeWorkerBase(rawWorkerBase);
 
 export async function POST(req: Request) {
   const flowTracker = getFlowTracker();
@@ -131,7 +144,7 @@ export async function POST(req: Request) {
 
 async function maybeIngestToR2(sourceUrl: string | null, predictionId: string) {
   if (!sourceUrl || !workerBase) return null;
-  const base = workerBase.endsWith("/") ? workerBase.slice(0, -1) : workerBase;
+  const base = workerBase;
   const endpoint = `${base}/ingest`;
   const key = `videos/${predictionId}.mp4`;
 
