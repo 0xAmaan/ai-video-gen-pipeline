@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Sparkles, Layout, Scissors } from "lucide-react";
+import { Sparkles, Layout, Scissors, Film } from "lucide-react";
 
 interface PageNavigationProps {
   projectId?: string;
@@ -48,6 +48,14 @@ export const PageNavigation = ({ projectId, storyboardLocked, storyboardLockMess
           match: "/storyboard",
           disabled: storyboardLocked,
           disabledMessage: storyboardLockMessage,
+        }
+      : false,
+    projectId
+      ? {
+          name: "Video",
+          icon: Film,
+          href: `/${projectId}/video`,
+          match: "/video",
         }
       : false,
     projectId
