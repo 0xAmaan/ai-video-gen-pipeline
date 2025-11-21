@@ -50,7 +50,7 @@ export const StoryboardSceneRow = ({
       </button>
 
       <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
-        <div className="flex gap-4 min-h-[200px] items-center">
+        <div className="flex gap-4 min-h-[200px] items-center pl-2">
           {scene.shots.length === 0 ? (
             <div className="flex-1 h-[180px] border border-dashed border-gray-700 rounded-2xl flex items-center justify-center text-gray-500 text-sm">
               Awaiting selections for this scene.
