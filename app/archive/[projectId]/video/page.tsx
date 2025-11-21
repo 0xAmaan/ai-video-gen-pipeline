@@ -534,7 +534,7 @@ const VideoPage = () => {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
-      <PhaseGuard requiredPhase="video">
+      <PhaseGuard requiredPhase="video" disableRedirect allowWhenLocked>
         <VideoGeneratingPhase
           scenes={scenesForComponent}
           projectId={projectId as Id<"videoProjects">}

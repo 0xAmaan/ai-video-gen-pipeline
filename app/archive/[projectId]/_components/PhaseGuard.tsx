@@ -11,6 +11,16 @@ interface PhaseGuardProps {
   requiredPhase: Phase;
   children: React.ReactNode;
   allowEditorAlways?: boolean;
+  /**
+   * Skip redirecting to a fallback phase when locked. Useful when we want to show the
+   * target page (e.g., to surface next steps) even if gating data is missing.
+   */
+  disableRedirect?: boolean;
+  /**
+   * When true, render children even if the required phase is not unlocked.
+   * Requires a project to exist; otherwise we still return null.
+   */
+  allowWhenLocked?: boolean;
 }
 
 const getPhaseOrder = (phase: Phase): number => {
@@ -18,7 +28,13 @@ const getPhaseOrder = (phase: Phase): number => {
   return order[phase];
 };
 
-export const PhaseGuard = ({ requiredPhase, children, allowEditorAlways = false }: PhaseGuardProps) => {
+export const PhaseGuard = ({
+  requiredPhase,
+  children,
+  allowEditorAlways = false,
+  disableRedirect = false,
+  allowWhenLocked = false,
+}: PhaseGuardProps) => {
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
@@ -73,7 +89,7 @@ export const PhaseGuard = ({ requiredPhase, children, allowEditorAlways = false 
     // Check if the required phase is unlocked
     const phaseUnlocked = isPhaseUnlocked(requiredPhase);
 
-    if (!phaseUnlocked) {
+    if (!phaseUnlocked && !disableRedirect) {
       // Redirect to furthest unlocked phase
       const fallbackPhase = furthestUnlockedPhase();
       router.push(`${basePrefix}/${projectId}/${fallbackPhase}`);
@@ -88,6 +104,7 @@ export const PhaseGuard = ({ requiredPhase, children, allowEditorAlways = false 
     hasScenes,
     hasClips,
     allClipsComplete,
+    disableRedirect,
   ]);
 
   // Show loading state
@@ -103,7 +120,11 @@ export const PhaseGuard = ({ requiredPhase, children, allowEditorAlways = false 
   }
 
   // Show nothing if no project or phase not unlocked
-  if (!project || !isPhaseUnlocked(requiredPhase)) {
+  if (!project) {
+    return null;
+  }
+
+  if (!isPhaseUnlocked(requiredPhase) && !allowWhenLocked) {
     return null;
   }
 
