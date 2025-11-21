@@ -381,16 +381,67 @@ const PromptPlannerPage = () => {
   };
 
   const handleShotClick = (shot: SceneShot) => {
+    console.log('[Scene-Planner] Shot clicked:', shot._id);
     setSelectedShot({ shotId: shot._id, sceneId: shot.sceneId });
-    setChatInputValue(shot.description);
+    setChatInputValue(""); // Don't autofill - user types refinement command
     setHighlightedShotId(shot._id);
+    console.log('[Scene-Planner] selectedShot updated, shouldFocus should be true');
   };
 
   const handleChatSubmit = async (message: string) => {
-    if (!selectedShot) return;
-    await handleUpdateShotText(selectedShot.shotId, message);
-    setSelectedShot(null);
-    setChatInputValue("");
+    if (!selectedShot || !projectId) return;
+
+    const shot = plannerScenes
+      .flatMap((scene) => scene.shots)
+      .find((s) => s._id === selectedShot.shotId);
+
+    if (!shot) return;
+
+    try {
+      // TODO: Decide on API integration approach for chat refinements
+      // Option A: image + original description + command (CURRENT IMPLEMENTATION)
+      //   - Sends: parentImageId, shot.description (via API server-side), fixPrompt
+      //   - Pros: Full context for AI, maintains original intent
+      //   - Cons: Description might conflict with refinement command
+      //
+      // Option B: image + command only
+      //   - Sends: parentImageId, fixPrompt (no description context)
+      //   - Pros: Clean, direct refinement without context conflicts
+      //   - Cons: Loses original shot context and intent
+      //
+      // Option C: image + AI-regenerated description
+      //   - Sends: parentImageId, AI-generated new description (command → new description first)
+      //   - Pros: Description stays updated with changes, single source of truth
+      //   - Cons: Requires extra AI call to rewrite description first, more complex flow
+
+      toast.success("Regenerating shot...");
+
+      const response = await fetch("/api/generate-shot-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sceneId: shot.sceneId,
+          shotId: shot._id,
+          fixPrompt: message.trim(),
+          parentImageId: shot.selectedImageId, // Use current selected image for image-to-image
+          mode: "preview",
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Generation failed");
+      }
+
+      setSelectedShot(null);
+      setChatInputValue("");
+    } catch (error) {
+      console.error("Failed to regenerate shot", error);
+      toast.error(
+        error instanceof Error ? error.message : "Unable to regenerate shot",
+      );
+    }
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -868,6 +919,8 @@ const PromptPlannerPage = () => {
           disabled={!selectedShot}
           initialMessage={chatInputValue}
           onMessageChange={setChatInputValue}
+          shouldFocus={!!selectedShot}
+          selectedShotId={selectedShot?.shotId}
         />
       </div>
       </div>

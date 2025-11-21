@@ -89,14 +89,6 @@ const ShotCard = ({
   onRegenerateShot,
   onGeneratePreview,
 }: ShotCardProps) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(shot.description);
-
-  useEffect(() => {
-    if (!isEditing) {
-      setDraft(shot.description);
-    }
-  }, [shot.description, isEditing]);
 
   const {
     attributes,
@@ -129,20 +121,13 @@ const ShotCard = ({
     return `Shot ${scene.sceneNumber}.${shotNumber}`;
   }, [scene.sceneNumber, shot.shotNumber, shotIndex]);
 
-  const commitDraft = () => {
-    if (draft.trim().length && draft !== shot.description) {
-      onUpdateShotText(shot._id, draft.trim());
-    }
-    setIsEditing(false);
-  };
-
   return (
     <Card
       ref={setRefs}
       style={style}
-      onClick={() => !isEditing && onShotClick(shot)}
+      onClick={() => onShotClick(shot)}
       className={cn(
-        "p-3 bg-[#131414] border transition-all relative",
+        "p-3 bg-[#131414] border transition-all relative cursor-pointer",
         isDragging && "opacity-30 scale-95",
         isOver && "border-blue-400 border-dashed border-2 bg-blue-500/10 shadow-lg shadow-blue-500/20",
         !isDragging && !isOver && "border-gray-800/60 hover:border-gray-600/80",
@@ -175,34 +160,9 @@ const ShotCard = ({
             </Badge>
           </div>
 
-          {isEditing ? (
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={commitDraft}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setIsEditing(false);
-                  setDraft(shot.description);
-                }
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  commitDraft();
-                }
-              }}
-              autoFocus
-              className="w-full bg-[#0a0a0a] text-sm text-gray-100 min-h-[70px]"
-            />
-          ) : (
-            <p
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsEditing(true);
-              }}
-              className="text-sm text-gray-200 cursor-text hover:bg-[#0f0f0f] px-2 py-1 rounded transition-colors"
-            >
-              {shot.description}
-            </p>
-          )}
+          <p className="text-sm text-gray-200 px-2 py-1">
+            {shot.description}
+          </p>
         </div>
 
         <div className="flex flex-row gap-1">

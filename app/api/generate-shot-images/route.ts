@@ -29,7 +29,8 @@ interface GenerateRequestBody {
   mode?: "preview" | "iteration";
 }
 
-const SYSTEM_PROMPT = "TODO: add system prompt here for image generation";
+const SYSTEM_PROMPT =
+  "Generate a high-quality cinematic image based on the following scene and shot descriptions.";
 
 const normalizeOutput = (output: any): string[] => {
   if (!output) return [];
@@ -213,11 +214,17 @@ export async function POST(req: Request) {
       return apiError("Parent image not found for iteration", 400);
     }
 
-    const iterationPrompt = buildIterationPrompt(
+    const fullPromptForGeneration = buildIterationPrompt(
       shotData.scene.description,
       shotData.shot.initialPrompt ?? "",
       fixPrompt,
     );
+
+    // Store only the user's refinement command for display in UI
+    // For iteration 0, use the shot description
+    const iterationPromptForDisplay =
+      fixPrompt ||
+      (iterationNumber === 0 ? shotData.shot.description : "Refinement");
 
     const runs = mode === "preview" ? 1 : 3;
     let variantPayloads: Array<{
@@ -257,7 +264,7 @@ export async function POST(req: Request) {
       for (let runIndex = 0; runIndex < runs; runIndex++) {
         try {
           const result = await runPrediction(
-            iterationPrompt,
+            fullPromptForGeneration,
             parentImage?.imageUrl,
           );
           predictionResults.push(result);
@@ -335,7 +342,7 @@ export async function POST(req: Request) {
         sceneId,
         shotId,
         iterationNumber,
-        iterationPrompt,
+        iterationPrompt: iterationPromptForDisplay,
         parentImageId,
         images: variantPayloads.map((variant) => ({
           variantNumber: variant.variantNumber,

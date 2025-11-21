@@ -723,6 +723,12 @@ export const getProjectShotSelections = query({
 export const getShotPreviewImages = query({
   args: { projectId: v.id("videoProjects") },
   handler: async (ctx, args) => {
+    // Get all shots to check which have selected images
+    const shots = await ctx.db
+      .query("sceneShots")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
     const images = await ctx.db
       .query("shotImages")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -730,10 +736,45 @@ export const getShotPreviewImages = query({
 
     const previews = new Map<Id<"sceneShots">, any[]>();
 
+    // First pass: add selected master shots (from any iteration)
+    for (const shot of shots) {
+      if (!shot.selectedImageId) continue;
+
+      const selectedImage = images.find(
+        (img) => img._id === shot.selectedImageId,
+      );
+      if (!selectedImage) continue;
+
+      previews.set(shot._id, [
+        {
+          _id: selectedImage._id,
+          shotId: selectedImage.shotId,
+          imageUrl: selectedImage.imageUrl,
+          status: selectedImage.status,
+          variantNumber: selectedImage.variantNumber,
+        },
+      ]);
+    }
+
+    // Second pass: for shots without selected master, show latest iteration's first image
+    // Group images by shotId to find latest iteration
+    const shotIterations = new Map<Id<"sceneShots">, number>();
     for (const image of images) {
-      if (image.iterationNumber !== 0) continue;
+      const currentMax = shotIterations.get(image.shotId) ?? -1;
+      if (image.iterationNumber > currentMax) {
+        shotIterations.set(image.shotId, image.iterationNumber);
+      }
+    }
+
+    for (const image of images) {
+      if (previews.has(image.shotId)) continue; // Already has selected master
+
+      const latestIteration = shotIterations.get(image.shotId) ?? 0;
+      if (image.iterationNumber !== latestIteration) continue; // Only latest iteration for fallback
+
       const list = previews.get(image.shotId) ?? [];
-      if (list.length >= 1) continue;
+      if (list.length >= 1) continue; // Only one preview per shot
+
       list.push({
         _id: image._id,
         shotId: image.shotId,

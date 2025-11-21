@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
+import { Toaster } from "sonner";
 import { ProjectSidebar } from "@/components/ProjectSidebar";
 import { DeveloperToolsMenu } from "@/components/redesign/DeveloperToolsMenu";
 import { FlowVisualization } from "@/components/FlowVisualization";
@@ -40,6 +41,7 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
           <DeveloperToolsMenu />
         </div>
         <FlowVisualization />
+        <Toaster position="top-center" richColors />
       </main>
     );
   }
@@ -52,6 +54,7 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
           <DeveloperToolsMenu />
         </div>
         <FlowVisualization />
+        <Toaster position="top-center" richColors />
       </>
     );
   }
@@ -65,6 +68,7 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
           <DeveloperToolsMenu />
         </div>
         <FlowVisualization />
+        <Toaster position="top-center" richColors />
       </main>
     </div>
   );
