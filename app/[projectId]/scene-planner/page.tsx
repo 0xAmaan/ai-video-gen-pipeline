@@ -33,15 +33,6 @@ import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery
 import { AssetManager } from "@/components/redesign/AssetManager";
 import { SceneIteratorModal } from "@/components/redesign/SceneIteratorModal";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import {
   useProjectScenes,
   useSceneShots,
   useCreateProjectScene,
@@ -58,6 +49,7 @@ import {
   useShotPreviewImages,
   useSelectMasterShot,
   useAllMasterShotsSet,
+  useClearShotImage,
 } from "@/lib/hooks/useProjectRedesign";
 import { requestPreviewSeed } from "@/lib/client/requestPreviewSeed";
 import {
@@ -112,6 +104,7 @@ const PromptPlannerPage = () => {
   const deleteShot = useDeleteSceneShot();
   const reorderSceneShots = useReorderSceneShots();
   const moveShotToScene = useMoveShotToScene();
+  const clearShotImage = useClearShotImage();
 
   const [plannerScenes, setPlannerScenes] = useState<PlannerSceneState[]>([]);
   const [chatInputValue, setChatInputValue] = useState("");
@@ -124,9 +117,6 @@ const PromptPlannerPage = () => {
   const [highlightedShotId, setHighlightedShotId] = useState<
     Id<"sceneShots"> | null
   >(null);
-  const [regenerateTarget, setRegenerateTarget] = useState<SceneShot | null>(null);
-  const [regeneratePrompt, setRegeneratePrompt] = useState("");
-  const [regenerateBusy, setRegenerateBusy] = useState(false);
   const [seedingMissing, setSeedingMissing] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [iteratorShotId, setIteratorShotId] = useState<Id<"sceneShots"> | null>(null);
@@ -613,40 +603,15 @@ const PromptPlannerPage = () => {
     }
   };
 
-  const handleOpenRegenerate = (shot: SceneShot) => {
-    setRegenerateTarget(shot);
-    setRegeneratePrompt(shot.description || "");
-  };
-
-  const handleRegenerateShot = async () => {
-    if (!projectId || !regenerateTarget || regenerateBusy) return;
-    setRegenerateBusy(true);
+  const handleRegenerateShot = async (shot: SceneShot) => {
     try {
-      const response = await fetch("/api/generate-shot-images", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          sceneId: regenerateTarget.sceneId,
-          shotId: regenerateTarget._id,
-          fixPrompt: regeneratePrompt.trim() || undefined,
-          mode: "preview",
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error ?? "Generation failed");
-      }
-      toast.success("Regenerating images...");
-      setRegenerateTarget(null);
-      setRegeneratePrompt("");
+      await clearShotImage({ shotId: shot._id });
+      toast.success("Shot image cleared. You can now edit the prompt and regenerate.");
     } catch (error) {
-      console.error("Failed to regenerate shot", error);
+      console.error("Failed to clear shot image", error);
       toast.error(
-        error instanceof Error ? error.message : "Unable to regenerate shot",
+        error instanceof Error ? error.message : "Unable to clear shot image",
       );
-    } finally {
-      setRegenerateBusy(false);
     }
   };
 
@@ -822,7 +787,7 @@ const PromptPlannerPage = () => {
                               shotPreviewMap.get(shotId) ?? []
                             }
                             onSelectShotImage={handleSelectShotImage}
-                            onRegenerateShot={handleOpenRegenerate}
+                            onRegenerateShot={handleRegenerateShot}
                             onGeneratePreview={handleGeneratePreview}
                           />
                         </SortableContext>
@@ -923,55 +888,6 @@ const PromptPlannerPage = () => {
         isOpen={!!iteratorShotId}
         onClose={() => setIteratorShotId(null)}
       />
-
-      <Dialog
-        open={!!regenerateTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRegenerateTarget(null);
-            setRegeneratePrompt("");
-          }
-        }}
-      >
-        <DialogContent className="bg-[#111] border border-white/10 text-white max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Regenerate shot images</DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Describe what should change. We&apos;ll generate a new preview frame for{" "}
-              {regenerateTarget
-                ? `Shot ${regenerateTarget.shotNumber}`
-                : "this shot"}{" "}
-              using your guidance.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={regeneratePrompt}
-            onChange={(e) => setRegeneratePrompt(e.target.value)}
-            className="bg-[#1b1b1b] border-white/10 text-white min-h-[120px]"
-            placeholder="e.g., make it dusk, add dramatic lighting..."
-          />
-          <DialogFooter className="mt-4">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setRegenerateTarget(null);
-                setRegeneratePrompt("");
-              }}
-              className="border-white/20 text-gray-300"
-              disabled={regenerateBusy}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleRegenerateShot}
-              disabled={regenerateBusy}
-              className="bg-white text-black hover:bg-gray-200"
-            >
-              {regenerateBusy ? "Generating..." : "Generate preview frame"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 };

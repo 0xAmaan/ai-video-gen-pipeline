@@ -366,9 +366,8 @@ export async function POST(req: Request) {
       insertedIds.some((id) => id === image._id),
     );
 
-    // Auto-select the first image as master shot for preview mode (iteration 0)
-    const shouldAutoSelect =
-      mode === "preview" && iterationNumber === 0 && newDocs.length > 0;
+    // Auto-select the first image as master shot for preview mode
+    const shouldAutoSelect = mode === "preview" && newDocs.length > 0;
 
     await convex.mutation(api.projectRedesign.updateSceneShot, {
       shotId,

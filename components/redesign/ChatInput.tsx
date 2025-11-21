@@ -66,12 +66,12 @@ export const ChatInput = ({
   // Settings state
   const [settings, setSettings] = useState<GenerationSettings>({
     mode: "image",
-    model: "flux-pro",
+    model: "nano-banana",
     audioOn: false,
     duration: "5s",
     quality: "HD",
     aspectRatio: "16:9",
-    variationCount: 3,
+    variationCount: 1,
   });
 
   const handleSubmit = () => {
@@ -101,10 +101,10 @@ export const ChatInput = ({
       <div className="max-w-4xl mx-auto p-3 mb-2">
         <div className="relative bg-[#2C2D2D]/95 backdrop-blur-md rounded-xl shadow-2xl">
           <div className="flex">
-            {/* Left: Mode toggle (vertical stack) - spans full height */}
-            <div className="relative flex flex-col gap-0 overflow-hidden bg-[#131414]">
+            {/* COMMENTED OUT: Left: Mode toggle (vertical stack) - spans full height */}
+            {/* <div className="relative flex flex-col gap-0 overflow-hidden bg-[#131414]"> */}
               {/* Sliding indicator background */}
-              <motion.div
+              {/* <motion.div
                 className="absolute inset-x-0"
                 initial={false}
                 animate={{
@@ -119,9 +119,9 @@ export const ChatInput = ({
                   damping: 30,
                 }}
                 style={{ height: "50%" }}
-              />
+              /> */}
 
-              <button
+              {/* <button
                 onClick={() => setMode("image")}
                 className={`relative z-10 px-3 py-3 text-[10px] font-medium flex items-center gap-1.5 cursor-pointer flex-1 transition-colors rounded-tl-xl ${
                   mode === "image"
@@ -131,8 +131,8 @@ export const ChatInput = ({
               >
                 <Image className="w-4 h-4" />
                 IMAGE
-              </button>
-              <button
+              </button> */}
+              {/* <button
                 onClick={() => setMode("video")}
                 className={`relative z-10 px-3 py-3 text-[10px] font-medium flex items-center gap-1.5 cursor-pointer flex-1 transition-colors rounded-bl-xl ${
                   mode === "video"
@@ -142,21 +142,21 @@ export const ChatInput = ({
               >
                 <Video className="w-4 h-4" />
                 VIDEO
-              </button>
-            </div>
+              </button> */}
+            {/* </div> */}
 
             {/* Right side: Main input area and settings */}
             <div className="flex-1 flex flex-col gap-1.5 p-2.5">
               {/* Top: Input controls */}
               <div className="flex items-start gap-2">
-                {/* Add asset button */}
-                <button
+                {/* COMMENTED OUT: Add asset button */}
+                {/* <button
                   onClick={handleAddAsset}
                   className="w-12 h-12 rounded-lg bg-[#171717] hover:bg-[#1f1f1f] transition-colors flex items-center justify-center text-gray-400 hover:text-gray-200 cursor-pointer"
                   disabled={disabled}
                 >
                   <Plus className="w-5 h-5" />
-                </button>
+                </button> */}
 
                 {/* Textarea */}
                 <textarea

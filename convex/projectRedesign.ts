@@ -318,6 +318,22 @@ export const moveShotToScene = mutation({
   },
 });
 
+export const clearShotImage = mutation({
+  args: {
+    shotId: v.id("sceneShots"),
+  },
+  handler: async (ctx, args) => {
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+
+    await ctx.db.patch(args.shotId, {
+      selectedImageId: undefined,
+      lastImageStatus: undefined,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // ========================================
 // SHOT IMAGE MUTATIONS
 // ========================================

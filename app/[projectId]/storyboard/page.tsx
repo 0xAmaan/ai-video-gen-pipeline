@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { StoryboardSceneRow } from "@/components/redesign/StoryboardSceneRow";
@@ -15,19 +15,6 @@ const StoryboardPage = () => {
   const projectId = params?.projectId as Id<"videoProjects"> | undefined;
   const storyboardRows = useStoryboardRows(projectId);
   const allMasterShotsSet = useAllMasterShotsSet(projectId);
-
-  const [selectedSceneId, setSelectedSceneId] = useState<
-    Id<"projectScenes"> | null
-  >(null);
-  const [selectedShotId, setSelectedShotId] = useState<
-    Id<"sceneShots"> | null
-  >(null);
-
-  useEffect(() => {
-    if (storyboardRows && storyboardRows.length > 0) {
-      setSelectedSceneId((prev) => prev ?? storyboardRows[0].scene._id);
-    }
-  }, [storyboardRows]);
 
   if (!projectId) {
     return (
@@ -93,10 +80,6 @@ const StoryboardPage = () => {
             <StoryboardSceneRow
               key={row.scene._id}
               scene={row}
-              isSelected={selectedSceneId === row.scene._id}
-              selectedShotId={selectedShotId}
-              onSceneSelect={(sceneId) => setSelectedSceneId(sceneId)}
-              onShotSelect={(shotId) => setSelectedShotId(shotId)}
             />
           ))
         )}
