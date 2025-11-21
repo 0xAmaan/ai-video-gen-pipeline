@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -46,10 +45,7 @@ export const AssetManager = ({ projectId }: AssetManagerProps) => {
   }, [assets]);
 
   const handleDialogSubmit = async (values: AssetFormValues) => {
-    if (!projectId) {
-      toast.error("Create a project first before adding assets.");
-      return;
-    }
+    if (!projectId) return;
 
     setSaving(true);
     try {
@@ -64,7 +60,6 @@ export const AssetManager = ({ projectId }: AssetManagerProps) => {
           img2imgStrength: values.img2imgStrength,
           assetType: values.assetType,
         });
-        toast.success("Asset updated");
       } else {
         await createAsset({
           projectId,
@@ -76,13 +71,11 @@ export const AssetManager = ({ projectId }: AssetManagerProps) => {
           prominence: values.prominence,
           img2imgStrength: values.img2imgStrength,
         });
-        toast.success("Asset added");
       }
       setDialogOpen(false);
       setEditingAsset(null);
     } catch (error) {
       console.error(error);
-      toast.error("Unable to save asset. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -102,15 +95,8 @@ export const AssetManager = ({ projectId }: AssetManagerProps) => {
 
   const handleToggleActive = async (asset: ProjectAsset) => {
     setPendingAction(asset._id);
-    try {
-      await toggleAsset({ assetId: asset._id });
-      toast.success(asset.isActive ? "Asset hidden" : "Asset reactivated");
-    } catch (error) {
-      console.error(error);
-      toast.error("Could not update asset state");
-    } finally {
-      setPendingAction(null);
-    }
+    await toggleAsset({ assetId: asset._id }).catch((error) => console.error(error));
+    setPendingAction(null);
   };
 
   const handleDelete = async (asset: ProjectAsset) => {
@@ -120,15 +106,8 @@ export const AssetManager = ({ projectId }: AssetManagerProps) => {
     if (!confirmDelete) return;
 
     setPendingAction(asset._id);
-    try {
-      await deleteAsset({ assetId: asset._id });
-      toast.success("Asset deleted");
-    } catch (error) {
-      console.error(error);
-      toast.error("Unable to delete asset");
-    } finally {
-      setPendingAction(null);
-    }
+    await deleteAsset({ assetId: asset._id }).catch((error) => console.error(error));
+    setPendingAction(null);
   };
 
   const renderAssetCard = (asset: ProjectAsset) => {
