@@ -85,8 +85,7 @@ const runPrediction = async (
 
   while (
     current.status === "starting" ||
-    current.status === "processing" ||
-    current.status === "queued"
+    current.status === "processing"
   ) {
     await sleep(1500);
     current = await replicate.predictions.get(current.id);

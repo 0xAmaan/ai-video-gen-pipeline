@@ -220,21 +220,21 @@ declare global {
   }
 
   interface SpeechRecognitionResultList {
-    length: number;
+    readonly length: number;
     item(index: number): SpeechRecognitionResult;
     [index: number]: SpeechRecognitionResult;
   }
 
   interface SpeechRecognitionResult {
-    isFinal: boolean;
-    length: number;
+    readonly isFinal: boolean;
+    readonly length: number;
     item(index: number): SpeechRecognitionAlternative;
     [index: number]: SpeechRecognitionAlternative;
   }
 
   interface SpeechRecognitionAlternative {
-    transcript: string;
-    confidence: number;
+    readonly transcript: string;
+    readonly confidence: number;
   }
 
   interface SpeechRecognitionErrorEvent extends Event {

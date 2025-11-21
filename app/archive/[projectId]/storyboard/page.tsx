@@ -252,27 +252,25 @@ const StoryboardPage = () => {
       }));
 
   return (
-    <PhaseGuard requiredPhase="storyboard">
-      {isGenerating ? (
-        <StoryboardGeneratingPhase
-          scenes={scenesForComponent}
-          totalScenes={5}
-          currentStage={storyboardStatus.stage}
-          currentSceneNumber={storyboardStatus.currentScene}
-          modelName={modelInfo.modelName}
-          estimatedCostPerImage={modelInfo.estimatedCost}
-          modelReason={modelInfo.reason}
-        />
-      ) : (
-        <StoryboardPhase
-          prompt={questions?.answers?.prompt || project?.prompt || ""}
-          scenes={scenesForComponent}
-          onGenerateVideo={handleGenerateVideo}
-          projectId={projectId as Id<"videoProjects">}
-          project={project}
-        />
-      )}
-    </PhaseGuard>
+    {isGenerating ? (
+      <StoryboardGeneratingPhase
+        scenes={scenesForComponent}
+        totalScenes={5}
+        currentStage={storyboardStatus.stage}
+        currentSceneNumber={storyboardStatus.currentScene}
+        modelName={modelInfo.modelName}
+        estimatedCostPerImage={modelInfo.estimatedCost}
+        modelReason={modelInfo.reason}
+      />
+    ) : (
+      <StoryboardPhase
+        prompt={questions?.answers?.prompt || project?.prompt || ""}
+        scenes={scenesForComponent}
+        onGenerateVideo={handleGenerateVideo}
+        projectId={projectId as Id<"videoProjects">}
+        project={project}
+      />
+    )}
   );
 };
 

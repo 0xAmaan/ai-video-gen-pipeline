@@ -1,0 +1,154 @@
+AI Storyboard → Video Generation Mapping
+=======================================
+
+Scope: document how storyboard data is created, edited, and eventually turned into video clips. This covers the working **legacy (v1)** workflow (`app/archive/...`) and the partially implemented **redesign (v2)** workflow (`app/[projectId]/...`). It highlights every component, Convex table, and API route involved, then calls out the current disconnect between storyboard selections and video generation in v2.
+
+ -------------------------------------------------------------------------------
+ 1. Core Data Model Overview
+ -------------------------------------------------------------------------------
+ Legacy v1
+ ---------
+ • `videoProjects` (convex/video.ts) – project metadata, current status/phase, selected AI models.  
+ • `clarifyingQuestions` – prompt answers that feed storyboard generation.  
+ • `scenes` – each v1 scene holds: `_id`, `sceneNumber`, `description`, `visualPrompt`, `imageUrl`, `narrationText`, `narrationUrl`, voice metadata, duration, music hints.  
+ • `videoClips` – one per generated clip; tracks Replicate prediction ID, status, URLs, lipsync metadata.  
+ • `projectVoiceSettings`, `audioAssets`, `projectHistory` – supporting tables.
+
+ Redesign v2
+ -----------
+ • `projectScenes` → `sceneShots` → `shotImages` → `storyboardSelections` (see docs/REDESIGN_ARCHITECTURE.md).  
+ • `shotImages` supports iterative img2img refinements.  
+ • `storyboardSelections` is the authoritative list of “master shots” (one per `sceneShots`).  
+ • `videoProjects.workflowVersion` distinguishes legacy vs redesign.
+
+ -------------------------------------------------------------------------------
+ 2. Legacy Workflow: Storyboard Creation & Editing
+ -------------------------------------------------------------------------------
+ Entry point: `app/archive/[projectId]/storyboard/page.tsx` lines 23‑279.
+ 1. Uses `useProjectData` to pull project + scenes from Convex and `PhaseGuard` to enforce phase order.  
+ 2. `generateStoryboard()` (lines 79‑205) fires automatically when a project has answers but no scenes:
+    • Calls `/api/generate-storyboard` with `projectId`, prompt, and clarifying responses.  
+    • Updates project status via `api.video.updateProjectStatus`.  
+    • Persists returned scenes via `api.video.saveScenes`.  
+    • Displays live progress via `StoryboardGeneratingPhase`.
+ 3. When generation finishes, `StoryboardPhase` (components/StoryboardPhase.tsx) becomes the UI.
+
+ `components/StoryboardPhase.tsx`
+ --------------------------------
+ • Maintains local scene array + drag state + audio generation state (lines 113‑178).  
+ • Hooks (`useMutation`, `useQuery`) talk to Convex for live data (lines 143‑179).  
+ • Voice & narration controls (`NarrationControls`, `VoiceSelectionDialog`) invoke:
+   - `/api/regenerate-narration` (lines 943‑1015) to re-synthesize audio.  
+   - `api.video.updateProjectVoiceSettings` and `api.video.updateSceneNarration` to persist.  
+ • Image regeneration uses `/api/regenerate-scene` then `api.video.updateScene` (lines 1087‑1139).  
+ • Background music tab drives `/api/generate-music` and `/api/search-audio` (lines 606‑733).  
+ • Audio mix levels call `api.video.updateProjectAudioTrackSettings`.  
+ • Drag & drop ordering patches `api.video.updateSceneOrder` (lines 1141‑1171).  
+ • `onGenerateVideo` simply routes to `/${projectId}/video` after updating last active phase.
+
+ Supporting hook: `components/storyboard/useStoryboardState.ts`
+ --------------------------------------------------------------
+ • Wraps Convex queries (`api.video.getScenes`, `api.video.getProjectVoiceSettings`) and mutations (`updateScene`, `updateSceneOrder`, `deleteScene`, `updateProjectBackgroundMusic`, etc.).  
+ • Provides derived totals (duration, sample audio URL) for UI.
+
+ Storyboard generation backend: `app/api/generate-storyboard/route.ts`
+ ---------------------------------------------------------------------
+ • Uses `generateObject()` with Groq/OpenAI to produce structured scenes (lines 54‑153).  
+ • Persists or reuses voice settings; auto-picks provider via `generateVoiceSelection`.  
+ • For each scene, runs Leonardo Phoenix via Replicate for images plus synthesizes narration through the configured voice adapter (lines 205‑291).  
+ • Returns `scenes`, `modelInfo`, and `voiceSelection`.
+
+ -------------------------------------------------------------------------------
+ 3. Legacy Workflow: Video Generation & Lipsync
+ -------------------------------------------------------------------------------
+ Entry point: `app/archive/[projectId]/video/page.tsx` lines 1‑550.
+ 1. `useProjectData` supplies scenes and any existing clips.  
+ 2. On mount, `generateVideoClips()` (lines 429‑502) runs once when there are scenes but no clips.
+    • Builds `scenesData` (id, number, image, duration).  
+    • Calls `/api/generate-all-clips` with optional `videoModel`.  
+    • For each prediction result, inserts a `videoClips` row via `api.video.createVideoClip`.  
+    • Starts polling each Replicate prediction through `startPolling`.
+ 3. `startPolling()` (lines 200‑374 excerpt) hits `/api/poll-prediction`.  
+    • On success → `api.video.updateVideoClip({ status: "complete", videoUrl })`.  
+    • On failure → marks clip failed.  
+    • On completion, hands clip/video URL to the lip-sync queue.
+ 4. `queueLipsyncForClip()` decides whether to invoke `/api/lipsync-video`.  
+    • If narration exists and lipsync is enabled, posts `videoUrl` + `scene.narrationUrl` → saves prediction ID via `api.video.saveLipsyncPrediction`.  
+    • `startLipsyncPolling()` hits `/api/poll-lipsync` until status is complete/failed, then updates both scenes and clips (`api.video.updateSceneLipsync`, `api.video.updateVideoClipLipsync`).
+ 5. UI: `components/VideoGeneratingPhase.tsx` renders live metrics.
+    • Subscribes to `api.video.getVideoClips`.  
+    • Computes progress (video and lipsync), estimated costs, and cancellation options.  
+    • Allows `enableLipsync` toggle until generation starts.  
+    • Calls `onComplete` once all clips settle, after which the page routes to `/[projectId]/editor`.
+
+ Video generation backend routes
+ -------------------------------
+ • `/api/generate-all-clips` – creates Replicate predictions in parallel, tailoring inputs per model (WAN, Kling, Veo, Hailuo, SeéDance). Returns prediction IDs only; no direct Convex writes.  
+ • `/api/generate-video-clip` – single-shot variant (unused in bulk flow but wired for future features).  
+ • `/api/poll-prediction` – fetches Replicate status, normalizes output to a video URL.  
+ • `/api/cancel-prediction` – optional cancellation (used when the user aborts).  
+ • `/api/lipsync-video` + `/api/poll-lipsync` – leverage `lib/server/lipsync.ts` to run a second Replicate model and persist status.  
+ • `/api/poll-lipsync` updates Convex when a scene or clip finishes lip sync.
+
+ Convex responsibilities (convex/video.ts)
+ -----------------------------------------
+ • `saveScenes`, `updateScene`, `deleteScene`, `updateSceneOrder` keep storyboard data authoritative.  
+ • `createVideoClip`, `updateVideoClip`, `getVideoClips`, `cancelVideoClip` manage clip lifecycle.  
+ • `saveLipsyncPrediction`, `updateSceneLipsync`, `updateVideoClipLipsync` sync lip-sync metadata.  
+ • `updateLastActivePhase` drives navigation gating.  
+ • `getProjectWithAllData` is the catch-all query powering `useProjectData`.
+
+ -------------------------------------------------------------------------------
+ 4. Redesign Workflow (v2): Shot-Based Storyboard
+ -------------------------------------------------------------------------------
+ Planner & iterator
+ ------------------
+ • `app/[projectId]/scene-planner/page.tsx` renders new planning UI, entirely powered by `lib/hooks/useProjectRedesign`. Scenes and shots are persisted through `convex/projectRedesign.ts` (`createProjectScene`, `createSceneShot`, `reorderSceneShots`, etc.).  
+ • Shot images are meant to be generated through a nano-banana endpoint (spec’d in BACKEND_TASK_LIST.md §3 but not yet implemented). Hooks like `useShotPreviewImages`, `useGroupedShotImages`, and `useProjectShotSelections` are ready for integration.
+
+ Storyboard (v2)
+ ---------------
+ • `app/[projectId]/storyboard/page.tsx` uses `useStoryboardRows` to fetch every scene and its selected master shot via `api.projectRedesign.getStoryboardRows`.  
+ • `StoryboardSceneRow` + `StoryboardPart` simply display the chosen `shotImages` URLs; there are no controls yet.  
+ • `useAllMasterShotsSet` gates navigation, but the storyboard page itself never triggers animation/video jobs.
+
+ Data persistence
+ ----------------
+ • `createStoryboardSelection` + `sceneShots.selectedImageId` are intended to store the user’s choice.  
+ • `updateStoryboardAnimation` exists for tracking animation prediction IDs and final `animatedVideoUrl`, but no frontend code calls it.  
+ • `getProjectShotSelections`, `useProjectShotSelections`, and the planned `VerticalMediaGallery` will surface decisions across planner/iterator/storyboard.
+
+ Video generation gap in v2
+ --------------------------
+ • The redesign stack does not touch `videoClips` or any `/api/generate-*-clip` route.  
+ • There is no service that turns `storyboardSelections` into animation jobs. The only animation-related mutation (`updateStoryboardAnimation`) is unused.  
+ • `PageNavigation` (components/redesign/PageNavigation.tsx) lacks a Video/Animation destination; users can’t reach the legacy video phase from `/[projectId]/storyboard`.  
+ • Because v2 stores scenes in `projectScenes`/`sceneShots`, the legacy `/api/generate-all-clips` flow cannot run without a migration or adapter that maps each selected shot to the legacy `scenes` table or to a new animation queue.
+
+ -------------------------------------------------------------------------------
+ 5. Endpoint Connectivity Summary
+ -------------------------------------------------------------------------------
+ Legacy storyboard → video chain:
+ • `app/archive/[projectId]/storyboard/page.tsx` → `/api/generate-storyboard` → `api.video.saveScenes`.  
+ • User edits scenes via `components/StoryboardPhase` → Convex mutations keep `scenes` fresh.  
+ • `onGenerateVideo` routes to `/archive/[projectId]/video`.  
+ • `app/archive/[projectId]/video/page.tsx` → `/api/generate-all-clips` → `api.video.createVideoClip`.  
+ • Polling endpoints update `videoClips`; optional `/api/lipsync-video` augments them.  
+ • Completion pushes `/[projectId]/editor`.
+
+ Redesign storyboard (current state):
+ • Planner/iterator operate on `projectScenes`/`sceneShots`/`shotImages`.  
+ • Storyboard page only reads via `useStoryboardRows`.  
+ • No Convex mutation, API call, or navigation path currently launches video generation from storyboard selections.  
+ • Endpoints referenced in BACKEND_TASK_LIST.md (nano-banana generation, storyboard selection saving, animation queue) are still TODO—hence “endpoints not connected.”
+
+ -------------------------------------------------------------------------------
+ 6. Key Gaps & Next Steps
+ -------------------------------------------------------------------------------
+ 1. **Bridge v2 selections to animation jobs.** Define a service that iterates over `storyboardSelections`, constructs the correct prompts/assets, and calls either the legacy `/api/generate-all-clips` or a new `/api/project-redesign/animate-storyboard` endpoint. Persist tracking data via `updateStoryboardAnimation`.  
+ 2. **Surface selection mutations.** No UI currently calls `createStoryboardSelection` or updates `sceneShots.selectedImageId`; implement the iterator “Submit Selected” flow from BACKEND_TASK_LIST.md §4.  
+ 3. **Model adapter layer.** Decide whether v2 should write temporary rows into the legacy `scenes` table (so the existing video page works) or whether a dedicated animation pipeline (shot-by-shot) should be built.  
+ 4. **Navigation & gating.** Extend `PageNavigation` with a Video/Animation destination once the backend exists, and update `useProjectProgress` to unlock it when every shot has a master selection.  
+ 5. **API coverage.** Implement the pending nano-banana image generation route, ensure demo-mode support, and wire the iterator chat prompts to it so `shotImages` stay in sync.
+
+With these pieces in place, storyboard selections—whether from the legacy single-scene workflow or the redesign’s multi-shot planner—can drive a consistent video generation pipeline.

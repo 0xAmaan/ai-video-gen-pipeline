@@ -699,6 +699,10 @@ const PromptPlannerPage = () => {
                   ? "Set up master shots for all scenes in Scene Planner"
                   : undefined
               }
+              videoLocked={!projectProgress?.isSelectionComplete}
+              videoLockMessage="Select master shots for every shot to unlock video"
+              editorLocked={projectProgress?.projectStatus !== "video_generated"}
+              editorLockMessage="Generate your video before opening the editor"
             />
           </div>
 

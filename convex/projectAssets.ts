@@ -114,7 +114,18 @@ export const getProjectAssets = query({
     }
 
     const assets = await q.collect();
-    return assets.sort((a, b) => b.createdAt - a.createdAt);
+
+    const assetsWithUrls = await Promise.all(
+      assets.map(async (asset) => {
+        let imageUrl = asset.imageUrl;
+        if (asset.storageId && !imageUrl) {
+          imageUrl = (await ctx.storage.getUrl(asset.storageId)) ?? undefined;
+        }
+        return { ...asset, imageUrl };
+      })
+    );
+
+    return assetsWithUrls.sort((a, b) => b.createdAt - a.createdAt);
   },
 });
 
@@ -137,6 +148,20 @@ export const getAssetsForShot = query({
         );
     }
 
-    return await q.collect();
+    const assets = await q.collect();
+
+    return await Promise.all(
+      assets.map(async (asset) => {
+        let imageUrl = asset.imageUrl;
+        if (asset.storageId && !imageUrl) {
+          imageUrl = (await ctx.storage.getUrl(asset.storageId)) ?? undefined;
+        }
+        return { ...asset, imageUrl };
+      })
+    );
   },
+});
+
+export const generateUploadUrl = mutation(async (ctx) => {
+  return await ctx.storage.generateUploadUrl();
 });

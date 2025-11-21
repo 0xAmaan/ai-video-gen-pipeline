@@ -116,6 +116,7 @@ export default defineSchema({
     sceneNumber: v.number(),
     description: v.string(), // Short narrative description for UI display
     visualPrompt: v.optional(v.string()), // Detailed 150-250 word prompt for video generation
+    redesignShotId: v.optional(v.id("sceneShots")),
     imageStorageId: v.optional(v.string()),
     imageUrl: v.optional(v.string()), // Convex storage URL
     narrationUrl: v.optional(v.string()), // Generated narration audio URL
@@ -146,7 +147,9 @@ export default defineSchema({
     backgroundMusicMood: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_redesignShot", ["redesignShotId"]),
 
   projectVoiceSettings: defineTable({
     projectId: v.id("videoProjects"),
