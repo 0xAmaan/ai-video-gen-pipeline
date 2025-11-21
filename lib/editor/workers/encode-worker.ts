@@ -13,7 +13,7 @@ import {
   UrlSource,
 } from "mediabunny";
 import { VideoLoader } from "../playback/video-loader";
-import { buildAssetUrl } from "../io/asset-url";
+import { exportUrlForAsset } from "../io/asset-url";
 import type { Project, Clip } from "../types";
 import type { EncodeRequestMessage, EncodeWorkerMessage } from "./messages";
 
@@ -212,7 +212,7 @@ const createRenderContext = (project: Project): RenderContext => {
 };
 
 const resolveAssetUrl = (asset: Project["mediaAssets"][string]) => {
-  return buildAssetUrl(asset?.r2Key, asset?.proxyUrl ?? asset?.url ?? asset?.sourceUrl ?? "");
+  return exportUrlForAsset(asset);
 };
 
 const getVideoLoader = async (

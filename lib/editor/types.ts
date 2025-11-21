@@ -129,6 +129,7 @@ export interface MediaAssetMeta {
   waveformUrl?: string;
   r2Key?: string;
   proxyUrl?: string;
+   proxyR2Key?: string;
   sourceUrl?: string;
   predictionId?: string;
   thumbnails?: string[]; // Data URLs for timeline thumbnails

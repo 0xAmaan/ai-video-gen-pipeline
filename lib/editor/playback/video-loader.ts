@@ -4,7 +4,7 @@ import {
   Input,
   UrlSource,
 } from "mediabunny";
-import { buildAssetUrl } from "../io/asset-url";
+import { playbackUrlForAsset } from "../io/asset-url";
 import { FrameCache } from "./frame-cache";
 import type { MediaAssetMeta } from "../types";
 
@@ -38,7 +38,7 @@ export class VideoLoader {
       throw new Error("WebCodecs VideoDecoder not available in this environment");
     }
 
-    const url = buildAssetUrl(this.asset.r2Key, this.asset.proxyUrl ?? this.asset.url);
+    const url = playbackUrlForAsset(this.asset);
     if (!url) {
       throw new Error("VideoLoader requires a resolvable asset URL");
     }

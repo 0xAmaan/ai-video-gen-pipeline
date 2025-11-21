@@ -42,10 +42,9 @@ The command above launches Next.js (Turbopack) and Convex simultaneously. Sign i
 - **Convex bridge**: New `video.saveProject`/`loadProjectState` to persist editor composition state; client hook `useConvexProjectSync` debounces Zustand → Convex saves and hydrates on load.
 - **Playback**: `VideoLoader` uses WebCodecs + MediaBunny demux; WebGPU preview renderer uses audio-driven clock, dual VideoTextures, and a simple crossfade shader.
 - **Timeline UI**: Swapped custom timeline for Twick `VideoEditor` inside `TimelineProvider`/`LivePlayerProvider`, mapped via `lib/editor/twick-adapter.ts`.
-- **Export (video + audio)**: Worker (`lib/editor/workers/encode-worker.ts`) now decodes real video/image assets via WebCodecs + MediaBunny and composites timeline tracks; audio clips are decoded/mixed to stereo 48kHz and muxed alongside video via `CanvasSource`/`Mp4OutputFormat`. ExportPipeline passes full project/sequence + aspectRatio.
-- **Build**: Turbopack root pinned to this workspace; `bun run build` now succeeds (uses `next/font/google` Inter, so outbound network to fonts.googleapis.com is required) and TypeScript includes auto-added `.next` typings.
-- **Upstream alignment**: Convex now exposes voice settings, audio asset CRUD, phase reset/model selection, lip-sync helpers, and project delete/title mutations so upstream pipeline routes work unchanged while the Twick/WebGPU editor stays in place. Legacy editor files were removed upstream; timeline state now stubs persistence/timeline-service locally to keep the new editor compiling.
-- **Editor persistence**: Added Convex-backed save/load (`saveEditorState`/`loadEditorState`) with bounded cloud history plus localStorage fallback. Client calls go through `/api/editor-state`; the editor store can hydrate by `projectId` for multi-device sync.
+- **Export (video + audio)**: Worker (`lib/editor/workers/encode-worker.ts`) decodes real video/image assets via WebCodecs + MediaBunny, composites timeline tracks, and mixes audio to stereo 48kHz before muxing with `CanvasSource`/`Mp4OutputFormat`. ExportPipeline passes full project/sequence + aspectRatio. Export always pulls the original/full-res asset; proxies are used only for preview.
+- **Proxy-driven playback for 4K**: Assets can now provide `proxyUrl`/`proxyR2Key`; playback prefers the proxy for smooth scrubbing, while export/conform uses the original URL/R2 key so final output is full quality.
+- **Fonts/build**: Removed the `next/font` Google Inter dependency; the app now uses the system sans stack so builds are offline-friendly. `bunx tsc --noEmit` and `bun run build` pass locally.
 
 ## R2 / proxy setup (zero-egress media pipeline)
 
@@ -63,4 +62,4 @@ Deploy `workers/r2-proxy.ts` with `wrangler publish`; ensure it supports Range r
 
 - MediaBunny lives entirely in the demux worker to keep the main thread responsive. Reuse `mediaBunnyManager` rather than touching the worker directly.
 - The editor state, media catalog, and undo/redo stacks are persisted to Convex for cloud sync and undo/redo functionality.
-- The export pipeline currently writes a placeholder blob via the encode worker. A full WebCodecs muxer implementation is planned.
+- The export pipeline now renders real frames/audio from timeline assets and muxes to MP4 inside `lib/editor/workers/encode-worker.ts`. For smooth 4K editing, include a low-res proxy per asset (`proxyUrl`/`proxyR2Key`); export still reads from the original (`r2Key`/`sourceUrl`/`url`).
