@@ -81,13 +81,14 @@ const RawInputPage = () => {
         const reader = new FileReader();
         reader.onload = () => {
           if (typeof reader.result !== "string") return;
+          const imageUrl = reader.result;
           setAssetDrafts((prev) => {
             if (prev.length >= MAX_ASSETS) return prev;
             return [
               ...prev,
               {
                 id: createDraftId(),
-                imageUrl: reader.result,
+                imageUrl,
                 name: `Brand asset ${prev.length + 1}`,
                 assetType: "logo" as const,
               },

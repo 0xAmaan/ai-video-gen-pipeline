@@ -251,7 +251,7 @@ export const VideoGeneratingPhase = ({
                   {videoClips.map((clip) => (
                     <tr key={clip._id}>
                       <td className="px-2 py-1 text-muted-foreground">
-                        #{clip.sceneNumber ?? clip.sceneId}
+                        #{clip.sceneId}
                       </td>
                       <td className="px-2 py-1">{clip.status}</td>
                       <td className="px-2 py-1 text-muted-foreground">

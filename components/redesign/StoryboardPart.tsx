@@ -7,12 +7,19 @@ interface StoryboardPartProps {
   shotNumber: number;
   prompt: string;
   imageUrl?: string | null;
+  isSelected?: boolean;
+  onSelect?: (shotId: Id<"sceneShots">) => void;
+  onAction?: () => void;
 }
 
 export const StoryboardPart = ({
+  shotId,
   shotNumber,
   prompt,
   imageUrl,
+  isSelected,
+  onSelect,
+  onAction,
 }: StoryboardPartProps) => {
   return (
     <div className="relative flex-shrink-0 w-[280px] h-[180px] rounded-2xl overflow-hidden border-2 border-gray-700">

@@ -33,12 +33,11 @@ const StoryboardPage = () => {
     console.log("[StoryboardPage] selectionsComplete", selectionsComplete);
   }
 
-  const [selectedSceneId, setSelectedSceneId] = useState<
-    Id<"projectScenes"> | null
-  >(null);
-  const [selectedShotId, setSelectedShotId] = useState<
-    Id<"sceneShots"> | null
-  >(null);
+  const [selectedSceneId, setSelectedSceneId] =
+    useState<Id<"projectScenes"> | null>(null);
+  const [selectedShotId, setSelectedShotId] = useState<Id<"sceneShots"> | null>(
+    null,
+  );
 
   useEffect(() => {
     if (storyboardRows && storyboardRows.length > 0) {
