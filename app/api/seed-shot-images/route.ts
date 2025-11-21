@@ -8,6 +8,7 @@ import { apiResponse, apiError } from "@/lib/api-response";
 interface SeedRequestBody {
   projectId?: Id<"videoProjects">;
   concurrency?: number;
+  mode?: "preview" | "iteration";
 }
 
 export async function POST(req: Request) {
@@ -19,9 +20,12 @@ export async function POST(req: Request) {
     }
 
     const convex = await getConvexClient({ requireUser: false });
-    const projectData = await convex.query(api.projectRedesign.getCompleteProject, {
-      projectId,
-    });
+    const projectData = await convex.query(
+      api.projectRedesign.getCompleteProject,
+      {
+        projectId,
+      },
+    );
 
     if (!projectData) {
       return apiError("Project not found", 404);
@@ -65,7 +69,7 @@ export async function POST(req: Request) {
 
     const baseUrl = new URL(req.url);
     const targetUrl = new URL(
-      "/api/project-redesign/generate-shot-images",
+      "/api/generate-shot-images",
       `${baseUrl.protocol}//${baseUrl.host}`,
     );
 
@@ -88,6 +92,7 @@ export async function POST(req: Request) {
             projectId,
             sceneId: task.sceneId,
             shotId: task.shotId,
+            mode: body.mode ?? "preview",
           }),
         });
         if (!response.ok) {
@@ -108,9 +113,9 @@ export async function POST(req: Request) {
       await runNext();
     };
 
-    const workers = Array.from({ length: Math.min(concurrency, tasks.length) }).map(() =>
-      runNext(),
-    );
+    const workers = Array.from({
+      length: Math.min(concurrency, tasks.length),
+    }).map(() => runNext());
     await Promise.all(workers);
 
     return apiResponse({

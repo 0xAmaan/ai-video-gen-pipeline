@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCompleteProject, useRedesignProject } from "@/lib/hooks/useProjectRedesign";
 import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { requestPreviewSeed } from "@/lib/client/requestPreviewSeed";
 
 const PREVIEW_PLACEHOLDERS = [
   {
@@ -45,31 +44,9 @@ const LoadingPage = () => {
 
   const project = useRedesignProject(projectId);
   const completeData = useCompleteProject(projectId);
-  const [seedState, setSeedState] = useState<"idle" | "running" | "error" | "complete">("idle");
-  const [seedSummary, setSeedSummary] = useState<{
-    requested: number;
-    completed: number;
-    failures: Array<{ shotId: string; reason: string }>;
-    alreadyComplete?: boolean;
-  } | null>(null);
 
   const scenes = completeData?.scenes ?? [];
-  const totalShots = useMemo(
-    () => scenes.reduce((sum, scene) => sum + scene.shots.length, 0),
-    [scenes],
-  );
-  const shotsWithImages = useMemo(
-    () =>
-      scenes.reduce(
-        (sum, scene) =>
-          sum + scene.shots.filter((shot) => shot.images && shot.images.length > 0).length,
-        0,
-      ),
-    [scenes],
-  );
-
   const scenesReady = scenes.length > 0;
-  const previewsReady = totalShots > 0 && shotsWithImages === totalShots;
   const previewScenes = scenesReady
     ? scenes.map((scene) => ({
         title: scene.title || `Scene ${scene.sceneNumber}`,
@@ -79,43 +56,16 @@ const LoadingPage = () => {
 
   const activePreview = useRotatingScenes(previewScenes);
 
-  const runSeeding = async () => {
-    if (!projectId) return;
-    setSeedState("running");
-    try {
-      const summary = await requestPreviewSeed(projectId);
-      setSeedSummary(summary);
-      if (!summary.success) {
-        setSeedState("error");
-      } else {
-        setSeedState("complete");
-      }
-    } catch (error) {
-      console.error("Failed to seed shot previews", error);
-      setSeedState("error");
-    }
-  };
 
   useEffect(() => {
-    if (!projectId || !scenesReady || previewsReady || seedState !== "idle") return;
-    void runSeeding();
-  }, [projectId, scenesReady, previewsReady, seedState]);
-
-  useEffect(() => {
-    if (!projectId || !previewsReady) return;
+    if (!projectId || !scenesReady) return;
     const timeout = setTimeout(() => {
-      router.push(`/project-redesign/${projectId}/scene-planner`);
+      router.push(`/${projectId}/scene-planner`);
     }, 1500);
     return () => clearTimeout(timeout);
-  }, [previewsReady, router, projectId]);
+  }, [scenesReady, router, projectId]);
 
-  const progress = previewsReady
-    ? 100
-    : totalShots > 0
-    ? Math.round((shotsWithImages / totalShots) * 100)
-    : scenesReady
-    ? 25
-    : 5;
+  const progress = scenesReady ? 100 : 5;
 
   const statusItems = [
     {
@@ -124,13 +74,6 @@ const LoadingPage = () => {
       description: scenesReady
         ? `Generated ${scenes.length} ${scenes.length === 1 ? "scene" : "scenes"}`
         : "Turning your idea into a coherent story arc",
-    },
-    {
-      label: "Rendering preview frames",
-      complete: previewsReady,
-      description: previewsReady
-        ? "Every shot now has a visual preview"
-        : "Creating 4 images per shot so you can pick favorites",
     },
   ];
 
@@ -146,8 +89,8 @@ const LoadingPage = () => {
               {project?.title || "Shaping your commercial"}
             </h1>
             <p className="text-gray-400 mt-3">
-              Sit tight. We&apos;re breaking your idea into scenes and rendering preview frames
-              so you can start picking shots instantly.
+              Sit tight. We&apos;re breaking your idea into scenes and shots
+              so you can start planning your video.
             </p>
           </div>
 
@@ -177,7 +120,7 @@ const LoadingPage = () => {
                     className={cn(
                       "w-3 h-3 rounded-full border",
                       status.complete
-                        ? "bg-emerald-400 border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+                        ? "bg-blue-400 border-blue-300 shadow-[0_0_10px_rgba(43,170,255,0.5)]"
                         : "border-gray-600",
                     )}
                   />
@@ -196,9 +139,9 @@ const LoadingPage = () => {
               <div className="mt-6 h-40 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center">
                 <div className="flex items-center gap-3 text-gray-500 text-sm">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  {previewsReady
-                    ? "All previews ready — redirecting..."
-                    : "Rendering preview frames..."}
+                  {scenesReady
+                    ? "Scenes ready — redirecting..."
+                    : "Generating scenes..."}
                 </div>
               </div>
             </div>
@@ -207,34 +150,15 @@ const LoadingPage = () => {
           <div className="flex flex-col items-center gap-4">
             <Button
               disabled={!projectId}
-              onClick={() => router.push(`/project-redesign/${projectId}/scene-planner`)}
+              onClick={() => router.push(`/${projectId}/scene-planner`)}
               variant="outline"
               className="w-full sm:w-auto border-white/30 text-white hover:bg-white/10"
             >
               <ArrowRight className="w-4 h-4 mr-2" />
               Skip to planner
             </Button>
-            {seedState === "error" && (
-              <div className="text-xs text-red-400 flex flex-col items-center gap-2">
-                <p>Some previews failed to render.</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-red-400/40 text-red-200 hover:bg-red-500/10"
-                  onClick={() => runSeeding()}
-                >
-                  <RefreshCw className="w-3 h-3 mr-2" />
-                  Retry preview generation
-                </Button>
-                {seedSummary?.failures?.length ? (
-                  <p className="text-[11px] text-red-300">
-                    Example error: {seedSummary.failures[0].reason}
-                  </p>
-                ) : null}
-              </div>
-            )}
             <p className="text-xs text-gray-500 text-center">
-              This screen closes automatically once preview frames finish rendering.
+              This screen closes automatically once scenes are generated.
             </p>
           </div>
         </div>

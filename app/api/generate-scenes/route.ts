@@ -180,7 +180,7 @@ export async function POST(req: Request) {
     const { projectId, userInput, projectTitle, projectDescription } =
       await req.json();
 
-    flowTracker.trackAPICall("POST", "/api/project-redesign/generate-scenes", {
+    flowTracker.trackAPICall("POST", "/api/generate-scenes", {
       projectId,
       demoMode,
       inputLength: userInput?.length ?? 0,
@@ -323,29 +323,6 @@ export async function POST(req: Request) {
     console.log("=".repeat(80));
     console.log("✅ SCENE GENERATION COMPLETE");
     console.log("=".repeat(80) + "\n");
-
-    // Kick off preview seeding in the background
-    try {
-      const seedUrl = new URL(
-        "/api/project-redesign/seed-shot-images",
-        req.url,
-      );
-      fetch(seedUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-demo-mode": getDemoModeFromHeaders(req.headers) ?? "",
-        },
-        body: JSON.stringify({
-          projectId: projectConvexId,
-          concurrency: 2,
-        }),
-      }).catch((seedError) => {
-        console.error("Failed to trigger shot seeding:", seedError);
-      });
-    } catch (seedBuildError) {
-      console.error("Unable to dispatch seed-shot-images request:", seedBuildError);
-    }
 
     return apiResponse({
       success: true,

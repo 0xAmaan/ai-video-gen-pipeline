@@ -302,6 +302,22 @@ export const reorderSceneShots = mutation({
   },
 });
 
+export const moveShotToScene = mutation({
+  args: {
+    shotId: v.id("sceneShots"),
+    newSceneId: v.id("projectScenes"),
+  },
+  handler: async (ctx, args) => {
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot) throw new Error("Shot not found");
+
+    await ctx.db.patch(args.shotId, {
+      sceneId: args.newSceneId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // ========================================
 // SHOT IMAGE MUTATIONS
 // ========================================
@@ -717,7 +733,7 @@ export const getShotPreviewImages = query({
     for (const image of images) {
       if (image.iterationNumber !== 0) continue;
       const list = previews.get(image.shotId) ?? [];
-      if (list.length >= 4) continue;
+      if (list.length >= 1) continue;
       list.push({
         _id: image._id,
         shotId: image.shotId,

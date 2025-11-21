@@ -16,12 +16,23 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
   );
   const activeProjectId = projectIdMatch ? projectIdMatch[1] : null;
 
-  // Don't show sidebar on home login page, redesign pages, or if not signed in
-  const isRedesignPage = pathname?.startsWith("/project-redesign");
-  const showSidebar = isSignedIn && pathname !== "/" && !isRedesignPage;
+  // Main flow pages (formerly redesign): clean layout with no sidebar
+  const isMainFlowPage =
+    pathname?.startsWith("/home") ||
+    pathname?.startsWith("/input") ||
+    pathname?.match(/^\/[^/]+\/(scene-planner|scene-iterator|loading|storyboard)/);
 
-  // Redesign pages: clean layout with no nav/dev tools
-  if (isRedesignPage) {
+  // Archive pages: old flow with sidebar
+  const isArchivePage = pathname?.startsWith("/archive");
+
+  // Project-redesign pages: kept for backwards compatibility
+  const isLegacyRedesignPage = pathname?.startsWith("/project-redesign");
+
+  // Show sidebar only for archive pages
+  const showSidebar = isSignedIn && isArchivePage;
+
+  // Main flow pages: clean layout with dev tools
+  if (isMainFlowPage || isLegacyRedesignPage) {
     return (
       <main className="h-screen overflow-auto relative">
         {children}

@@ -88,7 +88,7 @@ const SceneIteratorPage = () => {
     try {
       setIsGenerating(true);
       setGenerationError(null);
-      const response = await fetch("/api/project-redesign/generate-shot-images", {
+      const response = await fetch("/api/generate-shot-images", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -162,7 +162,7 @@ const SceneIteratorPage = () => {
         selectedImageId,
       });
 
-      router.push(`/project-redesign/${projectId}/scene-planner`);
+      router.push(`/${projectId}/scene-planner`);
     } catch (error) {
       console.error("Failed to submit selection:", error);
     } finally {
@@ -177,7 +177,7 @@ const SceneIteratorPage = () => {
     }
 
     router.push(
-      `/project-redesign/${projectId}/scene-iterator?shotId=${selection.shot._id}`,
+      `/${projectId}/scene-iterator?shotId=${selection.shot._id}`,
     );
   };
 

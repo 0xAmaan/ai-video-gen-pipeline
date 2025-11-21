@@ -137,10 +137,10 @@ const RawInputPage = () => {
       setAssetDrafts([]);
 
       // Navigate to loading screen
-      router.push(`/project-redesign/${projectId}/loading`);
+      router.push(`/${projectId}/loading`);
 
       // Trigger AI scene generation in the background
-      fetch("/api/project-redesign/generate-scenes", {
+      fetch("/api/generate-scenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

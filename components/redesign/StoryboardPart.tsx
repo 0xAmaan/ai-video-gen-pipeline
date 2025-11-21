@@ -26,7 +26,7 @@ export const StoryboardPart = ({
       className={cn(
         "relative flex-shrink-0 w-[280px] h-[180px] rounded-2xl overflow-hidden transition-all border-2 cursor-pointer",
         isSelected
-          ? "border-emerald-400 shadow-lg shadow-emerald-500/20 scale-[1.02]"
+          ? "border-blue-400 shadow-lg shadow-blue-500/20 scale-[1.02]"
           : "border-gray-700 hover:border-gray-500",
       )}
     >
@@ -50,7 +50,7 @@ export const StoryboardPart = ({
       </div>
 
       {isSelected && (
-        <div className="absolute top-2 right-2 bg-emerald-500 text-black text-xs px-2 py-1 rounded-full font-semibold">
+        <div className="absolute top-2 right-2 bg-blue-500 text-black text-xs px-2 py-1 rounded-full font-semibold">
           Selected
         </div>
       )}

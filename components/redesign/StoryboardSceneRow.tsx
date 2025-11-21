@@ -27,14 +27,14 @@ export const StoryboardSceneRow = ({
         className={cn(
           "flex-shrink-0 w-[200px] rounded-2xl border-2 flex flex-col items-center justify-center gap-3 transition-all",
           isSelected
-            ? "border-emerald-400 bg-emerald-500/10"
+            ? "border-blue-400 bg-blue-500/10"
             : "border-transparent bg-[#1c1c1c] hover:border-gray-700",
         )}
       >
         <div
           className={cn(
             "w-16 h-16 rounded-full flex items-center justify-center text-lg font-bold",
-            isSelected ? "bg-emerald-500 text-black" : "bg-gray-900 text-gray-300",
+            isSelected ? "bg-blue-500 text-black" : "bg-gray-900 text-gray-300",
           )}
         >
           {scene.scene.sceneNumber}
@@ -42,7 +42,7 @@ export const StoryboardSceneRow = ({
         <div
           className={cn(
             "text-sm font-medium text-center px-3",
-            isSelected ? "text-emerald-200" : "text-gray-400",
+            isSelected ? "text-blue-200" : "text-gray-400",
           )}
         >
           {scene.scene.title}

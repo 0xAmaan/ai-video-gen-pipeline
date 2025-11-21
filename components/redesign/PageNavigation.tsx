@@ -7,48 +7,39 @@ import { Sparkles, Layout, Film, Scissors } from "lucide-react";
 
 interface PageNavigationProps {
   projectId?: string;
-  shotId?: string | null;
+  storyboardLocked?: boolean;
+  storyboardLockMessage?: string;
 }
 
-const DEFAULT_PATH = "/project-redesign/home";
+const DEFAULT_PATH = "/home";
 
-export const PageNavigation = ({ projectId, shotId }: PageNavigationProps) => {
+export const PageNavigation = ({ projectId, storyboardLocked, storyboardLockMessage }: PageNavigationProps) => {
   const pathname = usePathname();
-  const onPromptPlanner = pathname?.includes("/scene-planner");
 
   const navItems = [
     {
       name: "Home",
       icon: Layout,
       href: DEFAULT_PATH,
-      match: "/project-redesign/home",
+      match: "/home",
     },
     projectId && {
       name: "Prompt Planner",
       icon: Sparkles,
       href: projectId
-        ? `/project-redesign/${projectId}/scene-planner`
+        ? `/${projectId}/scene-planner`
         : DEFAULT_PATH,
       match: "/scene-planner",
-    },
-    projectId && {
-      name: "Scene Iterator",
-      icon: Film,
-      href: projectId
-        ? `/project-redesign/${projectId}/scene-iterator${
-            shotId ? `?shotId=${shotId}` : ""
-          }`
-        : DEFAULT_PATH,
-      match: "/scene-iterator",
-      disabled: onPromptPlanner && !shotId,
     },
     projectId && {
       name: "Storyboard",
       icon: Layout,
       href: projectId
-        ? `/project-redesign/${projectId}/storyboard`
+        ? `/${projectId}/storyboard`
         : DEFAULT_PATH,
       match: "/storyboard",
+      disabled: storyboardLocked,
+      disabledMessage: storyboardLockMessage,
     },
     projectId && {
       name: "Video Editor",
@@ -69,11 +60,11 @@ export const PageNavigation = ({ projectId, shotId }: PageNavigationProps) => {
           return (
             <div
               key={item.name}
-              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-gray-500/50 cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-gray-500/50 cursor-not-allowed whitespace-nowrap"
               aria-disabled="true"
-              title="Select a shot to open the Scene Iterator"
+              title={item.disabledMessage || "This page is currently locked"}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-4 h-4 flex-shrink-0" />
               {item.name}
             </div>
           );
@@ -84,13 +75,13 @@ export const PageNavigation = ({ projectId, shotId }: PageNavigationProps) => {
             key={item.name}
             href={item.href}
             className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all cursor-pointer",
+              "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all cursor-pointer whitespace-nowrap",
               isActive
                 ? "bg-white text-black"
                 : "text-gray-400 hover:text-gray-200 hover:bg-[#3a3a3a]",
             )}
           >
-            <Icon className="w-4 h-4" />
+            <Icon className="w-4 h-4 flex-shrink-0" />
             {item.name}
           </Link>
         );

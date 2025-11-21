@@ -202,7 +202,7 @@ export const AssetManager = ({ projectId }: AssetManagerProps) => {
               <Badge
                 className={cn(
                   "text-xs",
-                  asset.prominence === "primary" && "bg-emerald-500/20 text-emerald-200",
+                  asset.prominence === "primary" && "bg-blue-500/20 text-blue-200",
                   asset.prominence === "secondary" && "bg-blue-500/20 text-blue-200",
                   asset.prominence === "subtle" && "bg-yellow-500/20 text-yellow-200",
                 )}

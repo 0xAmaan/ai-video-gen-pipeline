@@ -26,6 +26,7 @@ interface GenerateRequestBody {
   iterationNumber?: number;
   parentImageId?: Id<"shotImages">;
   fixPrompt?: string;
+  mode?: "preview" | "iteration";
 }
 
 const SYSTEM_PROMPT = "TODO: add system prompt here for image generation";
@@ -38,7 +39,8 @@ const normalizeOutput = (output: any): string[] => {
         if (typeof item === "string") return item;
         if (item && typeof item === "object") {
           if ("url" in item && typeof item.url === "string") return item.url;
-          if ("image" in item && typeof item.image === "string") return item.image;
+          if ("image" in item && typeof item.image === "string")
+            return item.image;
         }
         return null;
       })
@@ -140,6 +142,7 @@ export async function POST(req: Request) {
       iterationNumber: requestedIteration,
       parentImageId,
       fixPrompt,
+      mode = "iteration",
     } = body;
     currentShotId = shotId;
 
@@ -150,17 +153,13 @@ export async function POST(req: Request) {
     const demoMode = getDemoModeFromHeaders(req.headers);
     const shouldMock = demoMode === "no-cost" || !process.env.REPLICATE_API_KEY;
 
-    flowTracker.trackAPICall(
-      "POST",
-      "/api/project-redesign/generate-shot-images",
-      {
-        projectId,
-        sceneId,
-        shotId,
-        requestedIteration,
-        parentImageId,
-      },
-    );
+    flowTracker.trackAPICall("POST", "/api/generate-shot-images", {
+      projectId,
+      sceneId,
+      shotId,
+      requestedIteration,
+      parentImageId,
+    });
 
     const convex = await getConvexClient({ requireUser: false });
     const shotData = await convex.query(api.projectRedesign.getShotWithScene, {
@@ -171,7 +170,10 @@ export async function POST(req: Request) {
       return apiError("Shot not found", 404);
     }
 
-    if (shotData.shot.projectId !== projectId || shotData.scene._id !== sceneId) {
+    if (
+      shotData.shot.projectId !== projectId ||
+      shotData.scene._id !== sceneId
+    ) {
       return apiError("Shot does not belong to provided project/scene", 400);
     }
 
@@ -221,7 +223,7 @@ export async function POST(req: Request) {
       fixPrompt,
     );
 
-    const runs = 6;
+    const runs = mode === "preview" ? 1 : 3;
     let variantPayloads: Array<{
       variantNumber: number;
       imageUrl: string;
@@ -231,7 +233,7 @@ export async function POST(req: Request) {
 
     if (shouldMock) {
       await mockDelay(150);
-      const mockVariants = createMockImages(6);
+      const mockVariants = createMockImages(runs);
       variantPayloads = mockVariants.map((variant, index) => ({
         ...variant,
         variantNumber: index,
@@ -307,16 +309,16 @@ export async function POST(req: Request) {
         })),
       );
 
-      // Ensure exactly 6 images (take first 6 if more, pad with duplicates if less)
-      if (allVariants.length >= 6) {
-        variantPayloads = allVariants.slice(0, 6).map((v, idx) => ({
+      // Ensure exact number of images (take first N if more, pad with duplicates if less)
+      if (allVariants.length >= runs) {
+        variantPayloads = allVariants.slice(0, runs).map((v, idx) => ({
           ...v,
           variantNumber: idx,
         }));
       } else {
         variantPayloads = allVariants;
-        // If we have fewer than 6, duplicate some to reach 6
-        while (variantPayloads.length < 6) {
+        // If we have fewer than runs, duplicate some to reach runs
+        while (variantPayloads.length < runs) {
           const sourceIdx = variantPayloads.length % allVariants.length;
           variantPayloads.push({
             ...allVariants[sourceIdx],
@@ -357,10 +359,15 @@ export async function POST(req: Request) {
       insertedIds.some((id) => id === image._id),
     );
 
+    // Auto-select the first image as master shot for preview mode (iteration 0)
+    const shouldAutoSelect =
+      mode === "preview" && iterationNumber === 0 && newDocs.length > 0;
+
     await convex.mutation(api.projectRedesign.updateSceneShot, {
       shotId,
       lastImageGenerationAt: Date.now(),
       lastImageStatus: "complete",
+      ...(shouldAutoSelect && { selectedImageId: newDocs[0]._id }),
     });
 
     flowTracker.trackTiming(

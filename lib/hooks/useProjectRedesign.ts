@@ -150,6 +150,10 @@ export const useReorderSceneShots = () => {
   return useMutation(api.projectRedesign.reorderSceneShots);
 };
 
+export const useMoveShotToScene = () => {
+  return useMutation(api.projectRedesign.moveShotToScene);
+};
+
 export const useSceneShots = (sceneId?: Id<"projectScenes">) => {
   return useQuery(
     api.projectRedesign.getSceneShots,
@@ -238,9 +242,7 @@ export const useStoryboardByScene = (sceneId?: Id<"projectScenes">) => {
   );
 };
 
-export const useProjectShotSelections = (
-  projectId?: Id<"videoProjects">,
-) => {
+export const useProjectShotSelections = (projectId?: Id<"videoProjects">) => {
   return useQuery(
     api.projectRedesign.getProjectShotSelections,
     projectId ? { projectId } : "skip",
@@ -252,6 +254,21 @@ export const useStoryboardRows = (projectId?: Id<"videoProjects">) => {
     api.projectRedesign.getStoryboardRows,
     projectId ? { projectId } : "skip",
   ) as StoryboardSceneGroup[] | undefined;
+};
+
+/**
+ * Check if all shots have master shots selected (for storyboard lock)
+ */
+export const useAllMasterShotsSet = (projectId?: Id<"videoProjects">) => {
+  const storyboardRows = useStoryboardRows(projectId);
+
+  if (!storyboardRows || storyboardRows.length === 0) {
+    return false;
+  }
+
+  return storyboardRows.every((row) =>
+    row.shots.every((shotData) => shotData.selectedImage !== null),
+  );
 };
 
 // ========================================

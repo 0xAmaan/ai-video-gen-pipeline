@@ -6,9 +6,11 @@ import {
   DndContext,
   DragEndEvent,
   DragStartEvent,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  closestCorners,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -22,12 +24,14 @@ import { useParams, useRouter } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Plus, ArrowRight, RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, ArrowRight, RefreshCw, GripVertical } from "lucide-react";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { PromptPlannerCard } from "@/components/redesign/PromptPlannerCard";
 import { ChatInput } from "@/components/redesign/ChatInput";
 import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery";
 import { AssetManager } from "@/components/redesign/AssetManager";
+import { SceneIteratorModal } from "@/components/redesign/SceneIteratorModal";
 import {
   Dialog,
   DialogContent,
@@ -48,10 +52,12 @@ import {
   useDeleteSceneShot,
   useUpdateSceneShot,
   useReorderSceneShots,
+  useMoveShotToScene,
   useProjectProgress,
   useRedesignProject,
   useShotPreviewImages,
   useSelectMasterShot,
+  useAllMasterShotsSet,
 } from "@/lib/hooks/useProjectRedesign";
 import { requestPreviewSeed } from "@/lib/client/requestPreviewSeed";
 import {
@@ -93,6 +99,7 @@ const PromptPlannerPage = () => {
   const projectData = useRedesignProject(projectId);
   const shotPreviewGroups = useShotPreviewImages(projectId);
   const selectMasterShot = useSelectMasterShot();
+  const allMasterShotsSet = useAllMasterShotsSet(projectId);
   const [isGeneratingScenes, setIsGeneratingScenes] = useState(false);
 
   const createScene = useCreateProjectScene();
@@ -104,6 +111,7 @@ const PromptPlannerPage = () => {
   const updateShot = useUpdateSceneShot();
   const deleteShot = useDeleteSceneShot();
   const reorderSceneShots = useReorderSceneShots();
+  const moveShotToScene = useMoveShotToScene();
 
   const [plannerScenes, setPlannerScenes] = useState<PlannerSceneState[]>([]);
   const [chatInputValue, setChatInputValue] = useState("");
@@ -112,6 +120,7 @@ const PromptPlannerPage = () => {
     sceneId: Id<"projectScenes">;
   } | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [activeDragType, setActiveDragType] = useState<"scene" | "shot" | null>(null);
   const [highlightedShotId, setHighlightedShotId] = useState<
     Id<"sceneShots"> | null
   >(null);
@@ -120,6 +129,7 @@ const PromptPlannerPage = () => {
   const [regenerateBusy, setRegenerateBusy] = useState(false);
   const [seedingMissing, setSeedingMissing] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
+  const [iteratorShotId, setIteratorShotId] = useState<Id<"sceneShots"> | null>(null);
 
   const shotRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -209,7 +219,7 @@ const PromptPlannerPage = () => {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+      activationConstraint: { distance: 3 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -377,11 +387,13 @@ const PromptPlannerPage = () => {
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragId(event.active.id as string);
+    setActiveDragType(event.active.data.current?.type ?? null);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragId(null);
+    setActiveDragType(null);
     if (!over || active.id === over.id) return;
 
     const activeType = active.data.current?.type;
@@ -410,38 +422,98 @@ const PromptPlannerPage = () => {
 
     if (activeType === "shot") {
       const sourceSceneId = active.data.current?.sceneId as Id<"projectScenes">;
-      const targetSceneId = over.data.current?.sceneId as Id<"projectScenes">;
-      if (!sourceSceneId || sourceSceneId !== targetSceneId) return;
+      let targetSceneId = over.data.current?.sceneId as Id<"projectScenes">;
 
-      const scene = plannerScenes.find((s) => s._id === sourceSceneId);
-      if (!scene) return;
+      // If dropped over a scene (not a shot), use the scene as target
+      if (!targetSceneId && over.data.current?.type === "scene") {
+        targetSceneId = over.id as Id<"projectScenes">;
+      }
 
-      const oldIndex = scene.shots.findIndex((shot) => shot._id === active.id);
-      const newIndex = scene.shots.findIndex((shot) => shot._id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return;
+      if (!sourceSceneId || !targetSceneId) return;
 
-      const updatedShots = arrayMove(scene.shots, oldIndex, newIndex);
-      setPlannerScenes((prev) =>
-        prev.map((s) =>
-          s._id === scene._id ? { ...s, shots: updatedShots } : s,
-        ),
-      );
+      const sourceScene = plannerScenes.find((s) => s._id === sourceSceneId);
+      const targetScene = plannerScenes.find((s) => s._id === targetSceneId);
+      if (!sourceScene || !targetScene) return;
 
-      await reorderSceneShots({
-        sceneId: scene._id,
-        shotOrders: updatedShots.map((shot, index) => ({
-          shotId: shot._id,
-          shotNumber: index + 1,
-        })),
-      });
+      const oldIndex = sourceScene.shots.findIndex((shot) => shot._id === active.id);
+      if (oldIndex === -1) return;
+
+      // Same scene reordering
+      if (sourceSceneId === targetSceneId) {
+        const newIndex = sourceScene.shots.findIndex((shot) => shot._id === over.id);
+        if (newIndex === -1) return;
+
+        const updatedShots = arrayMove(sourceScene.shots, oldIndex, newIndex);
+        setPlannerScenes((prev) =>
+          prev.map((s) =>
+            s._id === sourceScene._id ? { ...s, shots: updatedShots } : s,
+          ),
+        );
+
+        await reorderSceneShots({
+          sceneId: sourceScene._id,
+          shotOrders: updatedShots.map((shot, index) => ({
+            shotId: shot._id,
+            shotNumber: index + 1,
+          })),
+        });
+      } else {
+        // Cross-scene shot movement
+        const shotToMove = sourceScene.shots[oldIndex];
+        const newIndex = targetScene.shots.findIndex((shot) => shot._id === over.id);
+
+        // Remove from source scene
+        const updatedSourceShots = sourceScene.shots.filter((_, idx) => idx !== oldIndex);
+
+        // Add to target scene
+        const updatedTargetShots = [...targetScene.shots];
+        const insertIndex = newIndex === -1 ? updatedTargetShots.length : newIndex;
+        updatedTargetShots.splice(insertIndex, 0, { ...shotToMove, sceneId: targetSceneId });
+
+        // Update local state
+        setPlannerScenes((prev) =>
+          prev.map((s) => {
+            if (s._id === sourceSceneId) {
+              return { ...s, shots: updatedSourceShots };
+            }
+            if (s._id === targetSceneId) {
+              return { ...s, shots: updatedTargetShots };
+            }
+            return s;
+          }),
+        );
+
+        // Update backend - move shot to new scene
+        await moveShotToScene({
+          shotId: shotToMove._id,
+          newSceneId: targetSceneId,
+        });
+
+        // Reorder shots in both scenes
+        await Promise.all([
+          reorderSceneShots({
+            sceneId: sourceSceneId,
+            shotOrders: updatedSourceShots.map((shot, index) => ({
+              shotId: shot._id,
+              shotNumber: index + 1,
+            })),
+          }),
+          reorderSceneShots({
+            sceneId: targetSceneId,
+            shotOrders: updatedTargetShots.map((shot, index) => ({
+              shotId: shot._id,
+              shotNumber: index + 1,
+            })),
+          }),
+        ]);
+
+        toast.success(`Moved shot to ${targetScene.title}`);
+      }
     }
   };
 
   const handleEnterIterator = (shot: SceneShot) => {
-    if (!projectId) return;
-    router.push(
-      `/project-redesign/${projectId}/scene-iterator?shotId=${shot._id}`,
-    );
+    setIteratorShotId(shot._id);
   };
 
   const handleSelectShotImage = async (
@@ -464,6 +536,32 @@ const PromptPlannerPage = () => {
     }
   };
 
+  const handleGeneratePreview = async (shot: SceneShot) => {
+    if (!projectId) return;
+    try {
+      const response = await fetch("/api/generate-shot-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sceneId: shot.sceneId,
+          shotId: shot._id,
+          mode: "preview",
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Generation failed");
+      }
+      toast.success("Generating preview...");
+    } catch (error) {
+      console.error("Failed to generate preview", error);
+      toast.error(
+        error instanceof Error ? error.message : "Unable to generate preview",
+      );
+    }
+  };
+
   const handleOpenRegenerate = (shot: SceneShot) => {
     setRegenerateTarget(shot);
     setRegeneratePrompt(shot.description || "");
@@ -473,7 +571,7 @@ const PromptPlannerPage = () => {
     if (!projectId || !regenerateTarget || regenerateBusy) return;
     setRegenerateBusy(true);
     try {
-      const response = await fetch("/api/project-redesign/generate-shot-images", {
+      const response = await fetch("/api/generate-shot-images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -481,6 +579,7 @@ const PromptPlannerPage = () => {
           sceneId: regenerateTarget.sceneId,
           shotId: regenerateTarget._id,
           fixPrompt: regeneratePrompt.trim() || undefined,
+          mode: "preview",
         }),
       });
       if (!response.ok) {
@@ -535,6 +634,27 @@ const PromptPlannerPage = () => {
   const hasScenes = plannerScenes.length > 0;
   const selectionComplete = (projectProgress?.selectionProgress ?? 0) >= 100;
 
+  const getActiveDragItem = () => {
+    if (!activeDragId || !activeDragType) return null;
+
+    if (activeDragType === "scene") {
+      return plannerScenes.find((scene) => scene._id === activeDragId);
+    }
+
+    if (activeDragType === "shot") {
+      for (const scene of plannerScenes) {
+        const shot = scene.shots.find((s) => s._id === activeDragId);
+        if (shot) {
+          return { shot, scene };
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const activeDragItem = getActiveDragItem();
+
   return (
     <>
       {plannerScenes.map((scene) => (
@@ -546,72 +666,53 @@ const PromptPlannerPage = () => {
       ))}
       <div className="h-screen w-full bg-[var(--bg-base)] flex flex-col">
       <div className="flex-shrink-0 border-b border-gray-800 bg-[var(--bg-base)]/95 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-8 py-4 flex flex-wrap items-center gap-4 justify-between">
-          <div>
+        <div className="px-8 py-4 flex items-center gap-8">
+          <div className="flex-1">
             <h1 className="text-2xl font-bold text-white">Prompt Planner</h1>
             <p className="text-sm text-gray-400 mt-1">
               Map out your scenes and shots with AI-enhanced prompts
             </p>
           </div>
 
-          <PageNavigation projectId={projectId} />
-
-          <div className="flex items-center gap-3">
-            {projectId && missingPreviewCount > 0 && (
-              <Button
-                variant="outline"
-                onClick={handleSeedMissing}
-                disabled={seedingMissing}
-                className="border-white/20 text-white hover:bg-white/10"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                {seedingMissing ? "Generating previews…" : `Generate missing previews (${missingPreviewCount})`}
-              </Button>
-            )}
-            {selectionComplete && projectId && (
-              <Button
-                variant="outline"
-                onClick={() =>
-                  router.push(`/project-redesign/${projectId}/storyboard`)
-                }
-                className="border-emerald-500/50 text-emerald-200 hover:bg-emerald-500/10"
-              >
-                <ArrowRight className="w-4 h-4 mr-2" />
-                Go to Storyboard
-              </Button>
-            )}
-
-            <Button
-              onClick={handleAddScene}
-              className="bg-white text-black hover:bg-gray-200"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Scene
-            </Button>
+          <div className="flex-1 flex justify-center">
+            <PageNavigation
+              projectId={projectId}
+              storyboardLocked={!allMasterShotsSet}
+              storyboardLockMessage={
+                !allMasterShotsSet
+                  ? "Set up master shots for all scenes in Scene Planner"
+                  : undefined
+              }
+            />
           </div>
+
+          <div className="flex-1"></div>
         </div>
       </div>
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex-1 overflow-auto pb-36">
-          <div className="max-w-7xl mx-auto px-8 py-6 space-y-6">
-            <div className="bg-[#101010] border border-white/10 rounded-3xl p-6">
-              <AssetManager projectId={projectId} />
-              {seedError && (
-                <p className="mt-3 text-sm text-red-400">
-                  Preview generation issues: {seedError}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-8">
-              <div className="flex-1 space-y-4 flex flex-col items-center">
+        <div className="flex-1 overflow-auto pb-36 relative">
+          <div className="max-w-7xl mx-auto px-8 py-6">
+              <div className="max-w-3xl mx-auto space-y-6">
+                {/* Brand Assets */}
+                <div className="bg-[#101010] border border-white/10 rounded-3xl p-6">
+                  <AssetManager projectId={projectId} />
+                  {seedError && (
+                    <p className="mt-3 text-sm text-red-400">
+                      Preview generation issues: {seedError}
+                    </p>
+                  )}
+                </div>
+
+                {/* Scene Planner */}
+                <div className="space-y-4">
               {!hasScenes ? (
-                <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl w-full max-w-2xl">
+                <div className="text-center py-20 border border-dashed border-gray-700 rounded-2xl w-full">
                   {isGeneratingScenes ? (
                     <>
                       <div className="flex justify-center mb-4">
@@ -671,6 +772,7 @@ const PromptPlannerPage = () => {
                             }
                             onSelectShotImage={handleSelectShotImage}
                             onRegenerateShot={handleOpenRegenerate}
+                            onGeneratePreview={handleGeneratePreview}
                           />
                         </SortableContext>
 
@@ -693,18 +795,53 @@ const PromptPlannerPage = () => {
                   })}
                 </SortableContext>
               )}
-            </div>
-
-              <div className="hidden xl:block w-72">
-                <VerticalMediaGallery
-                  projectId={projectId}
-                  activeShotId={highlightedShotId ?? selectedShot?.shotId}
-                  onSelect={handleGallerySelect}
-                />
+                </div>
               </div>
-            </div>
+          </div>
+
+          {/* Fixed Thumbnail Sidebar */}
+          <div className="hidden xl:block fixed right-0 top-0 bottom-0 w-72 overflow-y-auto p-6">
+            <VerticalMediaGallery
+              projectId={projectId}
+              scenes={plannerScenes}
+              activeShotId={highlightedShotId ?? selectedShot?.shotId}
+              onSelect={handleGallerySelect}
+            />
           </div>
         </div>
+
+        <DragOverlay dropAnimation={null}>
+          {activeDragItem && activeDragType === "scene" && (
+            <Card className="p-4 bg-[#171717] border border-blue-500 shadow-2xl opacity-95 scale-105 rotate-2 pointer-events-none">
+              <div className="flex items-center gap-3">
+                <GripVertical className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="text-xl font-semibold text-white">
+                    {(activeDragItem as PlannerSceneState).title}
+                  </div>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {(activeDragItem as PlannerSceneState).shots.length} shot(s)
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+          {activeDragItem && activeDragType === "shot" && (
+            <Card className="p-3 bg-[#131414] border border-blue-500 shadow-2xl opacity-95 scale-105 rotate-1 pointer-events-none">
+              <div className="flex items-center gap-3">
+                <GripVertical className="w-4 h-4 text-gray-400" />
+                <div className="flex-1">
+                  <Badge variant="secondary" className="text-xs mb-2 bg-blue-500/15 text-blue-200 border-blue-500/30">
+                    Shot {(activeDragItem as any).scene.sceneNumber}.{(activeDragItem as any).shot.shotNumber}
+                  </Badge>
+                  <p className="text-sm text-gray-200">
+                    {(activeDragItem as any).shot.description.slice(0, 60)}...
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+        </DragOverlay>
       </DndContext>
 
       <div className="flex-shrink-0">
@@ -726,6 +863,14 @@ const PromptPlannerPage = () => {
         />
       </div>
       </div>
+
+      <SceneIteratorModal
+        projectId={projectId!}
+        shotId={iteratorShotId}
+        isOpen={!!iteratorShotId}
+        onClose={() => setIteratorShotId(null)}
+      />
+
       <Dialog
         open={!!regenerateTarget}
         onOpenChange={(open) => {
@@ -739,7 +884,7 @@ const PromptPlannerPage = () => {
           <DialogHeader>
             <DialogTitle>Regenerate shot images</DialogTitle>
             <DialogDescription className="text-gray-400">
-              Describe what should change. We&apos;ll generate four new frames for{" "}
+              Describe what should change. We&apos;ll generate a new preview frame for{" "}
               {regenerateTarget
                 ? `Shot ${regenerateTarget.shotNumber}`
                 : "this shot"}{" "}
@@ -769,7 +914,7 @@ const PromptPlannerPage = () => {
               disabled={regenerateBusy}
               className="bg-white text-black hover:bg-gray-200"
             >
-              {regenerateBusy ? "Generating..." : "Generate 4 new frames"}
+              {regenerateBusy ? "Generating..." : "Generate preview frame"}
             </Button>
           </DialogFooter>
         </DialogContent>

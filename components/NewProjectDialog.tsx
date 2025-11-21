@@ -55,12 +55,12 @@ export const NewProjectDialog = ({ open, onOpenChange }: NewProjectDialogProps) 
       onOpenChange(false);
 
       // Navigate to the new project's scene planner immediately
-      router.push(`/project-redesign/${projectId}/scene-planner`);
+      router.push(`/${projectId}/scene-planner`);
 
       // If user provided initial ideas, trigger AI scene generation in the background
       if (initialIdeas.trim()) {
         // Fire and forget - the scene planner will show loading state and populate when done
-        fetch("/api/project-redesign/generate-scenes", {
+        fetch("/api/generate-scenes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -13,12 +13,13 @@ export async function requestPreviewSeed(
   projectId: string,
   options?: { concurrency?: number },
 ): Promise<PreviewSeedResponse> {
-  const response = await fetch("/api/project-redesign/seed-shot-images", {
+  const response = await fetch("/api/seed-shot-images", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       projectId,
       concurrency: options?.concurrency ?? 2,
+      mode: "preview",
     }),
   });
 

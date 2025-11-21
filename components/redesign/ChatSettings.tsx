@@ -105,10 +105,10 @@ const SettingDropdown = ({
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#2C2D2D] hover:bg-[#252525] border-0 text-gray-300 transition-colors text-xs whitespace-nowrap"
+        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#2C2D2D] hover:bg-[#252525] border-0 text-gray-300 transition-colors text-xs whitespace-nowrap shrink-0"
       >
-        {Icon && <Icon className="w-3 h-3" />}
-        <span className="text-white font-medium">{label}</span>
+        {Icon && <Icon className="w-3 h-3 shrink-0" />}
+        <span className="text-white font-medium whitespace-nowrap">{label}</span>
       </button>
 
       {isOpen && (
@@ -117,7 +117,7 @@ const SettingDropdown = ({
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute bottom-full mb-2 left-0 bg-[#1a1a1a] border border-gray-800 rounded-lg shadow-xl overflow-hidden min-w-full z-20">
+          <div className="absolute bottom-full mb-2 left-0 bg-[#1a1a1a] border border-gray-800 rounded-lg shadow-xl overflow-hidden w-28 z-20">
             {options.map((option) => (
               <button
                 key={option}
@@ -125,7 +125,7 @@ const SettingDropdown = ({
                   onChange(option);
                   setIsOpen(false);
                 }}
-                className={`w-full px-4 py-2 text-left hover:bg-[#252525] transition-colors text-xs ${
+                className={`w-full px-4 py-2 text-left hover:bg-[#252525] transition-colors text-xs whitespace-nowrap ${
                   option === value ? "bg-[#131414] text-white" : "text-gray-300"
                 }`}
               >

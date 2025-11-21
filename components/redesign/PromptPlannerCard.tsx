@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ interface PromptPlannerCardProps {
   getShotPreviewImages?: (shotId: Id<"sceneShots">) => ShotPreviewImage[] | undefined;
   onSelectShotImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
   onRegenerateShot?: (shot: SceneShot) => void;
+  onGeneratePreview?: (shot: SceneShot) => void;
 }
 
 interface ShotCardProps {
@@ -68,6 +70,7 @@ interface ShotCardProps {
   previewImages?: ShotPreviewImage[];
   onSelectImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
   onRegenerateShot?: (shot: SceneShot) => void;
+  onGeneratePreview?: (shot: SceneShot) => void;
 }
 
 const ShotCard = ({
@@ -84,6 +87,7 @@ const ShotCard = ({
   previewImages,
   onSelectImage,
   onRegenerateShot,
+  onGeneratePreview,
 }: ShotCardProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(shot.description);
@@ -101,6 +105,7 @@ const ShotCard = ({
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({
     id: shot._id,
     data: { type: "shot", sceneId: scene._id },
@@ -108,7 +113,7 @@ const ShotCard = ({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: transition || "transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1)",
   };
 
   const setRefs = (node: HTMLDivElement | null) => {
@@ -137,9 +142,11 @@ const ShotCard = ({
       style={style}
       onClick={() => !isEditing && onShotClick(shot)}
       className={cn(
-        "p-3 bg-[#131414] border border-gray-800/60 hover:border-gray-600/80 transition-all",
-        isDragging && "opacity-50",
-        isActive && "ring-2 ring-emerald-400/70",
+        "p-3 bg-[#131414] border transition-all relative",
+        isDragging && "opacity-30 scale-95",
+        isOver && "border-blue-400 border-dashed border-2 bg-blue-500/10 shadow-lg shadow-blue-500/20",
+        !isDragging && !isOver && "border-gray-800/60 hover:border-gray-600/80",
+        isActive && "ring-2 ring-blue-400/70",
       )}
     >
       <div className="flex items-start gap-3">
@@ -159,7 +166,7 @@ const ShotCard = ({
               className={cn(
                 "text-xs flex items-center gap-1 border",
                 shot.selectedImageId
-                  ? "bg-emerald-500/15 text-emerald-200 border-emerald-500/30"
+                  ? "bg-blue-500/15 text-blue-200 border-blue-500/30"
                   : "bg-[#111] text-gray-300 border-gray-700",
               )}
             >
@@ -198,7 +205,7 @@ const ShotCard = ({
           )}
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-row gap-1">
           <Button
             variant="ghost"
             size="icon"
@@ -210,27 +217,31 @@ const ShotCard = ({
           >
             <Trash2 className="w-4 h-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRegenerateShot?.(shot);
-            }}
-            className="h-8 w-8 text-gray-400 hover:text-gray-100"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-          <Button
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEnterIterator(shot);
-            }}
-            className="h-8 w-8 rounded-full bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40"
-          >
-            <ArrowUpRight className="w-4 h-4" />
-          </Button>
+          {previewImages && previewImages.length > 0 && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRegenerateShot?.(shot);
+                }}
+                className="h-8 w-8 text-gray-400 hover:text-gray-100"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+              <Button
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnterIterator(shot);
+                }}
+                className="h-8 w-8 rounded-full bg-blue-500/20 text-blue-300 hover:bg-blue-500/40"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+              </Button>
+            </>
+          )}
         </div>
        </div>
       <ShotImageGrid
@@ -238,7 +249,7 @@ const ShotCard = ({
         isLoading={shot.lastImageStatus === "processing" || shot.lastImageStatus === "pending"}
         selectedImageId={shot.selectedImageId}
         onSelect={(image) => onSelectImage?.(shot, image)}
-        onIterate={() => onEnterIterator(shot)}
+        onIterate={() => onGeneratePreview?.(shot)}
         footer={
           shot.lastImageStatus === "failed" ? (
             <p className="text-xs text-red-400">
@@ -271,6 +282,7 @@ export const PromptPlannerCard = ({
   getShotPreviewImages,
   onSelectShotImage,
   onRegenerateShot,
+  onGeneratePreview,
 }: PromptPlannerCardProps) => {
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
@@ -282,6 +294,7 @@ export const PromptPlannerCard = ({
     transform: sceneTransform,
     transition: sceneTransition,
     isDragging: isSceneDragging,
+    isOver: isSceneOver,
   } = useSortable({
     id: scene._id,
     data: { type: "scene" },
@@ -289,7 +302,7 @@ export const PromptPlannerCard = ({
 
   const sceneStyle = {
     transform: CSS.Transform.toString(sceneTransform),
-    transition: sceneTransition,
+    transition: sceneTransition || "transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1)",
   };
 
   const sortedShots = useMemo(
@@ -303,8 +316,10 @@ export const PromptPlannerCard = ({
       ref={setSceneRef}
       style={sceneStyle}
       className={cn(
-        "p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-opacity",
-        isSceneDragging && "opacity-50",
+        "p-4 bg-[#171717] border transition-all",
+        isSceneDragging && "opacity-30 scale-98",
+        isSceneOver && "border-blue-400 border-dashed border-2 bg-blue-500/10 shadow-lg shadow-blue-500/20",
+        !isSceneDragging && !isSceneOver && "border-gray-800 hover:border-gray-600/70",
       )}
     >
       <div className="flex items-start gap-3 mb-4">
@@ -418,6 +433,7 @@ export const PromptPlannerCard = ({
               previewImages={getShotPreviewImages?.(shot._id)}
               onSelectImage={onSelectShotImage}
               onRegenerateShot={onRegenerateShot}
+              onGeneratePreview={onGeneratePreview}
             />
           ))}
 

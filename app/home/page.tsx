@@ -18,7 +18,7 @@ const HomePage = () => {
   const recentProjects = projects?.slice(0, 3) || [];
 
   const handleProjectClick = (projectId: string) => {
-    router.push(`/project-redesign/${projectId}/scene-planner`);
+    router.push(`/${projectId}/scene-planner`);
   };
 
   if (!isSignedIn) {
@@ -62,7 +62,7 @@ const HomePage = () => {
         <div className="flex flex-wrap items-center justify-center gap-5 max-w-5xl">
           {/* New Project Button */}
           <button
-            onClick={() => router.push("/project-redesign/input")}
+            onClick={() => router.push("/input")}
             className="group relative w-56 h-36 rounded-3xl bg-gray-600/60 border border-gray-500/40 hover:border-gray-400/60 transition-all duration-300 hover:scale-[1.02] cursor-pointer"
           >
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
