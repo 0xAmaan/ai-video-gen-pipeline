@@ -154,6 +154,10 @@ export const useMoveShotToScene = () => {
   return useMutation(api.projectRedesign.moveShotToScene);
 };
 
+export const useClearShotImage = () => {
+  return useMutation(api.projectRedesign.clearShotImage);
+};
+
 export const useSceneShots = (sceneId?: Id<"projectScenes">) => {
   return useQuery(
     api.projectRedesign.getSceneShots,

@@ -89,6 +89,12 @@ const ShotCard = ({
   onRegenerateShot,
   onGeneratePreview,
 }: ShotCardProps) => {
+  const [localDescription, setLocalDescription] = useState(shot.description);
+
+  // Sync local state with prop changes
+  useEffect(() => {
+    setLocalDescription(shot.description);
+  }, [shot.description]);
 
   const {
     attributes,
@@ -120,6 +126,13 @@ const ShotCard = ({
         : shotIndex + 1;
     return `Shot ${scene.sceneNumber}.${shotNumber}`;
   }, [scene.sceneNumber, shot.shotNumber, shotIndex]);
+
+  const hasImage = !!shot.selectedImageId;
+
+  const handleDescriptionChange = (value: string) => {
+    setLocalDescription(value);
+    onUpdateShotText(shot._id, value);
+  };
 
   return (
     <Card
@@ -160,9 +173,19 @@ const ShotCard = ({
             </Badge>
           </div>
 
-          <p className="text-sm text-gray-200 px-2 py-1">
-            {shot.description}
-          </p>
+          {hasImage ? (
+            <p className="text-sm text-gray-400 px-2 py-1">
+              {shot.description}
+            </p>
+          ) : (
+            <Textarea
+              value={localDescription}
+              onChange={(e) => handleDescriptionChange(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              placeholder="Describe your shot here..."
+              className="text-sm bg-[#0a0a0a] border-gray-700 text-gray-200 placeholder:text-gray-500 min-h-[60px] resize-none"
+            />
+          )}
         </div>
 
         <div className="flex flex-row gap-1">
@@ -244,9 +267,6 @@ export const PromptPlannerCard = ({
   onRegenerateShot,
   onGeneratePreview,
 }: PromptPlannerCardProps) => {
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [editingDescription, setEditingDescription] = useState(false);
-
   const {
     attributes: sceneAttributes,
     listeners: sceneListeners,
@@ -303,44 +323,13 @@ export const PromptPlannerCard = ({
         </button>
 
         <div className="flex-1 min-w-0 space-y-2">
-          {editingTitle ? (
-            <input
-              value={scene.title}
-              onChange={(e) => onUpdateSceneTitle(scene._id, e.target.value)}
-              onBlur={() => setEditingTitle(false)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") setEditingTitle(false);
-              }}
-              autoFocus
-              className="w-full bg-[#111] text-xl font-semibold text-white px-2 py-1 rounded border border-gray-700"
-            />
-          ) : (
-            <div
-              onClick={() => setEditingTitle(true)}
-              className="text-xl font-semibold text-white cursor-text hover:bg-[#111] px-2 py-1 rounded"
-            >
-              {scene.title}
-            </div>
-          )}
+          <div className="text-xl font-semibold text-white px-2 py-1">
+            {scene.title}
+          </div>
 
-          {editingDescription ? (
-            <Textarea
-              value={scene.description}
-              onChange={(e) =>
-                onUpdateSceneDescription(scene._id, e.target.value)
-              }
-              onBlur={() => setEditingDescription(false)}
-              autoFocus
-              className="w-full bg-[#111] text-sm text-gray-200 min-h-[70px]"
-            />
-          ) : (
-            <p
-              onClick={() => setEditingDescription(true)}
-              className="text-sm text-gray-300 cursor-text hover:bg-[#111] px-2 py-1 rounded"
-            >
-              {scene.description}
-            </p>
-          )}
+          <p className="text-sm text-gray-300 px-2 py-1">
+            {scene.description}
+          </p>
 
           {!isExpanded && (
             <Badge variant="outline" className="text-xs text-gray-400">

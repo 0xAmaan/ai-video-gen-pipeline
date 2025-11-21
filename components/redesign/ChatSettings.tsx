@@ -30,7 +30,7 @@ export const ChatSettings = ({
         icon={Wand2}
         label={settings.model}
         value={settings.model}
-        options={["flux-pro", "flux-dev", "LTX-2 Pro"]}
+        options={["nano-banana", "nano-banana-pro"]}
         onChange={(val) => onSettingsChange({ ...settings, model: val })}
       />
       {mode === "video" && (
@@ -68,10 +68,11 @@ export const ChatSettings = ({
         onChange={(val) =>
           onSettingsChange({ ...settings, aspectRatio: val })
         }
+        disabled={true}
       />
       <SettingDropdown
         icon={Film}
-        label={`${settings.variationCount} vars`}
+        label={`${settings.variationCount} var${settings.variationCount === 1 ? "" : "s"}`}
         value={settings.variationCount.toString()}
         options={["1", "2", "3", "4", "5", "6"]}
         onChange={(val) =>
@@ -80,6 +81,7 @@ export const ChatSettings = ({
             variationCount: parseInt(val),
           })
         }
+        disabled={true}
       />
     </div>
   );
@@ -92,23 +94,30 @@ const SettingDropdown = ({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <div className="relative">
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#2C2D2D] hover:bg-[#252525] border-0 text-gray-300 transition-colors text-xs whitespace-nowrap shrink-0"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#2C2D2D] border-0 text-gray-300 transition-colors text-xs whitespace-nowrap shrink-0 ${
+          disabled
+            ? "opacity-50 cursor-not-allowed"
+            : "hover:bg-[#252525] cursor-pointer"
+        }`}
       >
         {Icon && <Icon className="w-3 h-3 shrink-0" />}
-        <span className="text-white font-medium whitespace-nowrap">{label}</span>
+        <span className={`font-medium whitespace-nowrap ${disabled ? "text-gray-500" : "text-white"}`}>{label}</span>
       </button>
 
       {isOpen && (
@@ -117,7 +126,7 @@ const SettingDropdown = ({
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute bottom-full mb-2 left-0 bg-[#1a1a1a] border border-gray-800 rounded-lg shadow-xl overflow-hidden w-28 z-20">
+          <div className="absolute bottom-full mb-2 left-0 bg-[#1a1a1a] border border-gray-800 rounded-lg shadow-xl overflow-hidden w-48 z-20">
             {options.map((option) => (
               <button
                 key={option}

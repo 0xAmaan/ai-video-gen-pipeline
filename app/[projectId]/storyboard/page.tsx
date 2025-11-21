@@ -1,183 +1,91 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowRight, Film } from "lucide-react";
-
-import { Id } from "@/convex/_generated/dataModel";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { StoryboardSceneRow } from "@/components/redesign/StoryboardSceneRow";
-import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  useAllMasterShotsSet,
-  useProjectProgress,
-  useStoryboardRows,
-} from "@/lib/hooks/useProjectRedesign";
-import { ShotSelectionSummary } from "@/lib/types/redesign";
+import { ArrowLeft } from "lucide-react";
+import { Id } from "@/convex/_generated/dataModel";
+import { useStoryboardRows, useAllMasterShotsSet } from "@/lib/hooks/useProjectRedesign";
 
 const StoryboardPage = () => {
   const params = useParams<{ projectId: string }>();
   const router = useRouter();
   const projectId = params?.projectId as Id<"videoProjects"> | undefined;
-
   const storyboardRows = useStoryboardRows(projectId);
-  const progress = useProjectProgress(projectId);
   const allMasterShotsSet = useAllMasterShotsSet(projectId);
 
-  const [selectedSceneId, setSelectedSceneId] = useState<Id<"projectScenes"> | null>(null);
-  const [selectedShotId, setSelectedShotId] = useState<Id<"sceneShots"> | null>(null);
-  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  useEffect(() => {
-    if (!storyboardRows?.length) return;
-
-    if (!selectedSceneId) {
-      setSelectedSceneId(storyboardRows[0].scene._id);
-    }
-
-    if (!selectedShotId) {
-      const firstShot = storyboardRows[0].shots[0]?.shot._id;
-      if (firstShot) setSelectedShotId(firstShot);
-    }
-  }, [storyboardRows, selectedSceneId, selectedShotId]);
-
-  const scenesForGallery = useMemo(
-    () =>
-      storyboardRows?.map((row) => ({
-        ...row.scene,
-        shots: row.shots.map((shotData) => shotData.shot),
-      })) ?? [],
-    [storyboardRows],
-  );
-
-  const scrollToScene = (sceneId: Id<"projectScenes">) => {
-    const node = rowRefs.current[sceneId];
-    if (node) {
-      node.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  };
-
-  const handleSceneSelect = (sceneId: Id<"projectScenes">) => {
-    setSelectedSceneId(sceneId);
-    scrollToScene(sceneId);
-  };
-
-  const handleShotSelect = (shotId: Id<"sceneShots">) => {
-    setSelectedShotId(shotId);
-    const owningRow = storyboardRows?.find((row) =>
-      row.shots.some((shotData) => shotData.shot._id === shotId),
+  if (!projectId) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Missing project context.
+      </div>
     );
-    if (owningRow) {
-      setSelectedSceneId(owningRow.scene._id);
-      scrollToScene(owningRow.scene._id);
-    }
-  };
+  }
 
-  const handleGallerySelect = (selection: ShotSelectionSummary) => {
-    setSelectedShotId(selection.shot._id);
-    setSelectedSceneId(selection.scene._id);
-    scrollToScene(selection.scene._id);
-  };
+  const hasRows = !!storyboardRows && storyboardRows.length > 0;
 
-  const totalShots = progress?.totalShots ?? 0;
-  const shotsWithSelections = progress?.shotsWithSelections ?? 0;
-  const selectionProgress = totalShots > 0 ? Math.round((shotsWithSelections / totalShots) * 100) : 0;
+  // Don't lock storyboard when we're already on this page
+  // (only lock it when viewing from other pages)
+  const lockMessage = !allMasterShotsSet
+    ? "Set up master shots for all scenes in Scene Planner"
+    : undefined;
 
   return (
-    <div className="min-h-screen w-full bg-[var(--bg-base)] text-white">
-      <div className="border-b border-white/10 bg-[var(--bg-base)]/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-8 py-5 flex items-center gap-8">
-          <div className="flex-1">
-            <p className="text-xs uppercase tracking-[0.12em] text-gray-500 mb-1">Storyboard</p>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold">Finalise your master shots</h1>
-              {selectionProgress > 0 && (
-                <Badge variant="secondary" className="bg-blue-500/15 text-blue-200 border-blue-500/30">
-                  {selectionProgress}% selected
-                </Badge>
-              )}
-            </div>
+    <div className="min-h-screen bg-black text-white pb-24">
+      <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-sm border-b border-gray-900 px-8 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-gray-500">
+              Storyboard
+            </p>
+            <h1 className="text-2xl font-bold">Selected master shots</h1>
             <p className="text-sm text-gray-400 mt-1">
-              Review every scene, lock your chosen frames, and move into the editor once you are ready.
+              Review each scene&apos;s chosen frames before animation.
             </p>
           </div>
 
-          <div className="flex-1 flex justify-center">
-            <PageNavigation
-              projectId={projectId}
-              storyboardLocked={!allMasterShotsSet}
-              storyboardLockMessage="Set master shots in Scene Planner before animating the storyboard."
-            />
-          </div>
+          <PageNavigation
+            projectId={projectId}
+            storyboardLocked={false}
+            storyboardLockMessage={lockMessage}
+          />
 
-          <div className="flex-1 flex justify-end">
-            <Button
-              variant="secondary"
-              onClick={() => projectId && router.push(`/${projectId}/editor`)}
-              disabled={!allMasterShotsSet}
-              className="gap-2"
-            >
-              <Film className="w-4 h-4" />
-              Open editor
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            className="border-gray-700 text-gray-200 hover:bg-gray-800"
+            onClick={() =>
+              router.push(`/${projectId}/scene-planner`)
+            }
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Planner
+          </Button>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-8 py-10 flex gap-8">
-        <div className="flex-1 space-y-6">
-          {!storyboardRows ? (
-            <div className="space-y-4">
-              <div className="h-4 w-40 bg-white/5 rounded-md animate-pulse" />
-              <div className="h-48 w-full bg-white/5 rounded-3xl animate-pulse" />
-              <div className="h-48 w-full bg-white/5 rounded-3xl animate-pulse" />
-            </div>
-          ) : storyboardRows.length === 0 ? (
-            <div className="border border-dashed border-gray-700 rounded-3xl p-10 text-center">
-              <p className="text-gray-300 font-medium mb-2">No storyboard shots yet.</p>
-              <p className="text-gray-500 text-sm mb-4">
-                Head back to the Scene Planner to pick master shots, then return here to review them.
-              </p>
-              <Button variant="outline" onClick={() => projectId && router.push(`/${projectId}/scene-planner`)}>
-                Go to Scene Planner
-              </Button>
-            </div>
-          ) : (
-            storyboardRows.map((row) => (
-              <div
-                key={row.scene._id}
-                ref={(node) => {
-                  rowRefs.current[row.scene._id] = node;
-                }}
-                className="scroll-mt-24"
-              >
-                <StoryboardSceneRow
-                  scene={row}
-                  isSelected={selectedSceneId === row.scene._id}
-                  selectedShotId={selectedShotId}
-                  onSceneSelect={handleSceneSelect}
-                  onShotSelect={handleShotSelect}
-                />
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="hidden xl:block w-72 flex-shrink-0">
-          <VerticalMediaGallery
-            projectId={projectId}
-            scenes={scenesForGallery}
-            activeShotId={selectedShotId}
-            onSelect={handleGallerySelect}
-          />
-        </div>
+      <div className="px-8 py-8 space-y-4">
+        {!storyboardRows ? (
+          <div className="text-gray-500 text-center py-20 border border-dashed border-gray-800 rounded-3xl">
+            Loading storyboard...
+          </div>
+        ) : !hasRows ? (
+          <div className="text-gray-500 text-center py-20 border border-dashed border-gray-800 rounded-3xl">
+            No storyboard selections yet. Select master shots in the iterator to
+            populate this view.
+          </div>
+        ) : (
+          storyboardRows.map((row) => (
+            <StoryboardSceneRow
+              key={row.scene._id}
+              scene={row}
+            />
+          ))
+        )}
       </div>
     </div>
   );
 };
 
 export default StoryboardPage;
-
