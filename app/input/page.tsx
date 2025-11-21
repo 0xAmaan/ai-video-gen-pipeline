@@ -12,6 +12,8 @@ import {
 } from "@/lib/hooks/useProjectRedesign";
 import { toast } from "sonner";
 import { BrandAssetUploadDialog } from "@/components/redesign/BrandAssetUploadDialog";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 type DraftAsset = {
   id: string;
@@ -36,6 +38,7 @@ const RawInputPage = () => {
   const { userId, isSignedIn } = useAuth();
   const createProject = useCreateRedesignProject();
   const createAsset = useCreateProjectAsset();
+  const generateUploadUrl = useMutation(api.projectAssets.generateUploadUrl);
 
   // Voice dictation
   const {
@@ -85,14 +88,38 @@ const RawInputPage = () => {
 
       if (assetDrafts.length) {
         await Promise.all(
-           assetDrafts.map((asset) =>
-             createAsset({
+           assetDrafts.map(async (asset) => {
+             let storageId: string | undefined;
+             let imageUrl: string | undefined;
+
+             if (asset.imageUrl.startsWith("data:")) {
+               try {
+                 const uploadUrl = await generateUploadUrl();
+                 const response = await fetch(asset.imageUrl);
+                 const blob = await response.blob();
+                 const result = await fetch(uploadUrl, {
+                   method: "POST",
+                   headers: { "Content-Type": blob.type },
+                   body: blob,
+                 });
+                 const { storageId: id } = await result.json();
+                 storageId = id;
+               } catch (error) {
+                 console.error("Failed to upload asset:", error);
+                 imageUrl = asset.imageUrl.slice(0, 200);
+               }
+             } else {
+               imageUrl = asset.imageUrl;
+             }
+
+             return createAsset({
                projectId,
                assetType: asset.assetType,
                name: asset.name,
-               imageUrl: asset.imageUrl,
-             }),
-           ),
+               storageId,
+               imageUrl,
+             });
+           }),
         );
       }
 

@@ -9,49 +9,86 @@ interface PageNavigationProps {
   projectId?: string;
   storyboardLocked?: boolean;
   storyboardLockMessage?: string;
+  videoLocked?: boolean;
+  videoLockMessage?: string;
+  editorLocked?: boolean;
+  editorLockMessage?: string;
 }
 
 const DEFAULT_PATH = "/home";
 
-export const PageNavigation = ({ projectId, storyboardLocked, storyboardLockMessage }: PageNavigationProps) => {
+interface NavItem {
+  name: string;
+  icon: typeof Sparkles;
+  href: string;
+  match: string;
+  disabled?: boolean;
+  disabledMessage?: string;
+}
+
+export const PageNavigation = ({
+  projectId,
+  storyboardLocked,
+  storyboardLockMessage,
+  videoLocked,
+  videoLockMessage,
+  editorLocked,
+  editorLockMessage,
+}: PageNavigationProps) => {
   const pathname = usePathname();
 
-  const navItems = [
+  if (typeof window !== "undefined") {
+    console.log("[PageNavigation] props", {
+      projectId,
+      storyboardLocked,
+      videoLocked,
+      editorLocked,
+      pathname,
+    });
+  }
+
+  const navItems: (NavItem | false)[] = [
     {
       name: "Home",
       icon: Layout,
       href: DEFAULT_PATH,
       match: "/home",
     },
-    projectId && {
+    ...(projectId ? [{
       name: "Prompt Planner",
       icon: Sparkles,
-      href: projectId
-        ? `/${projectId}/scene-planner`
-        : DEFAULT_PATH,
+      href: `/${projectId}/scene-planner`,
       match: "/scene-planner",
     },
-    projectId && {
+    {
       name: "Storyboard",
       icon: Layout,
-      href: projectId
-        ? `/${projectId}/storyboard`
-        : DEFAULT_PATH,
+      href: `/${projectId}/storyboard`,
       match: "/storyboard",
       disabled: storyboardLocked,
       disabledMessage: storyboardLockMessage,
     },
-    projectId && {
+    {
+      name: "Video",
+      icon: Film,
+      href: `/${projectId}/video`,
+      match: "/video",
+      disabled: videoLocked,
+      disabledMessage: videoLockMessage,
+    },
+    {
       name: "Video Editor",
       icon: Scissors,
-      href: DEFAULT_PATH,
-      match: "/video-editor",
-    },
+      href: `/${projectId}/editor`,
+      match: "/editor",
+      disabled: editorLocked,
+      disabledMessage: editorLockMessage,
+    }] as NavItem[] : []),
   ];
 
   return (
     <div className="flex items-center gap-2 bg-[#2a2a2a] rounded-lg p-1">
-      {navItems.filter(Boolean).map((item) => {
+      {navItems.filter((item): item is NavItem => Boolean(item)).map((item) => {
         const isActive = pathname?.includes(item.match);
         const Icon = item.icon;
         const isDisabled = item.disabled;
