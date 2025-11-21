@@ -44,6 +44,9 @@ const VideoPage = () => {
     api.video.updateProjectModelSelection,
   );
   const resetPhaseMutation = useMutation(api.video.resetProjectPhase);
+  const updateProjectStatus = useMutation(api.video.updateProjectStatus);
+  const [isReadyForEditor, setIsReadyForEditor] = useState(false);
+  const [completedClipsState, setCompletedClipsState] = useState<any[]>([]);
 
   useEffect(() => {
     enableLipsyncRef.current = enableLipsync;
@@ -298,6 +301,11 @@ const VideoPage = () => {
     sceneId: Id<"scenes">,
   ) => {
     if (!predictionId || activeVideoPolls.current.has(clipId)) {
+      console.warn("[VideoPage] Skipping poll", {
+        clipId,
+        predictionId,
+        alreadyPolling: activeVideoPolls.current.has(clipId),
+      });
       return;
     }
 
@@ -319,6 +327,12 @@ const VideoPage = () => {
         });
 
         const result = await response.json();
+        console.log("[VideoPage] Poll tick", {
+          clipId,
+          predictionId,
+          status: result.status,
+          attempts,
+        });
 
         if (result.status === "complete") {
           await updateVideoClip({
@@ -327,6 +341,11 @@ const VideoPage = () => {
             videoUrl: result.videoUrl,
           });
           activeVideoPolls.current.delete(clipId);
+          console.log("[VideoPage] Clip complete", {
+            clipId,
+            predictionId,
+            videoUrl: result.videoUrl,
+          });
           await queueLipsyncForClip(sceneId, clipId, result.videoUrl);
           return;
         }
@@ -337,6 +356,11 @@ const VideoPage = () => {
             status: "failed",
           });
           activeVideoPolls.current.delete(clipId);
+          console.error("[VideoPage] Clip failed while polling", {
+            clipId,
+            predictionId,
+            error: result.errorMessage,
+          });
           await applyLocalLipsyncResult({
             sceneId,
             clipId,
@@ -361,11 +385,19 @@ const VideoPage = () => {
           }
         }
       } catch (error) {
-        console.error("Error polling prediction:", error);
+        console.error("Error polling prediction:", error, {
+          clipId,
+          predictionId,
+          attempts,
+        });
         if (attempts < maxAttempts) {
           setTimeout(poll, pollInterval);
         } else {
           activeVideoPolls.current.delete(clipId);
+          console.error("[VideoPage] Poll aborted after max attempts", {
+            clipId,
+            predictionId,
+          });
         }
       }
     };
@@ -384,6 +416,11 @@ const VideoPage = () => {
     if (shouldGenerate) {
       hasStartedGeneration.current = true;
       setIsGenerating(true);
+      console.log("[VideoPage] Auto-starting video generation", {
+        projectId,
+        sceneCount: convexScenes.length,
+        selectedVideoModel,
+      });
       generateVideoClips();
     }
   }, [convexScenes, clips, isGenerating]);
@@ -454,8 +491,12 @@ const VideoPage = () => {
         description: scene.description,
         duration: scene.duration,
       }));
+      console.log("[VideoPage] Prepared scenes payload", scenesData);
 
       // Call API to create Replicate predictions
+      console.log("[VideoPage] Calling /api/generate-all-clips", {
+        videoModel: selectedVideoModel,
+      });
       const response = await apiFetch("/api/generate-all-clips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -466,10 +507,15 @@ const VideoPage = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to generate video clips");
+        const errorBody = await response.json().catch(() => null);
+        console.error("[VideoPage] generate-all-clips failed", errorBody);
+        throw new Error(
+          errorBody?.error || "Failed to generate video clips",
+        );
       }
 
       const result = await response.json();
+      console.log("[VideoPage] generate-all-clips response", result);
 
       // Create video clip records in Convex with prediction IDs
       const clipRecords = await Promise.all(
@@ -481,6 +527,11 @@ const VideoPage = () => {
             duration: prediction.duration,
             resolution: "720p",
             replicateVideoId: prediction.predictionId,
+          });
+          console.log("[VideoPage] Created clip record", {
+            clipId,
+            predictionId: prediction.predictionId,
+            sceneId,
           });
           return { clipId, predictionId: prediction.predictionId, sceneId };
         }),
@@ -494,6 +545,7 @@ const VideoPage = () => {
       });
 
       setIsGenerating(false);
+      console.log("[VideoPage] Clip predictions queued");
     } catch (error) {
       console.error("Error generating video clips:", error);
       setIsGenerating(false);
@@ -503,17 +555,27 @@ const VideoPage = () => {
 
   const handleVideoGenerationComplete = async (completedClips: any[]) => {
     try {
-      // Update last active phase to editor
+      await updateProjectStatus({
+        projectId: projectId as Id<"videoProjects">,
+        status: "video_generated",
+      });
+      setCompletedClipsState(completedClips);
+      setIsReadyForEditor(true);
+    } catch (error) {
+      console.error("Error updating phase:", error);
+    }
+  };
+
+  const handleNavigateToEditor = async () => {
+    try {
       await updateLastActivePhase({
         projectId: projectId as Id<"videoProjects">,
         phase: "editor",
       });
-
-      // Navigate to editor phase
-      router.push(`/${projectId}/editor`);
     } catch (error) {
-      console.error("Error updating phase:", error);
+      console.error("Failed to update last active phase:", error);
     }
+    router.push(`/${projectId}/editor`);
   };
 
   // Convert Convex scenes to component format
@@ -532,17 +594,62 @@ const VideoPage = () => {
     lipsyncPredictionId: scene.lipsyncPredictionId || undefined,
   }));
 
+  if (convexScenes.length === 0) {
+    console.warn("[VideoPage] No legacy scenes found. Ensure storyboard selections are synced.");
+    return (
+      <div className="container mx-auto px-4 py-24">
+        <div className="max-w-2xl mx-auto text-center bg-muted/30 border border-muted rounded-3xl p-10 space-y-4">
+          <h1 className="text-2xl font-semibold">No clips to generate yet</h1>
+          <p className="text-muted-foreground">
+            Select master shots for each scene in the Storyboard page (all shots must have a chosen
+            image). Once selections are saved, return here to generate video clips.
+          </p>
+          <button
+            className="px-6 py-3 bg-primary text-primary-foreground rounded-full text-sm font-semibold"
+            onClick={() => router.push(`/${projectId}/storyboard`)}
+          >
+            Back to Storyboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
-      <PhaseGuard requiredPhase="video">
-        <VideoGeneratingPhase
-          scenes={scenesForComponent}
-          projectId={projectId as Id<"videoProjects">}
-          onComplete={handleVideoGenerationComplete}
-          enableLipsync={enableLipsync}
-          onToggleLipsync={setEnableLipsync}
-        />
-      </PhaseGuard>
+      <VideoGeneratingPhase
+        scenes={scenesForComponent}
+        projectId={projectId as Id<"videoProjects">}
+        onComplete={handleVideoGenerationComplete}
+        enableLipsync={enableLipsync}
+        onToggleLipsync={setEnableLipsync}
+      />
+
+      <div className="border border-muted rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-muted/20">
+        <div>
+          <p className="text-sm font-semibold">
+            {isReadyForEditor
+              ? "Video clips are ready. Review them before moving on."
+              : "Waiting for clip generation to finish…"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {isReadyForEditor
+              ? `Generated clips: ${completedClipsState.length}`
+              : "You’ll be able to continue once every clip finishes processing."}
+          </p>
+        </div>
+        <button
+          disabled={!isReadyForEditor}
+          onClick={handleNavigateToEditor}
+          className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+            isReadyForEditor
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-muted text-muted-foreground cursor-not-allowed"
+          }`}
+        >
+          {isReadyForEditor ? "Next: Open Editor" : "Generating clips…"}
+        </button>
+      </div>
     </div>
   );
 };
