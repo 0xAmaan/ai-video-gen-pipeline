@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { ShotPreviewImage } from "@/lib/types/redesign";
 import type { Id } from "@/convex/_generated/dataModel";
 import { ImageIcon, Loader2, RefreshCw } from "lucide-react";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 interface ShotImageGridProps {
   images?: ShotPreviewImage[];
@@ -51,17 +52,19 @@ export const ShotImageGrid = ({
 
   // Display single preview image (automatically the master shot)
   const image = images[0];
+  const src = proxiedImageUrl(image.imageUrl);
 
   return (
     <div className="space-y-2">
       <div className="mt-3 max-w-xs mx-auto">
         <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-white/10 bg-black/40">
-          {image.imageUrl ? (
+          {src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={image.imageUrl}
+              src={src}
               alt="Shot preview"
               className="w-full h-full object-cover"
+              crossOrigin="anonymous"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-500">

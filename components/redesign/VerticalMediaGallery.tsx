@@ -5,6 +5,7 @@ import { ProjectScene, SceneShot, ShotSelectionSummary } from "@/lib/types/redes
 import { useProjectShotSelections } from "@/lib/hooks/useProjectRedesign";
 import { cn } from "@/lib/utils";
 import { ImageIcon } from "lucide-react";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 interface VerticalMediaGalleryProps {
   projectId?: Id<"videoProjects">;
@@ -77,9 +78,10 @@ export const VerticalMediaGallery = ({
               {hasSelection ? (
                 <>
                   <img
-                    src={item.selection!.image.imageUrl}
+                    src={proxiedImageUrl(item.selection!.image.imageUrl)}
                     alt={item.shot.description}
                     className="w-full h-full object-cover"
+                    crossOrigin="anonymous"
                   />
                   <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/70" />
                 </>

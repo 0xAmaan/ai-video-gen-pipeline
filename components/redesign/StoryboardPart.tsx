@@ -2,6 +2,7 @@
 
 import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 interface StoryboardPartProps {
   shotId: Id<"sceneShots">;
@@ -20,6 +21,7 @@ export const StoryboardPart = ({
   isSelected,
   onSelect,
 }: StoryboardPartProps) => {
+  const src = proxiedImageUrl(imageUrl);
   return (
     <div
       onClick={() => onSelect?.(shotId)}
@@ -30,11 +32,12 @@ export const StoryboardPart = ({
           : "border-gray-700 hover:border-gray-500",
       )}
     >
-      {imageUrl ? (
+      {src ? (
         <img
-          src={imageUrl}
+          src={src}
           alt={prompt}
           className="w-full h-full object-cover"
+          crossOrigin="anonymous"
         />
       ) : (
         <div className="w-full h-full bg-[#0f0f0f] flex items-center justify-center text-gray-600 text-sm">

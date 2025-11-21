@@ -5,6 +5,7 @@ import { ShotImage } from "@/lib/types/redesign";
 import { Id } from "@/convex/_generated/dataModel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 interface IterationRowProps {
   iterationNumber: number;
@@ -12,6 +13,7 @@ interface IterationRowProps {
   parentImage?: ShotImage | null;
   selectedImageId: Id<"shotImages"> | null;
   onSelectImage: (image: ShotImage) => void;
+  onIterateFromImage?: (image: ShotImage) => void;
 }
 
 const ImageWithSkeleton = ({
@@ -24,19 +26,27 @@ const ImageWithSkeleton = ({
   className?: string;
 }) => {
   const [isLoading, setIsLoading] = useState(true);
+  const src = proxiedImageUrl(image.imageUrl);
 
   return (
     <>
       {isLoading && (
         <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
       )}
-      <img
-        src={image.imageUrl}
-        alt={alt}
-        className={`${className} transition-opacity duration-300 ${isLoading ? "opacity-0" : "opacity-100"}`}
-        onLoad={() => setIsLoading(false)}
-        onError={() => setIsLoading(false)}
-      />
+      {src ? (
+        <img
+          src={src}
+          alt={alt}
+          className={`${className} transition-opacity duration-300 ${isLoading ? "opacity-0" : "opacity-100"}`}
+          onLoad={() => setIsLoading(false)}
+          onError={() => setIsLoading(false)}
+          crossOrigin="anonymous"
+        />
+      ) : (
+        <div className={`${className} flex items-center justify-center text-xs text-gray-500`}>
+          No image
+        </div>
+      )}
     </>
   );
 };
@@ -47,6 +57,7 @@ export const IterationRow = ({
   parentImage,
   selectedImageId,
   onSelectImage,
+  onIterateFromImage,
 }: IterationRowProps) => {
   if (images.length === 0) {
     return (
@@ -112,6 +123,18 @@ export const IterationRow = ({
                   <div className="absolute top-3 right-3 bg-[var(--color-primary)] text-white px-3 py-1.5 rounded-full text-sm font-semibold">
                     Selected
                   </div>
+                )}
+                {onIterateFromImage && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onIterateFromImage(image);
+                    }}
+                    className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-black/70 text-xs font-semibold text-white border border-white/10 hover:border-white/30 hover:bg-black/80 transition-colors"
+                  >
+                    Iterate
+                  </button>
                 )}
               </div>
             );
