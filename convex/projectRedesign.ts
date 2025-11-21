@@ -571,6 +571,164 @@ export const updateStoryboardAnimation = mutation({
   },
 });
 
+export const syncShotToLegacyScene = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    sceneId: v.id("projectScenes"),
+    shotId: v.id("sceneShots"),
+    selectedImageId: v.id("shotImages"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const plannerScene = await ctx.db.get(args.sceneId);
+    if (!plannerScene || plannerScene.projectId !== args.projectId) {
+      throw new Error("Scene not found or unauthorized");
+    }
+
+    const shot = await ctx.db.get(args.shotId);
+    if (!shot || shot.projectId !== args.projectId) {
+      throw new Error("Shot not found or unauthorized");
+    }
+
+    if (shot.sceneId !== args.sceneId) {
+      throw new Error("Shot does not belong to provided scene");
+    }
+
+    const selectedImage = await ctx.db.get(args.selectedImageId);
+    if (!selectedImage || selectedImage.projectId !== args.projectId) {
+      throw new Error("Selected image not found or unauthorized");
+    }
+
+    const now = Date.now();
+
+    const projectScenes = await ctx.db
+      .query("projectScenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const sceneOrderMap = new Map(
+      projectScenes.map((scene) => [scene._id, scene.sceneNumber]),
+    );
+
+    const allShots = await ctx.db
+      .query("sceneShots")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const sortedShots = allShots.sort((a, b) => {
+      const sceneNumberA = sceneOrderMap.get(a.sceneId) ?? Number.MAX_SAFE_INTEGER;
+      const sceneNumberB = sceneOrderMap.get(b.sceneId) ?? Number.MAX_SAFE_INTEGER;
+      if (sceneNumberA !== sceneNumberB) {
+        return sceneNumberA - sceneNumberB;
+      }
+      return a.shotNumber - b.shotNumber;
+    });
+
+    const desiredSceneNumbers = new Map<
+      Id<"sceneShots">,
+      number
+    >();
+    sortedShots.forEach((shotDoc, index) => {
+      desiredSceneNumbers.set(shotDoc._id, index + 1);
+    });
+
+    const legacyScenes = await ctx.db
+      .query("scenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const redesignScenes = legacyScenes.filter(
+      (scene) => scene.redesignShotId !== undefined,
+    );
+    const scenesByShotId = new Map(
+      redesignScenes.map((scene) => [scene.redesignShotId as Id<"sceneShots">, scene]),
+    );
+
+    const targetSceneNumber =
+      desiredSceneNumbers.get(args.shotId) ?? redesignScenes.length + 1;
+    const description =
+      shot.description ||
+      (plannerScene.title
+        ? `${plannerScene.title} — Shot ${shot.shotNumber}`
+        : `Shot ${shot.shotNumber}`);
+    const visualPrompt = shot.initialPrompt || description;
+    const narrationText = shot.description || plannerScene.description;
+    const duration = 5;
+
+    const existingScene = scenesByShotId.get(args.shotId);
+    let syncedSceneId: Id<"scenes">;
+
+    if (existingScene) {
+      await ctx.db.patch(existingScene._id, {
+        sceneNumber: targetSceneNumber,
+        description,
+        visualPrompt,
+        imageUrl: selectedImage.imageUrl,
+        duration,
+        narrationText,
+        replicateImageId: selectedImage.replicateImageId,
+        redesignShotId: args.shotId,
+        updatedAt: now,
+      });
+      syncedSceneId = existingScene._id;
+    } else {
+      syncedSceneId = await ctx.db.insert("scenes", {
+        projectId: args.projectId,
+        sceneNumber: targetSceneNumber,
+        description,
+        visualPrompt,
+        imageUrl: selectedImage.imageUrl,
+        duration,
+        narrationText,
+        replicateImageId: selectedImage.replicateImageId,
+        redesignShotId: args.shotId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const latestLegacyScenes = await ctx.db
+      .query("scenes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const latestRedesignScenes = latestLegacyScenes.filter(
+      (scene) => scene.redesignShotId !== undefined,
+    );
+    for (const legacyScene of latestRedesignScenes) {
+      const shotId = legacyScene.redesignShotId as Id<"sceneShots">;
+      const desiredNumber = desiredSceneNumbers.get(shotId);
+      if (
+        desiredNumber !== undefined &&
+        legacyScene.sceneNumber !== desiredNumber
+      ) {
+        await ctx.db.patch(legacyScene._id, {
+          sceneNumber: desiredNumber,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    if (
+      project.status !== "storyboard_created" &&
+      project.status !== "video_generated"
+    ) {
+      await ctx.db.patch(args.projectId, {
+        status: "storyboard_created",
+        updatedAt: Date.now(),
+      });
+    }
+
+    return syncedSceneId;
+  },
+});
+
 // ========================================
 // QUERIES
 // ========================================

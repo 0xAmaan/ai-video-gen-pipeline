@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { StoryboardSceneRow } from "@/components/redesign/StoryboardSceneRow";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
-import { useStoryboardRows, useAllMasterShotsSet } from "@/lib/hooks/useProjectRedesign";
+import {
+  useStoryboardRows,
+  useAllMasterShotsSet,
+  useProjectProgress,
+  useSyncShotToLegacyScene,
+} from "@/lib/hooks/useProjectRedesign";
 
 const StoryboardPage = () => {
   const params = useParams<{ projectId: string }>();
@@ -15,6 +20,18 @@ const StoryboardPage = () => {
   const projectId = params?.projectId as Id<"videoProjects"> | undefined;
   const storyboardRows = useStoryboardRows(projectId);
   const allMasterShotsSet = useAllMasterShotsSet(projectId);
+  const projectProgress = useProjectProgress(projectId);
+  const selectionsComplete = Boolean(projectProgress?.isSelectionComplete);
+  const canGenerateVideo = Boolean(projectId) && selectionsComplete;
+  const syncShotToLegacyScene = useSyncShotToLegacyScene();
+  const syncedShotIds = useRef<Set<string>>(new Set());
+
+  if (typeof window !== "undefined") {
+    console.log("[StoryboardPage] projectId", projectId);
+    console.log("[StoryboardPage] projectProgress", projectProgress);
+    console.log("[StoryboardPage] storyboardRows", storyboardRows);
+    console.log("[StoryboardPage] selectionsComplete", selectionsComplete);
+  }
 
   const [selectedSceneId, setSelectedSceneId] = useState<
     Id<"projectScenes"> | null
@@ -28,6 +45,36 @@ const StoryboardPage = () => {
       setSelectedSceneId((prev) => prev ?? storyboardRows[0].scene._id);
     }
   }, [storyboardRows]);
+
+  useEffect(() => {
+    if (!storyboardRows || !projectId) return;
+
+    storyboardRows.forEach((row) => {
+      row.shots.forEach((shotWrapper) => {
+        if (!shotWrapper.selectedImage) return;
+        const shotId = shotWrapper.shot._id;
+        if (syncedShotIds.current.has(shotId)) return;
+
+        syncedShotIds.current.add(shotId);
+        console.log("[StoryboardPage] Syncing shot to legacy scene", {
+          projectId,
+          sceneId: row.scene._id,
+          shotId,
+          imageId: shotWrapper.selectedImage._id,
+        });
+
+        syncShotToLegacyScene({
+          projectId,
+          sceneId: row.scene._id,
+          shotId,
+          selectedImageId: shotWrapper.selectedImage._id,
+        }).catch((error) => {
+          console.error("[StoryboardPage] Failed syncing shot", error);
+          syncedShotIds.current.delete(shotId);
+        });
+      });
+    });
+  }, [storyboardRows, projectId, syncShotToLegacyScene]);
 
   if (!projectId) {
     return (
@@ -63,18 +110,36 @@ const StoryboardPage = () => {
             projectId={projectId}
             storyboardLocked={false}
             storyboardLockMessage={lockMessage}
+            videoLocked={!selectionsComplete}
+            videoLockMessage="Select master shots for every scene to unlock video generation"
+            editorLocked={projectProgress?.projectStatus !== "video_generated"}
+            editorLockMessage="Generate video clips before editing"
           />
 
-          <Button
-            variant="outline"
-            className="border-gray-700 text-gray-200 hover:bg-gray-800"
-            onClick={() =>
-              router.push(`/${projectId}/scene-planner`)
-            }
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Planner
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="border-gray-700 text-gray-200 hover:bg-gray-800"
+              onClick={() => router.push(`/${projectId}/scene-planner`)}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Planner
+            </Button>
+            <Button
+              className="bg-white text-black hover:bg-gray-200"
+              disabled={!canGenerateVideo}
+              onClick={() => {
+                console.log("[StoryboardPage] Generate Video clicked", {
+                  projectId,
+                  canGenerateVideo,
+                  selectionsComplete,
+                });
+                projectId && router.push(`/${projectId}/video`);
+              }}
+            >
+              Generate Video
+            </Button>
+          </div>
         </div>
       </div>
 

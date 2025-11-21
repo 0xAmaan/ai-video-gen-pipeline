@@ -256,6 +256,10 @@ export const useStoryboardRows = (projectId?: Id<"videoProjects">) => {
   ) as StoryboardSceneGroup[] | undefined;
 };
 
+export const useSyncShotToLegacyScene = () => {
+  return useMutation(api.projectRedesign.syncShotToLegacyScene);
+};
+
 /**
  * Check if all shots have master shots selected (for storyboard lock)
  */
@@ -339,16 +343,15 @@ export const useGenerateInitialImages = () => {
  */
 export const useCreateNextIteration = () => {
   const batchCreate = useBatchCreateShotImages();
-  const latestIteration = useLatestIterationNumber();
 
   return async (
     shotId: Id<"sceneShots">,
-    input: Omit<BatchCreateImagesInput, "iterationNumber">,
+    input: Omit<BatchCreateImagesInput, "iterationNumber"> & { currentIteration?: number },
   ) => {
-    const currentIteration = latestIteration(shotId) ?? -1;
+    const { currentIteration = 0, ...restInput } = input;
 
     return await batchCreate({
-      ...input,
+      ...restInput,
       iterationNumber: currentIteration + 1,
     });
   };
@@ -360,6 +363,7 @@ export const useCreateNextIteration = () => {
 export const useSelectMasterShot = () => {
   const createSelection = useCreateStoryboardSelection();
   const updateShot = useUpdateSceneShot();
+  const syncShotToScene = useSyncShotToLegacyScene();
 
   return async (input: CreateStoryboardSelectionInput) => {
     // Update shot's selectedImageId
@@ -369,7 +373,20 @@ export const useSelectMasterShot = () => {
     });
 
     // Create/update storyboard selection
-    return await createSelection(input);
+    const selectionId = await createSelection(input);
+
+    try {
+      await syncShotToScene({
+        projectId: input.projectId,
+        sceneId: input.sceneId,
+        shotId: input.shotId,
+        selectedImageId: input.selectedImageId,
+      });
+    } catch (error) {
+      console.error("Failed to sync shot to legacy scenes:", error);
+    }
+
+    return selectionId;
   };
 };
 
@@ -436,7 +453,7 @@ export const useProjectProgress = (projectId?: Id<"videoProjects">) => {
 
   const shotsWithSelections = completeData.scenes.reduce(
     (sum, scene) =>
-      sum + scene.shots.filter((shot) => shot.storyboardSelection).length,
+      sum + scene.shots.filter((shot) => Boolean(shot.selectedImageId)).length,
     0,
   );
 
@@ -449,16 +466,33 @@ export const useProjectProgress = (projectId?: Id<"videoProjects">) => {
     0,
   );
 
+  const selectionProgress =
+    totalShots > 0 ? (shotsWithSelections / totalShots) * 100 : 0;
+  const animationProgress =
+    totalShots > 0 ? (shotsWithAnimations / totalShots) * 100 : 0;
+
+  if (typeof window !== "undefined") {
+    console.log("[useProjectProgress]", {
+      projectId,
+      totalScenes,
+      totalShots,
+      shotsWithSelections,
+      shotsWithAnimations,
+      selectionProgress,
+      animationProgress,
+      status: completeData.project?.status ?? null,
+    });
+  }
+
   return {
     totalScenes,
     totalShots,
     shotsWithSelections,
     shotsWithAnimations,
-    selectionProgress:
-      totalShots > 0 ? (shotsWithSelections / totalShots) * 100 : 0,
-    animationProgress:
-      totalShots > 0 ? (shotsWithAnimations / totalShots) * 100 : 0,
+    selectionProgress,
+    animationProgress,
     isSelectionComplete: totalShots > 0 && shotsWithSelections === totalShots,
     isAnimationComplete: totalShots > 0 && shotsWithAnimations === totalShots,
+    projectStatus: completeData.project?.status ?? null,
   };
 };
