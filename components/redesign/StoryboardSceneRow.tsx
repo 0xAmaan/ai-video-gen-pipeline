@@ -4,6 +4,15 @@ import { StoryboardSceneGroup } from "@/lib/types/redesign";
 import { StoryboardPart } from "./StoryboardPart";
 import { cn } from "@/lib/utils";
 import { Id } from "@/convex/_generated/dataModel";
+import { useRouter } from "next/navigation";
+
+const getLegacySceneId = (shotId?: Id<"sceneShots">) => {
+  if (!shotId) {
+    return undefined;
+  }
+  // Legacy scenes store redesignShotId, so we can reference by shot.
+  return shotId;
+};
 
 interface StoryboardSceneRowProps {
   scene: StoryboardSceneGroup;
@@ -20,6 +29,18 @@ export const StoryboardSceneRow = ({
   onSceneSelect,
   onShotSelect,
 }: StoryboardSceneRowProps) => {
+  const router = useRouter();
+
+  const handleGenerateClip = (shotId: Id<"sceneShots">) => {
+    console.log("[StoryboardSceneRow] Generate clip clicked", {
+      shotId,
+      sceneId: scene.scene._id,
+      projectId: scene.scene.projectId,
+    });
+    const legacySceneId = getLegacySceneId(shotId);
+    router.push(`/${scene.scene.projectId}/video?shot=${legacySceneId}`);
+  };
+
   return (
     <div className="flex gap-4 mb-6 bg-[#111111] rounded-3xl p-4 border border-gray-900">
       <button
@@ -49,7 +70,7 @@ export const StoryboardSceneRow = ({
         </div>
       </button>
 
-      <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+        <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
         <div className="flex gap-4 min-h-[200px] items-center">
           {scene.shots.length === 0 ? (
             <div className="flex-1 h-[180px] border border-dashed border-gray-700 rounded-2xl flex items-center justify-center text-gray-500 text-sm">
@@ -65,6 +86,7 @@ export const StoryboardSceneRow = ({
                 imageUrl={shotWrapper.selectedImage?.imageUrl}
                 isSelected={selectedShotId === shotWrapper.shot._id}
                 onSelect={onShotSelect}
+                onAction={() => handleGenerateClip(shotWrapper.shot._id)}
               />
             ))
           )}
