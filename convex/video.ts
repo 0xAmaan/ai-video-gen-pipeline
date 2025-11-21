@@ -290,6 +290,7 @@ export const saveScenes = mutation({
         backgroundMusicSource: v.optional(backgroundMusicSourceValidator),
         backgroundMusicPrompt: v.optional(v.string()),
         backgroundMusicMood: v.optional(v.string()),
+        redesignShotId: v.optional(v.id("sceneShots")),
       }),
     ),
   },
@@ -327,6 +328,7 @@ export const saveScenes = mutation({
         backgroundMusicSource: scene.backgroundMusicSource,
         backgroundMusicPrompt: scene.backgroundMusicPrompt,
         backgroundMusicMood: scene.backgroundMusicMood,
+        redesignShotId: scene.redesignShotId,
         createdAt: now,
         updatedAt: now,
       });
@@ -736,6 +738,7 @@ export const updateScene = mutation({
     backgroundMusicSource: v.optional(backgroundMusicSourceValidator),
     backgroundMusicPrompt: v.optional(v.string()),
     backgroundMusicMood: v.optional(v.string()),
+    redesignShotId: v.optional(v.id("sceneShots")),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -780,6 +783,8 @@ export const updateScene = mutation({
       updates.backgroundMusicPrompt = args.backgroundMusicPrompt;
     if (args.backgroundMusicMood !== undefined)
       updates.backgroundMusicMood = args.backgroundMusicMood;
+    if (args.redesignShotId !== undefined)
+      updates.redesignShotId = args.redesignShotId;
 
     await ctx.db.patch(args.sceneId, updates);
 

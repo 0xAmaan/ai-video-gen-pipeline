@@ -219,7 +219,7 @@ const SceneIteratorPage = () => {
             </div>
 
             <div className="flex items-center gap-3 flex-shrink-0">
-              <PageNavigation projectId={projectId} shotId={shotId} />
+              <PageNavigation projectId={projectId} />
 
               <Button
                 onClick={handleSubmitSelected}
@@ -268,7 +268,6 @@ const SceneIteratorPage = () => {
                   images={iteration.images}
                   selectedImageId={selectedImageId}
                   onSelectImage={handleSelectImage}
-                  onIterateFromImage={handleIterateFromImage}
                 />
 
                 {index < groupedIterations.length - 1 && (

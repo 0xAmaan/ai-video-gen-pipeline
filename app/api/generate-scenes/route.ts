@@ -247,9 +247,8 @@ export async function POST(req: Request) {
         projectTitle,
         projectDescription,
       ),
-      maxRetries: 2, // Reduced from 3 to avoid excessive wait times
-      maxTokens: 4000, // Limit response size to prevent runaway generation
-      temperature: 0.7, // Balanced creativity/consistency
+      maxRetries: 2,
+      temperature: 0.7,
     });
 
     // Race between generation and timeout
