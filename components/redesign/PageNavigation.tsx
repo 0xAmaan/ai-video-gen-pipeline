@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Sparkles, Layout, Film, Scissors } from "lucide-react";
+import { Sparkles, Layout, Scissors } from "lucide-react";
 
 interface PageNavigationProps {
   projectId?: string;
@@ -54,8 +54,8 @@ export const PageNavigation = ({ projectId, storyboardLocked, storyboardLockMess
       ? {
           name: "Video Editor",
           icon: Scissors,
-          href: `/archive/${projectId}/editor`,
-          match: "/archive",
+          href: `/${projectId}/editor`,
+          match: "/editor",
         }
       : false,
   ];

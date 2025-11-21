@@ -41,7 +41,7 @@ export default {
       return withCors(new Response(null, { status: 204 }), env);
     }
 
-    if (url.pathname.startsWith("/asset/") && request.method === "GET") {
+    if (url.pathname.startsWith("/asset/") && (request.method === "GET" || request.method === "HEAD")) {
       return withCors(await serveAsset(request, env, url.pathname.replace("/asset/", "")), env);
     }
 
@@ -82,10 +82,17 @@ async function serveAsset(request: Request, env: Env, key: string): Promise<Resp
       const end = start + length - 1;
       responseHeaders.set("content-range", `bytes ${start}-${end}/${object.size}`);
       responseHeaders.set("content-length", length.toString());
+      // For HEAD, return headers only
+      if (request.method === "HEAD") {
+        return new Response(null, { status: 206, headers: responseHeaders });
+      }
       return new Response(object.body, { status: 206, headers: responseHeaders });
     }
 
     responseHeaders.set("content-length", object.size.toString());
+    if (request.method === "HEAD") {
+      return new Response(null, { status: 200, headers: responseHeaders });
+    }
     return new Response(object.body, { status: 200, headers: responseHeaders });
   } catch (error) {
     console.error("R2 proxy error", error);

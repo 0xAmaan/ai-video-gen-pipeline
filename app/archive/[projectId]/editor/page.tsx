@@ -43,7 +43,7 @@ const IntegratedStandaloneEditorPage = () => {
   }, [adaptedProject, actions, hydratedFromRemote]);
 
   return (
-    <PhaseGuard requiredPhase="editor">
+    <PhaseGuard requiredPhase="editor" allowEditorAlways>
       {isLoading || !project ? (
         <div className="flex h-screen items-center justify-center text-muted-foreground">
           Preparing project data...
