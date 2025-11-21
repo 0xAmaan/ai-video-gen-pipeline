@@ -339,6 +339,9 @@ const VideoPage = () => {
             clipId,
             status: "complete",
             videoUrl: result.videoUrl,
+            proxyUrl: result.proxyUrl ?? undefined,
+            r2Key: result.r2Key ?? undefined,
+            sourceUrl: result.sourceUrl ?? undefined,
           });
           activeVideoPolls.current.delete(clipId);
           console.log("[VideoPage] Clip complete", {

@@ -16,26 +16,43 @@ const EditorBridge = () => {
   // Track the last signatures we pushed in each direction to avoid feedback loops.
   const lastProjectSignature = useRef<string | null>(null);
   const lastTimelineSignature = useRef<string | null>(null);
+  const pushingProjectToTimeline = useRef(false);
+  const pushingTimelineToProject = useRef(false);
 
   useEffect(() => {
     if (!ready || !project) return;
+    if (pushingTimelineToProject.current) {
+      // Skip reacting to changes we initiated from the timeline->project sync.
+      pushingTimelineToProject.current = false;
+      return;
+    }
+
     const timeline = projectToTimelineJSON(project);
     const signature = JSON.stringify(timeline);
 
     if (lastProjectSignature.current === signature) return;
 
+    pushingProjectToTimeline.current = true;
     editor.loadProject(timeline);
     lastProjectSignature.current = signature;
     lastTimelineSignature.current = signature; // keep both in sync after a push
+    pushingProjectToTimeline.current = false;
   }, [assets, editor, project, ready]);
 
   useEffect(() => {
     if (!ready || !project || !present) return;
+    if (pushingProjectToTimeline.current) {
+      // Skip reacting to changes we initiated from the project->timeline sync.
+      pushingProjectToTimeline.current = false;
+      return;
+    }
+
     const signature = JSON.stringify(present);
     if (lastTimelineSignature.current === signature) return;
 
     const nextProject = timelineToProject(project, present, assets);
     lastTimelineSignature.current = signature;
+    pushingTimelineToProject.current = true;
     void actions.loadProject(nextProject, { persist: true });
   }, [actions, assets, changeLog, present, project, ready]);
 
