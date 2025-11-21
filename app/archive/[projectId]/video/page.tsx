@@ -132,10 +132,10 @@ const VideoPage = () => {
       try {
         await updateVideoClipLipsync({
           clipId,
-          originalVideoUrl: videoUrl ?? undefined,
           lipsyncVideoUrl:
             status === "complete" && videoUrl ? videoUrl : undefined,
           hasLipsync,
+          status,
         });
       } catch (error) {
         console.error("Failed to update clip lip sync metadata:", error);
@@ -617,13 +617,15 @@ const VideoPage = () => {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
-      <VideoGeneratingPhase
-        scenes={scenesForComponent}
-        projectId={projectId as Id<"videoProjects">}
-        onComplete={handleVideoGenerationComplete}
-        enableLipsync={enableLipsync}
-        onToggleLipsync={setEnableLipsync}
-      />
+      <PhaseGuard requiredPhase="video" disableRedirect allowWhenLocked>
+        <VideoGeneratingPhase
+          scenes={scenesForComponent}
+          projectId={projectId as Id<"videoProjects">}
+          onComplete={handleVideoGenerationComplete}
+          enableLipsync={enableLipsync}
+          onToggleLipsync={setEnableLipsync}
+        />
+      </PhaseGuard>
 
       <div className="border border-muted rounded-2xl p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-muted/20">
         <div>
@@ -635,7 +637,7 @@ const VideoPage = () => {
           <p className="text-xs text-muted-foreground mt-1">
             {isReadyForEditor
               ? `Generated clips: ${completedClipsState.length}`
-              : "You’ll be able to continue once every clip finishes processing."}
+              : "You'll be able to continue once every clip finishes processing."}
           </p>
         </div>
         <button

@@ -84,6 +84,7 @@ export interface EffectsResponseMessage {
 export interface EncodeRequestMessage {
   type: "ENCODE_REQUEST";
   requestId: string;
+  project: import("../types").Project;
   sequenceId: string;
   sequence: any; // Full sequence data
   assets: Record<string, any>; // Media assets
@@ -91,6 +92,7 @@ export interface EncodeRequestMessage {
     resolution: string;
     quality: string;
     format: string;
+    aspectRatio: string;
   };
 }
 

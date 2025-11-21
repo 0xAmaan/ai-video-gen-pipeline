@@ -101,8 +101,8 @@ export async function POST(req: Request) {
         const convex = await getConvex();
         await convex.mutation(api.video.updateVideoClipLipsync, {
           clipId: resolvedClipId,
-          originalVideoUrl: videoUrl,
           hasLipsync: false,
+          status: "processing",
         });
       } catch (convexError) {
         console.error(

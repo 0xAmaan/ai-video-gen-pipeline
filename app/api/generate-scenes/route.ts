@@ -247,8 +247,8 @@ export async function POST(req: Request) {
         projectTitle,
         projectDescription,
       ),
-      maxRetries: 2,
-      temperature: 0.7,
+      maxRetries: 2, // Reduced from 3 to avoid excessive wait times
+      temperature: 0.7, // Balanced creativity/consistency
     });
 
     // Race between generation and timeout

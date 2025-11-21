@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as assets from "../assets.js";
 import type * as editor from "../editor.js";
 import type * as projectAssets from "../projectAssets.js";
 import type * as projectRedesign from "../projectRedesign.js";
@@ -20,6 +21,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  assets: typeof assets;
   editor: typeof editor;
   projectAssets: typeof projectAssets;
   projectRedesign: typeof projectRedesign;

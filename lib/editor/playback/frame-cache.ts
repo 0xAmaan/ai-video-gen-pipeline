@@ -1,4 +1,4 @@
-export class FrameCache<T extends ImageBitmap = ImageBitmap> {
+export class FrameCache<T extends { close?: () => void } = { close?: () => void }> {
   private cache = new Map<string, T>();
 
   constructor(private readonly maxEntries = 120) {}
@@ -34,5 +34,14 @@ export class FrameCache<T extends ImageBitmap = ImageBitmap> {
       frame?.close?.();
     }
     this.cache.clear();
+  }
+
+  sweep(predicate: (key: string, frame: T) => boolean) {
+    for (const [key, frame] of this.cache) {
+      if (predicate(key, frame)) {
+        frame?.close?.();
+        this.cache.delete(key);
+      }
+    }
   }
 }

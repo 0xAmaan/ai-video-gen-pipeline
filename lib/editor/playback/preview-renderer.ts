@@ -50,7 +50,7 @@ export class PreviewRenderer {
 
   async attach(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
+    this.ctx = canvas.getContext("2d") ?? undefined;
     if (!this.videoEl) {
       await this.createMediaElements();
     }

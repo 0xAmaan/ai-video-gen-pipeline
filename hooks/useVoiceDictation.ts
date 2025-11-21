@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
+type SpeechRecognition = any;
+type SpeechRecognitionEvent = any;
+type SpeechRecognitionErrorEvent = any;
+
 interface UseVoiceDictationOptions {
   onTranscript?: (transcript: string) => void;
   onError?: (error: string) => void;
@@ -21,7 +25,7 @@ interface UseVoiceDictationReturn {
 }
 
 export const useVoiceDictation = (
-  options: UseVoiceDictationOptions = {}
+  options: UseVoiceDictationOptions = {},
 ): UseVoiceDictationReturn => {
   const {
     onTranscript,
@@ -76,8 +80,10 @@ export const useVoiceDictation = (
           finalTranscriptRef.current = finalTranscript;
           // Prepend existing text to the new speech
           const newSpeech = finalTranscript + interimTranscript;
-          const fullTranscript = existingTextRef.current 
-            ? existingTextRef.current + (existingTextRef.current.endsWith(' ') ? '' : ' ') + newSpeech
+          const fullTranscript = existingTextRef.current
+            ? existingTextRef.current +
+              (existingTextRef.current.endsWith(" ") ? "" : " ") +
+              newSpeech
             : newSpeech;
           setTranscript(fullTranscript);
 
@@ -189,69 +195,10 @@ export const useVoiceDictation = (
   };
 };
 
-// Type definitions for Web Speech API
+// Minimal ambient declarations for Web Speech API (browser-provided)
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
   }
-
-  interface SpeechRecognition extends EventTarget {
-    continuous: boolean;
-    interimResults: boolean;
-    lang: string;
-    maxAlternatives: number;
-    start(): void;
-    stop(): void;
-    abort(): void;
-    onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onerror:
-      | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any)
-      | null;
-    onresult:
-      | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any)
-      | null;
-  }
-
-  interface SpeechRecognitionEvent extends Event {
-    resultIndex: number;
-    results: SpeechRecognitionResultList;
-  }
-
-  interface SpeechRecognitionResultList {
-    readonly length: number;
-    item(index: number): SpeechRecognitionResult;
-    [index: number]: SpeechRecognitionResult;
-  }
-
-  interface SpeechRecognitionResult {
-    readonly isFinal: boolean;
-    readonly length: number;
-    item(index: number): SpeechRecognitionAlternative;
-    [index: number]: SpeechRecognitionAlternative;
-  }
-
-  interface SpeechRecognitionAlternative {
-    readonly transcript: string;
-    readonly confidence: number;
-  }
-
-  interface SpeechRecognitionErrorEvent extends Event {
-    error:
-      | "no-speech"
-      | "aborted"
-      | "audio-capture"
-      | "network"
-      | "not-allowed"
-      | "service-not-allowed"
-      | "bad-grammar"
-      | "language-not-supported";
-    message?: string;
-  }
-
-  const SpeechRecognition: {
-    prototype: SpeechRecognition;
-    new (): SpeechRecognition;
-  };
 }

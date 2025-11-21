@@ -1,4 +1,5 @@
 import type { MediaAssetMeta } from "../types";
+import { buildAssetUrl } from "./asset-url";
 import type {
   DemuxErrorMessage,
   DemuxRequestMessage,
@@ -39,7 +40,10 @@ export class MediaBunnyManager {
         const asset = {
           ...message.asset,
           id: message.assetId,
-          url: pending.objectUrl,
+          url: buildAssetUrl(message.asset.r2Key, pending.objectUrl),
+          proxyUrl: buildAssetUrl(message.asset.r2Key, pending.objectUrl),
+          r2Key: message.asset.r2Key,
+          sourceUrl: pending.objectUrl,
         };
         if (message.waveform) {
           asset.waveform = message.waveform;

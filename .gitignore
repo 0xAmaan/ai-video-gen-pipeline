@@ -56,3 +56,20 @@ next-env.d.ts
 
 .taskmaster/
 .taskmaster/tasks/tasks.json
+
+# Logs
+logs
+*.log
+dev-debug.log
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

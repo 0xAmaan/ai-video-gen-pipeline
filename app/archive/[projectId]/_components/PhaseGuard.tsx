@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, usePathname } from "next/navigation";
 import { useProjectData } from "./useProjectData";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -10,6 +10,17 @@ type Phase = "prompt" | "storyboard" | "video" | "editor";
 interface PhaseGuardProps {
   requiredPhase: Phase;
   children: React.ReactNode;
+  allowEditorAlways?: boolean;
+  /**
+   * Skip redirecting to a fallback phase when locked. Useful when we want to show the
+   * target page (e.g., to surface next steps) even if gating data is missing.
+   */
+  disableRedirect?: boolean;
+  /**
+   * When true, render children even if the required phase is not unlocked.
+   * Requires a project to exist; otherwise we still return null.
+   */
+  allowWhenLocked?: boolean;
 }
 
 const getPhaseOrder = (phase: Phase): number => {
@@ -17,10 +28,19 @@ const getPhaseOrder = (phase: Phase): number => {
   return order[phase];
 };
 
-export const PhaseGuard = ({ requiredPhase, children }: PhaseGuardProps) => {
+export const PhaseGuard = ({
+  requiredPhase,
+  children,
+  allowEditorAlways = false,
+  disableRedirect = false,
+  allowWhenLocked = false,
+}: PhaseGuardProps) => {
   const router = useRouter();
   const params = useParams();
+  const pathname = usePathname();
   const projectId = params?.projectId as string;
+  const isArchive = pathname?.includes("/archive/");
+  const basePrefix = isArchive ? "/archive" : "";
 
   const { project, questions, scenes, clips, isLoading } = useProjectData(
     projectId as Id<"videoProjects">,
@@ -34,11 +54,12 @@ export const PhaseGuard = ({ requiredPhase, children }: PhaseGuardProps) => {
     hasClips && clips.every((clip) => clip.status === "complete");
 
   const isPhaseUnlocked = (phase: Phase): boolean => {
+    if (phase === "editor" && allowEditorAlways) return true;
     switch (phase) {
       case "prompt":
         return true; // Always accessible
       case "storyboard":
-        return hasAnswers;
+        return hasAnswers || hasScenes;
       case "video":
         return hasScenes;
       case "editor":
@@ -61,17 +82,17 @@ export const PhaseGuard = ({ requiredPhase, children }: PhaseGuardProps) => {
 
     // If project doesn't exist, redirect to /new
     if (!project) {
-      router.push("/new");
+      router.push(`${basePrefix}/new`);
       return;
     }
 
     // Check if the required phase is unlocked
     const phaseUnlocked = isPhaseUnlocked(requiredPhase);
 
-    if (!phaseUnlocked) {
+    if (!phaseUnlocked && !disableRedirect) {
       // Redirect to furthest unlocked phase
       const fallbackPhase = furthestUnlockedPhase();
-      router.push(`/${projectId}/${fallbackPhase}`);
+      router.push(`${basePrefix}/${projectId}/${fallbackPhase}`);
     }
   }, [
     isLoading,
@@ -83,6 +104,7 @@ export const PhaseGuard = ({ requiredPhase, children }: PhaseGuardProps) => {
     hasScenes,
     hasClips,
     allClipsComplete,
+    disableRedirect,
   ]);
 
   // Show loading state
@@ -98,7 +120,11 @@ export const PhaseGuard = ({ requiredPhase, children }: PhaseGuardProps) => {
   }
 
   // Show nothing if no project or phase not unlocked
-  if (!project || !isPhaseUnlocked(requiredPhase)) {
+  if (!project) {
+    return null;
+  }
+
+  if (!isPhaseUnlocked(requiredPhase) && !allowWhenLocked) {
     return null;
   }
 

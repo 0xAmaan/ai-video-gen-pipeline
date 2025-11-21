@@ -10,7 +10,8 @@ export default defineSchema({
   videoProjects: defineTable({
     userId: v.string(),
     prompt: v.string(),
-    title: v.optional(v.string()), // Custom project title (defaults to prompt if not set)
+    title: v.optional(v.string()),
+    name: v.optional(v.string()), // legacy field
     status: v.union(
       v.literal("draft"),
       v.literal("questions_generated"),
@@ -20,11 +21,10 @@ export default defineSchema({
       v.literal("storyboard_created"),
       v.literal("video_generated"),
     ),
-    // New workflow version tracking
     workflowVersion: v.optional(
       v.union(v.literal("v1_legacy"), v.literal("v2_redesign")),
     ),
-    promptPlannerData: v.optional(v.string()), // Brain dump from initial planning
+    promptPlannerData: v.optional(v.string()),
     redesignStatus: v.optional(
       v.union(
         v.literal("prompt_planning"),
@@ -82,6 +82,8 @@ export default defineSchema({
         ),
       }),
     ),
+    compositionState: v.optional(v.any()),
+    edl: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
@@ -104,8 +106,7 @@ export default defineSchema({
     answers: v.optional(
       v.object({
         prompt: v.string(),
-        // Dynamic answers stored as key-value pairs (questionId: answer)
-        responses: v.any(), // Will store Record<string, string>
+        responses: v.any(),
       }),
     ),
     generatedAt: v.number(),
@@ -118,13 +119,13 @@ export default defineSchema({
     visualPrompt: v.optional(v.string()), // Detailed 150-250 word prompt for video generation
     redesignShotId: v.optional(v.id("sceneShots")),
     imageStorageId: v.optional(v.string()),
-    imageUrl: v.optional(v.string()), // Convex storage URL
-    narrationUrl: v.optional(v.string()), // Generated narration audio URL
-    narrationText: v.optional(v.string()), // Narration script used for audio
-    voiceId: v.optional(v.string()), // MiniMax voice identifier
-    voiceName: v.optional(v.string()), // Human-readable voice label
-    duration: v.number(), // Duration in seconds
-    lipsyncVideoUrl: v.optional(v.string()), // Final lip-synced video
+    imageUrl: v.optional(v.string()),
+    narrationUrl: v.optional(v.string()),
+    narrationText: v.optional(v.string()),
+    voiceId: v.optional(v.string()),
+    voiceName: v.optional(v.string()),
+    duration: v.number(),
+    lipsyncVideoUrl: v.optional(v.string()),
     lipsyncStatus: v.optional(
       v.union(
         v.literal("pending"),
@@ -132,9 +133,9 @@ export default defineSchema({
         v.literal("complete"),
         v.literal("failed"),
       ),
-    ), // Tracks lip sync processing state
-    lipsyncPredictionId: v.optional(v.string()), // Replicate prediction ID
-    replicateImageId: v.optional(v.string()), // For tracking Replicate prediction
+    ),
+    lipsyncPredictionId: v.optional(v.string()),
+    replicateImageId: v.optional(v.string()),
     backgroundMusicUrl: v.optional(v.string()),
     backgroundMusicSource: v.optional(
       v.union(
@@ -172,6 +173,9 @@ export default defineSchema({
     sceneId: v.id("scenes"),
     projectId: v.id("videoProjects"),
     videoUrl: v.optional(v.string()),
+    proxyUrl: v.optional(v.string()),
+    r2Key: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
     replicateVideoId: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
@@ -182,10 +186,10 @@ export default defineSchema({
     ),
     duration: v.number(),
     resolution: v.string(),
-    lipsyncVideoUrl: v.optional(v.string()), // Processed lip synced clip
-    originalVideoUrl: v.optional(v.string()), // Original non-lipsynced clip
-    hasLipsync: v.optional(v.boolean()), // Flag to indicate clip has lipsync applied
-    cancelledAt: v.optional(v.number()), // Timestamp when cancelled
+    lipsyncVideoUrl: v.optional(v.string()),
+    originalVideoUrl: v.optional(v.string()),
+    hasLipsync: v.optional(v.boolean()),
+    cancelledAt: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -193,25 +197,22 @@ export default defineSchema({
     .index("by_scene", ["sceneId"])
     .index("by_project", ["projectId"]),
 
-  // Editor projects (Konva timeline editor)
   editorProjects: defineTable({
     userId: v.string(),
-    title: v.string(),
-    // Store the entire project state as JSON
-    projectData: v.any(), // Project type from lib/editor/types.ts
+    title: v.optional(v.string()),
+    projectData: v.any(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_user_updated", ["userId", "updatedAt"]),
 
-  // Separate table for undo/redo history to avoid document size limits
   projectHistory: defineTable({
-    projectId: v.string(), // References editorProjects.projectData.id
-    userId: v.string(), // For access control
-    snapshot: v.any(), // Project snapshot for undo/redo
-    historyType: v.union(v.literal("past"), v.literal("future")), // Track undo vs redo
-    sequenceNumber: v.number(), // Order in history (0 = most recent past, 1 = older, etc)
+    projectId: v.string(),
+    userId: v.string(),
+    snapshot: v.any(),
+    historyType: v.union(v.literal("past"), v.literal("future")),
+    sequenceNumber: v.number(),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId", "historyType", "sequenceNumber"])
@@ -248,16 +249,11 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_scene", ["sceneId"]),
 
-  // ========================================
-  // New Redesigned Workflow Tables (v2)
-  // ========================================
-
-  // Top-level scenes within a project (replaces legacy scenes table concept)
   projectScenes: defineTable({
     projectId: v.id("videoProjects"),
-    sceneNumber: v.number(), // Display order
-    title: v.string(), // e.g., "Opening: The City Awakens"
-    description: v.string(), // Scene narrative/context
+    sceneNumber: v.number(),
+    title: v.string(),
+    description: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId", "sceneNumber"]),
@@ -277,66 +273,83 @@ export default defineSchema({
     description: v.optional(v.string()),
     usageNotes: v.optional(v.string()),
     prominence: v.optional(
-      v.union(v.literal("primary"), v.literal("secondary"), v.literal("subtle")),
+      v.union(
+        v.literal("primary"),
+        v.literal("secondary"),
+        v.literal("subtle"),
+      ),
     ),
     referenceColors: v.optional(v.array(v.string())),
     img2imgStrength: v.optional(v.number()),
-    storageId: v.optional(v.string()),
-    imageUrl: v.optional(v.string()),
-    isActive: v.boolean(),
-    metadata: v.optional(v.any()),
+    tags: v.optional(v.array(v.string())),
+    isActive: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
     .index("by_project_active", ["projectId", "isActive"]),
 
-  // Individual shots within a scene (camera angles, moments)
+  projectScenesAssets: defineTable({
+    projectId: v.id("videoProjects"),
+    sceneId: v.id("projectScenes"),
+    assetId: v.id("projectAssets"),
+    usage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_scene", ["sceneId"])
+    .index("by_project", ["projectId"]),
+
   sceneShots: defineTable({
-    projectId: v.id("videoProjects"), // For easy querying
-    sceneId: v.id("projectScenes"), // Parent scene
-    shotNumber: v.number(), // Order within scene
-    description: v.string(), // Shot description/direction
-    initialPrompt: v.string(), // Base prompt for first generation
-    selectedImageId: v.optional(v.id("shotImages")), // Final chosen image
+    projectId: v.id("videoProjects"),
+    sceneId: v.id("projectScenes"),
+    shotNumber: v.number(),
+    title: v.optional(v.string()),
+    description: v.string(),
+    cameraDirection: v.optional(v.string()),
+    cameraShotType: v.optional(v.string()),
+    cameraLens: v.optional(v.string()),
+    cameraMovement: v.optional(v.string()),
+    lightingStyle: v.optional(v.string()),
+    mood: v.optional(v.string()),
+    aspectRatio: v.optional(v.string()),
+    resolution: v.optional(v.string()),
+    durationSeconds: v.optional(v.number()),
+    voiceoverScript: v.optional(v.string()),
+    usedAssets: v.optional(v.array(v.id("projectAssets"))),
     referencedAssets: v.optional(v.array(v.id("projectAssets"))),
+    sourcePromptVersion: v.optional(v.number()),
+    initialPrompt: v.optional(v.string()),
+    selectedImageId: v.optional(v.id("shotImages")),
     lastImageGenerationAt: v.optional(v.number()),
-    lastImageStatus: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("processing"),
-        v.literal("complete"),
-        v.literal("failed"),
-      ),
-    ),
+    lastImageStatus: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_scene", ["sceneId", "shotNumber"])
     .index("by_project", ["projectId"]),
 
-  // Image iterations for each shot (img2img refinement workflow)
   shotImages: defineTable({
     projectId: v.id("videoProjects"),
     sceneId: v.id("projectScenes"),
     shotId: v.id("sceneShots"),
-    iterationNumber: v.number(), // 0 = initial batch, 1+ = refinements
-    variantNumber: v.number(), // 0-5 (six variants per iteration)
-    imageUrl: v.string(), // Generated image URL
-    imageStorageId: v.optional(v.string()), // Convex storage ID
-    iterationPrompt: v.string(), // Prompt used for this iteration
-    parentImageId: v.optional(v.id("shotImages")), // Source image for img2img
-    replicateImageId: v.optional(v.string()), // Prediction tracking
+    iterationNumber: v.number(),
+    variantNumber: v.number(),
+    imageUrl: v.string(),
+    imageStorageId: v.optional(v.string()),
+    iterationPrompt: v.string(),
+    parentImageId: v.optional(v.id("shotImages")),
+    replicateImageId: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
       v.literal("processing"),
       v.literal("complete"),
       v.literal("failed"),
     ),
-    isFavorite: v.boolean(), // User starred this variant
+    isFavorite: v.boolean(),
     usedAssets: v.optional(v.array(v.id("projectAssets"))),
     sourcePromptVersion: v.optional(v.number()),
-    metadata: v.optional(v.any()), // Generation params (model, cfg_scale, etc.)
+    metadata: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -344,12 +357,11 @@ export default defineSchema({
     .index("by_scene", ["sceneId"])
     .index("by_project", ["projectId"]),
 
-  // Final storyboard with master shots per scene
   storyboardSelections: defineTable({
     projectId: v.id("videoProjects"),
     sceneId: v.id("projectScenes"),
     shotId: v.id("sceneShots"),
-    selectedImageId: v.id("shotImages"), // Master shot choice
+    selectedImageId: v.id("shotImages"),
     animationStatus: v.optional(
       v.union(
         v.literal("pending"),
@@ -358,7 +370,7 @@ export default defineSchema({
         v.literal("failed"),
       ),
     ),
-    animatedVideoUrl: v.optional(v.string()), // Final animation
+    animatedVideoUrl: v.optional(v.string()),
     replicateVideoId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -366,4 +378,56 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_scene", ["sceneId"])
     .index("by_shot", ["shotId"]),
+
+  finalVideos: defineTable({
+    projectId: v.id("videoProjects"),
+    videoUrl: v.optional(v.string()),
+    duration: v.number(),
+    resolution: v.string(),
+    clipCount: v.number(),
+    totalCost: v.optional(v.number()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  assets: defineTable({
+    userId: v.string(),
+    projectId: v.optional(v.id("videoProjects")),
+    sceneId: v.optional(v.id("scenes")),
+    replicateId: v.optional(v.string()),
+    predictionId: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    r2Key: v.optional(v.string()),
+    proxyUrl: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    kind: v.union(v.literal("video"), v.literal("audio"), v.literal("image")),
+    duration: v.optional(v.number()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    fps: v.optional(v.number()),
+    sampleRate: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_project", ["projectId"])
+    .index("by_scene", ["sceneId"])
+    .index("by_key", ["r2Key"])
+    .index("by_prediction", ["predictionId"])
+    .index("by_replicate", ["replicateId"]),
 });

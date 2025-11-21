@@ -103,7 +103,7 @@ const resolveFreesoundAudioSrc = (result: AudioSearchResult) => {
 interface StoryboardPhaseProps {
   prompt: string;
   scenes: Scene[];
-  onGenerateVideo: (scenes: Scene[]) => void;
+  onGenerateVideo: (scenes: Scene[]) => void | Promise<void>;
   projectId: Id<"videoProjects"> | null;
   project: Doc<"videoProjects"> | null;
 }

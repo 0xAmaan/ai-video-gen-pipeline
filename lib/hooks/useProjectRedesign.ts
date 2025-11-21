@@ -350,7 +350,9 @@ export const useCreateNextIteration = () => {
 
   return async (
     shotId: Id<"sceneShots">,
-    input: Omit<BatchCreateImagesInput, "iterationNumber"> & { currentIteration?: number },
+    input: Omit<BatchCreateImagesInput, "iterationNumber"> & {
+      currentIteration?: number;
+    },
   ) => {
     const { currentIteration = 0, ...restInput } = input;
 

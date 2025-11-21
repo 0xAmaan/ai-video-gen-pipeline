@@ -1,4 +1,3 @@
-import "server-only";
 import { ConvexHttpClient } from "convex/browser";
 import { auth } from "@clerk/nextjs/server";
 

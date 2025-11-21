@@ -1,6 +1,7 @@
 "use client";
 
 import { Id } from "@/convex/_generated/dataModel";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 interface StoryboardPartProps {
   shotId: Id<"sceneShots">;
@@ -21,13 +22,15 @@ export const StoryboardPart = ({
   onSelect,
   onAction,
 }: StoryboardPartProps) => {
+  const src = proxiedImageUrl(imageUrl);
   return (
     <div className="relative flex-shrink-0 w-[280px] h-[180px] rounded-2xl overflow-hidden border-2 border-gray-700">
-      {imageUrl ? (
+      {src ? (
         <img
-          src={imageUrl}
+          src={src}
           alt={prompt}
           className="w-full h-full object-cover"
+          crossOrigin="anonymous"
         />
       ) : (
         <div className="w-full h-full bg-[#0f0f0f] flex items-center justify-center text-gray-600 text-sm">

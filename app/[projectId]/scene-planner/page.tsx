@@ -64,6 +64,7 @@ import {
   SceneShot,
   ShotSelectionSummary,
   ShotPreviewImage,
+  ImageGenerationStatus,
 } from "@/lib/types/redesign";
 
 type PlannerSceneState = ProjectScene & {
@@ -82,7 +83,14 @@ const SceneShotsSynchronizer = ({
 
   useEffect(() => {
     if (!shots) return;
-    onSync(sceneId, shots);
+    onSync(
+      sceneId,
+      shots.map((shot) => ({
+        ...shot,
+        initialPrompt: shot.initialPrompt ?? "",
+        lastImageStatus: shot.lastImageStatus as ImageGenerationStatus | undefined,
+      })),
+    );
   }, [sceneId, shots, onSync]);
 
   return null;

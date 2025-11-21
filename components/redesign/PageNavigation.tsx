@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Sparkles, Layout, Film, Scissors } from "lucide-react";
+import { Sparkles, Layout, Scissors, Film } from "lucide-react";
 
 interface PageNavigationProps {
   projectId?: string;
@@ -13,6 +13,15 @@ interface PageNavigationProps {
   videoLockMessage?: string;
   editorLocked?: boolean;
   editorLockMessage?: string;
+}
+
+interface NavItem {
+  name: string;
+  icon: typeof Layout;
+  href: string;
+  match: string;
+  disabled?: boolean;
+  disabledMessage?: string;
 }
 
 const DEFAULT_PATH = "/home";
@@ -47,48 +56,58 @@ export const PageNavigation = ({
     });
   }
 
-  const navItems: (NavItem | false)[] = [
+  const navItems: Array<NavItem | false> = [
     {
       name: "Home",
       icon: Layout,
       href: DEFAULT_PATH,
       match: "/home",
     },
-    ...(projectId ? [{
-      name: "Prompt Planner",
-      icon: Sparkles,
-      href: `/${projectId}/scene-planner`,
-      match: "/scene-planner",
-    },
-    {
-      name: "Storyboard",
-      icon: Layout,
-      href: `/${projectId}/storyboard`,
-      match: "/storyboard",
-      disabled: storyboardLocked,
-      disabledMessage: storyboardLockMessage,
-    },
-    {
-      name: "Video",
-      icon: Film,
-      href: `/${projectId}/video`,
-      match: "/video",
-      disabled: videoLocked,
-      disabledMessage: videoLockMessage,
-    },
-    {
-      name: "Video Editor",
-      icon: Scissors,
-      href: `/${projectId}/editor`,
-      match: "/editor",
-      disabled: editorLocked,
-      disabledMessage: editorLockMessage,
-    }] as NavItem[] : []),
+    projectId
+      ? {
+          name: "Prompt Planner",
+          icon: Sparkles,
+          href: `/${projectId}/scene-planner`,
+          match: "/scene-planner",
+        }
+      : false,
+    projectId
+      ? {
+          name: "Storyboard",
+          icon: Layout,
+          href: `/${projectId}/storyboard`,
+          match: "/storyboard",
+          disabled: storyboardLocked,
+          disabledMessage: storyboardLockMessage,
+        }
+      : false,
+    projectId
+      ? {
+          name: "Video",
+          icon: Film,
+          href: `/${projectId}/video`,
+          match: "/video",
+          disabled: videoLocked,
+          disabledMessage: videoLockMessage,
+        }
+      : false,
+    projectId
+      ? {
+          name: "Video Editor",
+          icon: Scissors,
+          href: `/${projectId}/editor`,
+          match: "/editor",
+          disabled: editorLocked,
+          disabledMessage: editorLockMessage,
+        }
+      : false,
   ];
+
+  const items: NavItem[] = navItems.filter((item): item is NavItem => Boolean(item));
 
   return (
     <div className="flex items-center gap-2 bg-[#2a2a2a] rounded-lg p-1">
-      {navItems.filter((item): item is NavItem => Boolean(item)).map((item) => {
+      {items.map((item) => {
         const isActive = pathname?.includes(item.match);
         const Icon = item.icon;
         const isDisabled = item.disabled;

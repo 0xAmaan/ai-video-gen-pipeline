@@ -126,11 +126,16 @@ export function useStoryboardState(
       [track]: { ...prev[track], ...settings },
     }));
 
+    const payload =
+      track === "narration"
+        ? { audioNarration: settings }
+        : track === "bgm"
+          ? { audioBgm: settings }
+          : { audioSfx: settings };
+
     await updateProjectAudioTrackSettings({
       projectId,
-      trackId: trackIdMap[track],
-      volume: settings.volume,
-      muted: settings.muted,
+      ...payload,
     });
   };
 

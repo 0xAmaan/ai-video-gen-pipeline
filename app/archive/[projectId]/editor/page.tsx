@@ -7,6 +7,7 @@ import { useProjectData } from "../_components/useProjectData";
 import { StandaloneEditorApp } from "@/components/editor/StandaloneEditorApp";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { adaptConvexProjectToStandalone } from "@/lib/editor/convex-adapter";
+import { useConvexProjectSync } from "@/lib/editor/hooks/useConvexProjectSync";
 import type { Id } from "@/convex/_generated/dataModel";
 
 const IntegratedStandaloneEditorPage = () => {
@@ -17,6 +18,7 @@ const IntegratedStandaloneEditorPage = () => {
   );
   const actions = useProjectStore((state) => state.actions);
   const lastSignatureRef = useRef<string | null>(null);
+  const { hydratedFromRemote } = useConvexProjectSync(projectId as Id<"videoProjects">);
 
   const adaptedProject = useMemo(() => {
     if (!project) return null;
@@ -34,14 +36,14 @@ const IntegratedStandaloneEditorPage = () => {
   }, [actions, projectId]);
 
   useEffect(() => {
-    if (!adaptedProject) return;
+    if (!adaptedProject || hydratedFromRemote) return;
     if (lastSignatureRef.current === adaptedProject.signature) return;
     void actions.loadProject(adaptedProject.project, { persist: false });
     lastSignatureRef.current = adaptedProject.signature;
-  }, [adaptedProject, actions]);
+  }, [adaptedProject, actions, hydratedFromRemote]);
 
   return (
-    <PhaseGuard requiredPhase="editor">
+    <PhaseGuard requiredPhase="editor" allowEditorAlways>
       {isLoading || !project ? (
         <div className="flex h-screen items-center justify-center text-muted-foreground">
           Preparing project data...

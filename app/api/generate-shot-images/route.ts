@@ -84,8 +84,7 @@ const runPrediction = async (
   let current = prediction;
 
   while (
-    current.status === "starting" ||
-    current.status === "processing"
+    ["starting", "processing", "queued"].includes(current.status as string)
   ) {
     await sleep(1500);
     current = await replicate.predictions.get(current.id);
@@ -219,7 +218,7 @@ export async function POST(req: Request) {
 
     const fullPromptForGeneration = buildIterationPrompt(
       shotData.scene.description,
-      shotData.shot.initialPrompt,
+      shotData.shot.initialPrompt ?? "",
       fixPrompt,
     );
 
