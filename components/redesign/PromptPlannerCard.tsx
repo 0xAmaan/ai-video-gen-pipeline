@@ -25,10 +25,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ProjectScene, SceneShot, ShotPreviewImage } from "@/lib/types/redesign";
+import { ProjectAsset, ProjectScene, SceneShot, ShotPreviewImage } from "@/lib/types/redesign";
 import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { ShotImageGrid } from "./ShotImageGrid";
+import { ShotBrandAssetPicker } from "./ShotBrandAssetPicker";
 
 interface PromptPlannerCardProps {
   scene: ProjectScene;
@@ -54,6 +55,8 @@ interface PromptPlannerCardProps {
   onSelectShotImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
   onRegenerateShot?: (shot: SceneShot) => void;
   onGeneratePreview?: (shot: SceneShot) => void;
+  onUpdateShotAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
+  assets?: ProjectAsset[];
 }
 
 interface ShotCardProps {
@@ -71,6 +74,8 @@ interface ShotCardProps {
   onSelectImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
   onRegenerateShot?: (shot: SceneShot) => void;
   onGeneratePreview?: (shot: SceneShot) => void;
+  onUpdateAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
+  assets?: ProjectAsset[];
 }
 
 const ShotCard = ({
@@ -88,6 +93,8 @@ const ShotCard = ({
   onSelectImage,
   onRegenerateShot,
   onGeneratePreview,
+  onUpdateAssets,
+  assets,
 }: ShotCardProps) => {
   const [localDescription, setLocalDescription] = useState(shot.description);
 
@@ -158,7 +165,7 @@ const ShotCard = ({
         </div>
 
         <div className="flex-1 min-w-0 space-y-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2 justify-between">
             <Badge
               variant="secondary"
               className={cn(
@@ -171,6 +178,17 @@ const ShotCard = ({
               {shot.selectedImageId && <CheckCircle2 className="w-3 h-3" />}
               {label}
             </Badge>
+            <div
+              onClick={(event) => event.stopPropagation()}
+              className="pt-0.5"
+            >
+              <ShotBrandAssetPicker
+                label={label}
+                assets={assets}
+                selectedAssetIds={shot.referencedAssets}
+                onChange={(nextAssets) => onUpdateAssets?.(shot._id, nextAssets)}
+              />
+            </div>
           </div>
 
           {hasImage ? (
@@ -266,6 +284,8 @@ export const PromptPlannerCard = ({
   onSelectShotImage,
   onRegenerateShot,
   onGeneratePreview,
+  onUpdateShotAssets,
+  assets,
 }: PromptPlannerCardProps) => {
   const {
     attributes: sceneAttributes,
@@ -383,6 +403,8 @@ export const PromptPlannerCard = ({
               onSelectImage={onSelectShotImage}
               onRegenerateShot={onRegenerateShot}
               onGeneratePreview={onGeneratePreview}
+              onUpdateAssets={onUpdateShotAssets}
+              assets={assets}
             />
           ))}
 
