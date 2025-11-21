@@ -4,7 +4,15 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Sparkles, Image as ImageIcon } from "lucide-react";
+import {
+  Loader2,
+  Check,
+  Sparkles,
+  Image as ImageIcon,
+  Zap,
+  Wand2,
+  AudioLines,
+} from "lucide-react";
 
 interface Scene {
   sceneNumber: number;
@@ -13,11 +21,23 @@ interface Scene {
   duration: number;
 }
 
+type StoryboardStage =
+  | "parsing_prompt"
+  | "planning_scenes"
+  | "selecting_voice"
+  | "generating_images"
+  | "generating_narrations"
+  | "finalizing"
+  | "complete";
+
 interface StoryboardGeneratingPhaseProps {
   scenes: Scene[];
   totalScenes: number;
-  currentStage: "generating_descriptions" | "generating_images" | "complete";
+  currentStage: StoryboardStage;
   currentSceneNumber?: number;
+  modelName?: string;
+  estimatedCostPerImage?: number;
+  modelReason?: string;
 }
 
 export const StoryboardGeneratingPhase = ({
@@ -25,18 +45,44 @@ export const StoryboardGeneratingPhase = ({
   totalScenes,
   currentStage,
   currentSceneNumber = 0,
+  modelName = "FLUX.1 Schnell",
+  estimatedCostPerImage = 0.003,
+  modelReason = "Default selection for fast, cost-effective generation",
 }: StoryboardGeneratingPhaseProps) => {
+  const imagesGenerated = scenes.filter((s) => s.imageUrl).length;
+
   const getProgress = () => {
-    if (currentStage === "generating_descriptions") return 20;
-    if (currentStage === "generating_images") {
-      const imagesGenerated = scenes.filter((s) => s.imageUrl).length;
-      return 20 + (imagesGenerated / totalScenes) * 80;
+    switch (currentStage) {
+      case "parsing_prompt":
+        return 5;
+      case "planning_scenes":
+        return 20;
+      case "selecting_voice":
+        return 35;
+      case "generating_images":
+        return 35 + (imagesGenerated / totalScenes) * 35;
+      case "generating_narrations":
+        return 80;
+      case "finalizing":
+        return 95;
+      case "complete":
+        return 100;
+      default:
+        return 0;
     }
-    return 100;
   };
 
   const progress = getProgress();
-  const imagesGenerated = scenes.filter((s) => s.imageUrl).length;
+
+  const stageDescriptionMap: Record<StoryboardStage, string> = {
+    parsing_prompt: "Parsing your prompt and questionnaire responses...",
+    planning_scenes: "Planning storyboard scenes with AI...",
+    selecting_voice: "Selecting the best narration voice...",
+    generating_images: `Generating scene imagery (${imagesGenerated}/${totalScenes})...`,
+    generating_narrations: "Synthesizing narration audio...",
+    finalizing: "Finalizing storyboard assets...",
+    complete: "Storyboard complete!",
+  };
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
@@ -48,13 +94,49 @@ export const StoryboardGeneratingPhase = ({
             <h1 className="text-3xl font-bold">Creating Your Storyboard</h1>
           </div>
           <p className="text-muted-foreground">
-            {currentStage === "generating_descriptions"
-              ? "Planning scenes and generating visual descriptions..."
-              : currentStage === "generating_images"
-                ? `Generating images (${imagesGenerated}/${totalScenes})...`
-                : "Storyboard complete!"}
+            {stageDescriptionMap[currentStage]}
           </p>
         </div>
+
+        {/* Model Selection Info */}
+        <Card className="p-5 mb-4 bg-linear-to-r from-primary/10 via-primary/5 to-transparent border-primary/30">
+          <div className="flex items-start gap-4">
+            <div className="shrink-0">
+              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                <Wand2 className="w-5 h-5 text-primary" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <h3 className="text-sm font-semibold text-foreground">
+                  AI Image Model
+                </h3>
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-primary" />
+                  <Badge
+                    variant="default"
+                    className="text-xs font-medium px-2 py-0.5"
+                  >
+                    {modelName}
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {modelReason}
+              </p>
+              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <span className="font-medium text-foreground">
+                    ${(totalScenes * estimatedCostPerImage).toFixed(3)}
+                  </span>
+                  <span>total cost</span>
+                </span>
+                <span className="text-muted-foreground/50">•</span>
+                <span>${estimatedCostPerImage.toFixed(3)} per image</span>
+              </div>
+            </div>
+          </div>
+        </Card>
 
         {/* Overall Progress */}
         <Card className="p-8 mb-6">
@@ -68,13 +150,17 @@ export const StoryboardGeneratingPhase = ({
             <Progress value={progress} className="h-3" />
           </div>
 
-          <div className="flex items-center justify-between text-sm flex-wrap gap-2">
-            <span className="text-muted-foreground">
-              {currentStage === "complete"
-                ? "All scenes generated successfully!"
-                : `Estimated time remaining: ${Math.ceil((totalScenes - imagesGenerated) * 10)}s`}
-            </span>
-            <Badge variant="secondary">Using Google Nano Banana</Badge>
+          <div className="text-sm text-muted-foreground">
+            {currentStage === "complete"
+              ? "All scenes generated successfully!"
+              : currentStage === "generating_narrations"
+                ? "Generating narration audio for each scene..."
+                : currentStage === "finalizing"
+                  ? "Finalizing storyboard assets..."
+                  : `Estimated time remaining: ${Math.max(
+                      5,
+                      Math.ceil((totalScenes - imagesGenerated) * 8),
+                    )}s`}
           </div>
         </Card>
 
@@ -85,6 +171,12 @@ export const StoryboardGeneratingPhase = ({
               <ImageIcon className="w-5 h-5 text-muted-foreground" />
               <h3 className="text-sm font-semibold">Scene Generation</h3>
             </div>
+            {currentStage === "generating_narrations" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                <AudioLines className="w-4 h-4" />
+                Generating narration audio...
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Array.from({ length: totalScenes }).map((_, index) => {
                 const scene = scenes[index];
@@ -177,7 +269,7 @@ export const StoryboardGeneratingPhase = ({
           <p className="text-sm text-muted-foreground">
             Estimated cost:{" "}
             <span className="font-medium text-foreground">
-              ${(totalScenes * 0.04).toFixed(2)}
+              ${(totalScenes * estimatedCostPerImage).toFixed(2)}
             </span>
           </p>
         </div>

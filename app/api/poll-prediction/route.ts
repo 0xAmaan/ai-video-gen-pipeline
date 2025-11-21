@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
 import Replicate from "replicate";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { mockPollingResponse } from "@/lib/demo-mocks";
+import { apiResponse, apiError } from "@/lib/api-response";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -12,20 +15,41 @@ const workerBase =
 const workerAuth = process.env.R2_INGEST_TOKEN || process.env.AUTH_TOKEN || "";
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+
   try {
     const { predictionId } = await req.json();
 
+    // Get demo mode from headers
+    const demoMode = getDemoModeFromHeaders(req.headers);
+    const shouldMock = demoMode === "no-cost";
+
+    // Track API call
+    flowTracker.trackAPICall("POST", "/api/poll-prediction", {
+      predictionId,
+      demoMode,
+    });
+
     if (!predictionId || typeof predictionId !== "string") {
-      return NextResponse.json(
-        { error: "Prediction ID is required" },
-        { status: 400 },
+      return apiError("Prediction ID is required", 400);
+    }
+
+    // If no-cost mode and it's a mock prediction, return instant complete
+    if (shouldMock && predictionId.startsWith("mock-")) {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Returning instant mock prediction status - zero API costs",
       );
+      const mockResult = mockPollingResponse("complete");
+      return apiResponse({
+        status: "complete",
+        videoUrl: mockResult.videoUrl,
+      });
     }
 
     // Get the current status of the prediction
     const prediction = await replicate.predictions.get(predictionId);
-
-    console.log(`Prediction ${predictionId} status: ${prediction.status}`);
 
     // Handle different prediction statuses
     if (prediction.status === "succeeded") {
@@ -71,7 +95,7 @@ export async function POST(req: Request) {
 
       const ingestResult = await maybeIngestToR2(videoUrl, predictionId);
 
-      return NextResponse.json({
+      return apiResponse({
         status: "complete",
         videoUrl: ingestResult?.proxyUrl ?? videoUrl,
         proxyUrl: ingestResult?.proxyUrl ?? null,
@@ -82,13 +106,13 @@ export async function POST(req: Request) {
       prediction.status === "failed" ||
       prediction.status === "canceled"
     ) {
-      return NextResponse.json({
+      return apiResponse({
         status: "failed",
         errorMessage: prediction.error || "Prediction failed",
       });
     } else {
       // Still processing (starting, processing, etc.)
-      return NextResponse.json({
+      return apiResponse({
         status: "processing",
         progress: prediction.logs
           ? Math.min(90, prediction.logs.length * 5)
@@ -97,12 +121,10 @@ export async function POST(req: Request) {
     }
   } catch (error) {
     console.error("Error polling prediction:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to poll prediction status",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
+    return apiError(
+      "Failed to poll prediction status",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

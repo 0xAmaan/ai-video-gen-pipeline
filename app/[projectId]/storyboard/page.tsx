@@ -1,133 +1,107 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PhaseGuard } from "../_components/PhaseGuard";
-import { useProjectData } from "../_components/useProjectData";
-import { StoryboardPhase } from "@/components/StoryboardPhase";
-import { StoryboardGeneratingPhase } from "@/components/StoryboardGeneratingPhase";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import type { Scene } from "@/types/scene";
+import { PageNavigation } from "@/components/redesign/PageNavigation";
+import { StoryboardSceneRow } from "@/components/redesign/StoryboardSceneRow";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
+import { Id } from "@/convex/_generated/dataModel";
+import { useStoryboardRows, useAllMasterShotsSet } from "@/lib/hooks/useProjectRedesign";
 
 const StoryboardPage = () => {
+  const params = useParams<{ projectId: string }>();
   const router = useRouter();
-  const params = useParams();
-  const projectId = params?.projectId as string;
+  const projectId = params?.projectId as Id<"videoProjects"> | undefined;
+  const storyboardRows = useStoryboardRows(projectId);
+  const allMasterShotsSet = useAllMasterShotsSet(projectId);
 
-  const { project, questions, scenes: convexScenes } = useProjectData(
-    projectId as Id<"videoProjects">,
-  );
+  const [selectedSceneId, setSelectedSceneId] = useState<
+    Id<"projectScenes"> | null
+  >(null);
+  const [selectedShotId, setSelectedShotId] = useState<
+    Id<"sceneShots"> | null
+  >(null);
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [storyboardStatus, setStoryboardStatus] = useState<{
-    stage: "generating_descriptions" | "generating_images" | "complete";
-    currentScene: number;
-  }>({ stage: "generating_descriptions", currentScene: 0 });
-
-  const saveScenes = useMutation(api.video.saveScenes);
-  const updateProjectStatus = useMutation(api.video.updateProjectStatus);
-  const updateLastActivePhase = useMutation(api.video.updateLastActivePhase);
-
-  // Check if we need to generate storyboard
   useEffect(() => {
-    if (project && questions?.answers && convexScenes.length === 0 && !isGenerating) {
-      // Need to generate storyboard
-      setIsGenerating(true);
-      generateStoryboard();
+    if (storyboardRows && storyboardRows.length > 0) {
+      setSelectedSceneId((prev) => prev ?? storyboardRows[0].scene._id);
     }
-  }, [project, questions, convexScenes]);
+  }, [storyboardRows]);
 
-  const generateStoryboard = async () => {
-    if (!project || !questions?.answers) return;
+  if (!projectId) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Missing project context.
+      </div>
+    );
+  }
 
-    try {
-      setStoryboardStatus({
-        stage: "generating_descriptions",
-        currentScene: 0,
-      });
+  const hasRows = !!storyboardRows && storyboardRows.length > 0;
 
-      // Update project status
-      await updateProjectStatus({
-        projectId: projectId as Id<"videoProjects">,
-        status: "generating_storyboard",
-      });
-
-      // Call the storyboard generation API
-      const response = await fetch("/api/generate-storyboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: questions.answers.prompt,
-          responses: questions.answers.responses,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("API error:", errorData);
-        throw new Error(errorData.details || "Failed to generate storyboard");
-      }
-
-      const result = await response.json();
-
-      // Save scenes to Convex
-      await saveScenes({
-        projectId: projectId as Id<"videoProjects">,
-        scenes: result.scenes,
-      });
-
-      setStoryboardStatus({ stage: "complete", currentScene: result.scenes.length });
-      setIsGenerating(false);
-    } catch (error) {
-      console.error("Error generating storyboard:", error);
-      setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateVideo = async (scenes: Scene[]) => {
-    try {
-      // Update last active phase to video
-      await updateLastActivePhase({
-        projectId: projectId as Id<"videoProjects">,
-        phase: "video",
-      });
-
-      // Navigate to video phase
-      router.push(`/${projectId}/video`);
-    } catch (error) {
-      console.error("Error updating phase:", error);
-    }
-  };
-
-  // Convert Convex scenes to component format
-  const scenesForComponent: Scene[] = convexScenes.map((scene) => ({
-    id: scene._id,
-    image: scene.imageUrl || "",
-    description: scene.description,
-    duration: scene.duration,
-    sceneNumber: scene.sceneNumber,
-  }));
+  // Don't lock storyboard when we're already on this page
+  // (only lock it when viewing from other pages)
+  const lockMessage = !allMasterShotsSet
+    ? "Set up master shots for all scenes in Scene Planner"
+    : undefined;
 
   return (
-    <PhaseGuard requiredPhase="storyboard">
-      {isGenerating ? (
-        <StoryboardGeneratingPhase
-          scenes={scenesForComponent}
-          totalScenes={5}
-          currentStage={storyboardStatus.stage}
-          currentSceneNumber={storyboardStatus.currentScene}
-        />
-      ) : (
-        <StoryboardPhase
-          prompt={questions?.answers?.prompt || project?.prompt || ""}
-          scenes={scenesForComponent}
-          onGenerateVideo={handleGenerateVideo}
-          projectId={projectId as Id<"videoProjects">}
-        />
-      )}
-    </PhaseGuard>
+    <div className="min-h-screen bg-black text-white pb-24">
+      <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-sm border-b border-gray-900 px-8 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-gray-500">
+              Storyboard
+            </p>
+            <h1 className="text-2xl font-bold">Selected master shots</h1>
+            <p className="text-sm text-gray-400 mt-1">
+              Review each scene&apos;s chosen frames before animation.
+            </p>
+          </div>
+
+          <PageNavigation
+            projectId={projectId}
+            storyboardLocked={false}
+            storyboardLockMessage={lockMessage}
+          />
+
+          <Button
+            variant="outline"
+            className="border-gray-700 text-gray-200 hover:bg-gray-800"
+            onClick={() =>
+              router.push(`/${projectId}/scene-planner`)
+            }
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Planner
+          </Button>
+        </div>
+      </div>
+
+      <div className="px-8 py-8 space-y-4">
+        {!storyboardRows ? (
+          <div className="text-gray-500 text-center py-20 border border-dashed border-gray-800 rounded-3xl">
+            Loading storyboard...
+          </div>
+        ) : !hasRows ? (
+          <div className="text-gray-500 text-center py-20 border border-dashed border-gray-800 rounded-3xl">
+            No storyboard selections yet. Select master shots in the iterator to
+            populate this view.
+          </div>
+        ) : (
+          storyboardRows.map((row) => (
+            <StoryboardSceneRow
+              key={row.scene._id}
+              scene={row}
+              isSelected={selectedSceneId === row.scene._id}
+              selectedShotId={selectedShotId}
+              onSceneSelect={(sceneId) => setSelectedSceneId(sceneId)}
+              onShotSelect={(shotId) => setSelectedShotId(shotId)}
+            />
+          ))
+        )}
+      </div>
+    </div>
   );
 };
 

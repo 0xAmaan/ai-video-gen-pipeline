@@ -1,3 +1,20 @@
+type R2Range = { offset: number; length?: number };
+
+type R2ObjectBody = {
+  size: number;
+  body: ReadableStream | null;
+  writeHttpMetadata: (headers: Headers) => void;
+  httpEtag: string;
+  httpMetadata?: Record<string, string>;
+  customMetadata?: Record<string, string>;
+  range?: { offset: number; end?: number; length?: number };
+};
+
+type R2Bucket = {
+  get: (key: string, options?: { range?: R2Range }) => Promise<R2ObjectBody | null>;
+  put: (key: string, value: BodyInit, options?: any) => Promise<any>;
+};
+
 export interface Env {
   R2_BUCKET: R2Bucket;
   AUTH_TOKEN?: string;

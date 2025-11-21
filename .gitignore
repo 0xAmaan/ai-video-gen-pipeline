@@ -5,7 +5,7 @@
 Mockup/
 AI_Video_Editor_UI_Mockup/
 v0_CapCut_UI/
-
+audio-track/
 
 # dependencies
 /node_modules
@@ -53,3 +53,23 @@ next-env.d.ts
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+.taskmaster/
+.taskmaster/tasks/tasks.json
+
+# Logs
+logs
+*.log
+dev-debug.log
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

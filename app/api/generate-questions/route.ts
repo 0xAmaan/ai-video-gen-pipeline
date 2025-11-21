@@ -1,7 +1,14 @@
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
-import { NextResponse } from "next/server";
+import {
+  QUESTION_GENERATION_SYSTEM_PROMPT,
+  buildQuestionGenerationPrompt,
+} from "@/lib/prompts";
+import { getFlowTracker } from "@/lib/flow-tracker";
+import { getDemoModeFromHeaders } from "@/lib/demo-mode";
+import { mockClarifyingQuestions, mockDelay } from "@/lib/demo-mocks";
+import { apiResponse, apiError } from "@/lib/api-response";
+import { createLLMProvider, validateAPIKeys } from "@/lib/server/api-utils";
 
 // Zod schema matching the Question interface from InputPhase
 const questionSchema = z.object({
@@ -27,62 +34,95 @@ const questionSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const flowTracker = getFlowTracker();
+  const startTime = Date.now();
+
   try {
-    const { prompt } = await req.json();
+    const body = await req.json();
+    console.log("📥 Full request body:", JSON.stringify(body, null, 2));
 
-    if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json(
-        { error: "Invalid prompt provided" },
-        { status: 400 },
-      );
-    }
+    const { prompt, model } = body;
+    console.log("📥 Extracted - prompt:", prompt, "model:", model);
 
-    // Generate clarifying questions using OpenAI
-    const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: questionSchema,
-      system: `You are an expert video production consultant. Your job is to ask clarifying questions that will help refine a user's video idea into a clear, actionable vision.
+    // Get demo mode from headers
+    const demoMode = getDemoModeFromHeaders(req.headers);
+    const shouldMock = demoMode === "no-cost";
 
-Rules:
-- Generate 3-5 highly contextual questions based on the specific video prompt
-- Each question should have 2-4 answer options
-- Questions should uncover missing details like: emotion, visual style, pacing, tone, audience, key message, transformation, etc.
-- Make questions specific to the video type (product demo, tutorial, story, etc.)
-- Each option needs: a short label (2-5 words), a kebab-case value, and a descriptive explanation
-- Question IDs should be kebab-case descriptive names (e.g., "primary-emotion", "visual-style")
-
-Example output structure:
-{
-  "questions": [
-    {
-      "id": "primary-emotion",
-      "question": "What emotion should viewers feel?",
-      "options": [
-        {
-          "label": "Inspired & Motivated",
-          "value": "inspired",
-          "description": "Uplifting content that energizes viewers"
-        },
-        {
-          "label": "Calm & Reassured",
-          "value": "calm",
-          "description": "Soothing tone that builds trust"
-        }
-      ]
-    }
-  ]
-}`,
-      prompt: `Video idea: "${prompt}"
-
-Generate 3-5 clarifying questions that will help refine this video concept. Focus on what's unclear or missing - don't ask about things already specified in the prompt.`,
+    // Track API call
+    flowTracker.trackAPICall("POST", "/api/generate-questions", {
+      prompt,
+      model,
+      demoMode,
     });
 
-    return NextResponse.json(object);
+    if (!prompt || typeof prompt !== "string") {
+      return apiError("Invalid prompt provided", 400);
+    }
+
+    // Validate model parameter if provided
+    if (model && typeof model !== "string") {
+      return apiError("Invalid model provided", 400);
+    }
+
+    // If no-cost mode, return instant mock data
+    if (shouldMock) {
+      flowTracker.trackDecision(
+        "Check demo mode",
+        "no-cost",
+        "Using mock question generation - zero API costs",
+      );
+
+      await mockDelay(100);
+      const mockQuestions = mockClarifyingQuestions(prompt);
+
+      flowTracker.trackTiming(
+        "Mock question generation",
+        Date.now() - startTime,
+        startTime,
+      );
+
+      return apiResponse({
+        questions: mockQuestions,
+      });
+    }
+
+    // Validate API keys
+    const keyValidationError = validateAPIKeys();
+    if (keyValidationError) {
+      return keyValidationError;
+    }
+
+    // Create LLM provider with optional model selection
+    const { provider, providerName } = createLLMProvider(model);
+
+    flowTracker.trackDecision(
+      "Select model provider",
+      providerName,
+      `Using ${providerName} for question generation`,
+    );
+
+    // Generate clarifying questions
+    const result = await generateObject({
+      model: provider,
+      schema: questionSchema,
+      system: QUESTION_GENERATION_SYSTEM_PROMPT,
+      prompt: buildQuestionGenerationPrompt(prompt),
+      maxRetries: 2,
+    });
+
+    flowTracker.trackTiming(
+      "Total question generation",
+      Date.now() - startTime,
+      startTime,
+    );
+
+    return apiResponse(result.object);
   } catch (error) {
     console.error("Error generating questions:", error);
-    return NextResponse.json(
-      { error: "Failed to generate questions" },
-      { status: 500 },
+    return apiError(
+      "Failed to generate questions",
+      500,
+      error instanceof Error ? error.message : "Unknown error",
     );
   }
 }

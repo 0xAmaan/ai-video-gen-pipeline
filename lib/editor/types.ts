@@ -5,23 +5,77 @@ export type EffectType =
   | "contrast"
   | "saturation"
   | "blur"
+  | "grain"
+  | "colorGrade"
+  | "vintage"
+  | "vignette"
+  | "filmLook"
   | "custom";
+
+// Filter parameter interfaces (for type safety and documentation)
+// All effects use flat params: Record<string, number> for consistency
+// These interfaces document the expected parameter keys for each filter type
+
+export interface GrainParams {
+  intensity: number; // 0-1, amount of grain
+  size: number; // 1-10, grain particle size
+}
+
+export interface ColorGradeParams {
+  temperature: number; // -1 to 1, warm/cool shift
+  tint: number; // -1 to 1, green/magenta shift
+  shadows: number; // -1 to 1, darken/lighten shadows
+  highlights: number; // -1 to 1, darken/lighten highlights
+  saturation: number; // 0-2, color saturation multiplier
+  contrast: number; // 0-2, contrast multiplier
+}
+
+export interface VintageParams {
+  fade: number; // 0-1, overall fade/wash effect
+  sepia: number; // 0-1, sepia tone intensity
+  vignette: number; // 0-1, vignette intensity
+  grain: number; // 0-1, film grain amount
+}
+
+export interface VignetteParams {
+  intensity: number; // 0-1, darkness of vignette
+  radius: number; // 0-1, size of vignette (0=small, 1=large)
+  softness: number; // 0-1, edge feathering
+}
+
+export interface FilmLookParams {
+  grain: number; // 0-1, film grain intensity
+  halation: number; // 0-1, light bloom effect
+  contrast: number; // 0-2, contrast curve
+  colorShift: number; // -1 to 1, color temperature shift
+}
 
 export interface Effect {
   id: string;
   type: EffectType;
-  params: Record<string, number>;
+  params: Record<string, number>; // Flat structure for all effect types
   enabled: boolean;
 }
 
+export type EasingFunction = "linear" | "ease-in" | "ease-out" | "ease-in-out";
+
 export interface TransitionSpec {
   id: string;
-  type: string;
-  duration: number;
-  easing: number;
+  type: string; // TransitionType from transitions/presets
+  duration: number; // in seconds
+  easing: EasingFunction; // easing function identifier (string instead of function for serialization)
 }
 
 export type ClipKind = "video" | "audio" | "image";
+
+export interface SpeedKeyframe {
+  time: number; // Normalized 0-1 representing position within clip
+  speed: number; // Speed multiplier (0.5 = half speed, 2.0 = double speed, 0 = freeze frame)
+}
+
+export interface SpeedCurve {
+  keyframes: SpeedKeyframe[];
+}
 
 export interface Clip {
   id: string;
@@ -36,6 +90,8 @@ export interface Clip {
   volume: number;
   effects: Effect[];
   transitions: TransitionSpec[];
+  speedCurve: SpeedCurve | null; // null = normal speed (1x), otherwise custom speed curve
+  preservePitch: boolean; // When true, attempt to preserve audio pitch during speed changes (default: true)
 }
 
 export interface Track {
@@ -45,6 +101,7 @@ export interface Track {
   clips: Clip[];
   locked: boolean;
   muted: boolean;
+  volume: number;
 }
 
 export interface Sequence {
@@ -74,10 +131,13 @@ export interface MediaAssetMeta {
   proxyUrl?: string;
   sourceUrl?: string;
   predictionId?: string;
+  thumbnails?: string[]; // Data URLs for timeline thumbnails
+  thumbnailCount?: number;
 }
 
 export interface ProjectSettings {
   snap: boolean;
+  snapThreshold: number; // Distance in seconds within which snapping occurs
   zoom: number;
   activeSequenceId: string;
 }

@@ -27,6 +27,7 @@ const createTrack = (id: string, kind: Track["kind"]): Track => ({
   allowOverlap: kind !== "video",
   locked: false,
   muted: false,
+  volume: 1,
   clips: [],
 });
 
@@ -90,6 +91,7 @@ const createProject = (): Project => {
     mediaAssets: {},
     settings: {
       snap: true,
+      snapThreshold: 0.1,
       zoom: 1,
       activeSequenceId: sequence.id,
     },
@@ -144,7 +146,7 @@ export interface ProjectStoreState {
   currentTime: number;
   history: HistoryState;
   actions: {
-    hydrate: () => Promise<void>;
+    hydrate: (projectId?: string) => Promise<void>;
     reset: () => void;
     loadProject: (project: Project, options?: { history?: PersistedHistory; persist?: boolean }) => Promise<void>;
     refreshTimeline: () => Promise<void>;
@@ -171,8 +173,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   currentTime: 0,
   history: { past: [], future: [] },
   actions: {
-    hydrate: async () => {
-      const snapshot = await ProjectPersistence.load();
+    hydrate: async (projectId?: string) => {
+      const snapshot = await ProjectPersistence.load(projectId);
       const project = snapshot?.project ?? createProject();
       const history = snapshot?.history ?? { past: [], future: [] };
       await timelineService.setSequence(getSequence(project));
@@ -254,6 +256,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         volume: 1,
         effects: [],
         transitions: [],
+        speedCurve: null,
+        preservePitch: true,
       };
       track.clips.push(clip);
       sortTrackClips(track);
@@ -396,3 +400,5 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       }),
   },
 }));
+
+export const useEditorStore = useProjectStore;

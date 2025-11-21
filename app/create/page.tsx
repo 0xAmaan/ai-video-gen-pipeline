@@ -11,6 +11,7 @@ import { Check } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { Scene } from "@/types/scene";
 
 type Phase = "input" | "generating_storyboard" | "storyboard" | "generating_video" | "editor";
 
@@ -22,23 +23,23 @@ interface VideoProject {
   clips?: any[];
 }
 
-interface Scene {
-  id: string;
-  image: string;
-  description: string;
-  duration: number;
-  order: number;
-}
-
 const CreateVideoPage = () => {
   const [currentPhase, setCurrentPhase] = useState<Phase>("input");
   const [project, setProject] = useState<VideoProject | null>(null);
   const [projectId, setProjectId] = useState<Id<"videoProjects"> | null>(null);
   const [generatedScenes, setGeneratedScenes] = useState<Scene[]>([]);
+  const [enableLipsync, setEnableLipsync] = useState(true);
   const [storyboardStatus, setStoryboardStatus] = useState<{
-    stage: "generating_descriptions" | "generating_images" | "complete";
+    stage:
+      | "parsing_prompt"
+      | "planning_scenes"
+      | "selecting_voice"
+      | "generating_images"
+      | "generating_narrations"
+      | "finalizing"
+      | "complete";
     currentScene: number;
-  }>({ stage: "generating_descriptions", currentScene: 0 });
+  }>({ stage: "parsing_prompt", currentScene: 0 });
 
   const router = useRouter();
   const saveAnswers = useMutation(api.video.saveAnswers);
@@ -46,6 +47,7 @@ const CreateVideoPage = () => {
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
   const createVideoClip = useMutation(api.video.createVideoClip);
   const updateVideoClip = useMutation(api.video.updateVideoClip);
+  const saveAsset = useMutation(api.assets.saveAsset);
 
   useEffect(() => {
     if (currentPhase === "editor") {
@@ -86,7 +88,7 @@ const CreateVideoPage = () => {
       });
       setCurrentPhase("generating_storyboard");
       setStoryboardStatus({
-        stage: "generating_descriptions",
+        stage: "planning_scenes",
         currentScene: 0,
       });
 
@@ -110,11 +112,11 @@ const CreateVideoPage = () => {
 
       // Convert API response to Scene format
       const scenes: Scene[] = result.scenes.map((scene: any, index: number) => ({
-        id: `scene-${scene.sceneNumber}`,
+        id: `scene-${scene.sceneNumber ?? index + 1}`,
         image: scene.imageUrl || "",
         description: scene.description,
         duration: scene.duration,
-        order: index,
+        sceneNumber: scene.sceneNumber ?? index + 1,
       }));
 
       // Save scenes to Convex
@@ -164,9 +166,9 @@ const CreateVideoPage = () => {
       });
 
       // Call the parallel video generation API to create predictions
-      const scenesData = scenes.map((scene, index) => ({
+      const scenesData = scenes.map((scene) => ({
         id: scene.id,
-        sceneNumber: scene.order + 1, // Convert 0-indexed order to 1-indexed sceneNumber
+        sceneNumber: scene.sceneNumber ?? 1,
         imageUrl: scene.image,
         description: scene.description,
         duration: scene.duration,
@@ -190,7 +192,6 @@ const CreateVideoPage = () => {
       // Create video clip records in Convex with prediction IDs
       const clipRecords = await Promise.all(
         result.predictions.map(async (prediction: any) => {
-          // Only include replicateVideoId if it's not null
           const clipArgs: any = {
             sceneId: prediction.sceneId as Id<"scenes">,
             projectId,
@@ -203,13 +204,29 @@ const CreateVideoPage = () => {
           }
 
           const clipId = await createVideoClip(clipArgs);
+
+          if (prediction.predictionId) {
+            await saveAsset({
+              projectId,
+              sceneId: prediction.sceneId as Id<"scenes">,
+              predictionId: prediction.predictionId,
+              replicateId: prediction.predictionId,
+              status: "pending",
+              kind: "video",
+              metadata: {
+                sceneNumber: prediction.sceneNumber,
+                duration: prediction.duration,
+              },
+            });
+          }
+
           return {
             clipId,
             sceneId: prediction.sceneId,
             predictionId: prediction.predictionId,
-            sceneNumber: prediction.sceneNumber
+            sceneNumber: prediction.sceneNumber,
           };
-        })
+        }),
       );
 
       // Start polling for each prediction
@@ -262,6 +279,15 @@ const CreateVideoPage = () => {
             r2Key: result.r2Key ?? undefined,
             sourceUrl: result.sourceUrl ?? result.videoUrl,
           });
+          await saveAsset({
+            projectId: projectId!,
+            predictionId,
+            status: "complete",
+            r2Key: result.r2Key ?? undefined,
+            proxyUrl: result.proxyUrl ?? undefined,
+            sourceUrl: result.sourceUrl ?? result.videoUrl,
+            kind: "video",
+          });
           console.log(`Clip ${clipId} completed: ${result.videoUrl}`);
         } else if (result.status === "failed") {
           // Update Convex with failure
@@ -270,12 +296,25 @@ const CreateVideoPage = () => {
             status: "failed",
             errorMessage: result.errorMessage,
           });
+          await saveAsset({
+            projectId: projectId!,
+            predictionId,
+            status: "failed",
+            errorMessage: result.errorMessage,
+            kind: "video",
+          });
           console.error(`Clip ${clipId} failed: ${result.errorMessage}`);
         } else if (result.status === "processing") {
           // Update to processing status if not already
           await updateVideoClip({
             clipId,
             status: "processing",
+          });
+          await saveAsset({
+            projectId: projectId!,
+            predictionId,
+            status: "processing",
+            kind: "video",
           });
 
           // Continue polling if under max attempts
@@ -349,6 +388,7 @@ const CreateVideoPage = () => {
             scenes={project.scenes}
             onGenerateVideo={handleGenerateVideo}
             projectId={projectId}
+            project={null}
           />
         )}
 
@@ -357,6 +397,8 @@ const CreateVideoPage = () => {
             scenes={project.scenes}
             projectId={projectId}
             onComplete={handleVideoGenerationComplete}
+            enableLipsync={enableLipsync}
+            onToggleLipsync={setEnableLipsync}
           />
         )}
 

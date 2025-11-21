@@ -1,48 +1,74 @@
-import { openDB } from "idb";
 import type { Project } from "../types";
-
-const DB_NAME = "capcut-editor";
-const STORE_STATE = "project_state";
-const STORE_HISTORY = "history";
-const VERSION = 1;
 
 export interface PersistedHistory {
   past: Project[];
   future: Project[];
 }
 
-export interface PersistedSnapshot {
-  project: Project;
-  history: PersistedHistory;
-}
+const STORAGE_KEY = "editor-project-persistence";
 
-async function getDb() {
-  return openDB(DB_NAME, VERSION, {
-    upgrade(database) {
-      if (!database.objectStoreNames.contains(STORE_STATE)) {
-        database.createObjectStore(STORE_STATE);
-      }
-      if (!database.objectStoreNames.contains(STORE_HISTORY)) {
-        database.createObjectStore(STORE_HISTORY);
-      }
-    },
-  });
-}
-
-export class ProjectPersistence {
-  static async save(snapshot: PersistedSnapshot) {
-    const db = await getDb();
-    await db.put(STORE_STATE, snapshot.project, "active");
-    await db.put(STORE_HISTORY, snapshot.history, "timeline");
+const saveLocal = async (payload: { project: Project; history: PersistedHistory }) => {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn("ProjectPersistence.save (local) failed", error);
   }
+};
 
-  static async load(): Promise<PersistedSnapshot | null> {
-    const db = await getDb();
-    const project = await db.get(STORE_STATE, "active");
-    if (!project) {
-      return null;
+const loadLocal = async (): Promise<{ project: Project; history: PersistedHistory } | null> => {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn("ProjectPersistence.load (local) failed", error);
+    return null;
+  }
+};
+
+export const ProjectPersistence = {
+  async save(payload: { project: Project; history: PersistedHistory; projectId?: string }) {
+    // Save locally
+    await saveLocal({ project: payload.project, history: payload.history });
+
+    // Save to Convex if projectId provided
+    if (!payload.projectId) return;
+    try {
+      await fetch("/api/editor-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: payload.projectId,
+          projectData: payload.project,
+          sequenceNumber: Date.now(),
+        }),
+      });
+    } catch (error) {
+      console.warn("ProjectPersistence.save (convex) failed", error);
     }
-    const history = (await db.get(STORE_HISTORY, "timeline")) as PersistedHistory | null;
-    return { project, history: history ?? { past: [], future: [] } };
-  }
-}
+  },
+
+  async load(projectId?: string): Promise<{ project: Project; history: PersistedHistory } | null> {
+    // Try Convex first if projectId
+    if (projectId) {
+      try {
+        const res = await fetch(`/api/editor-state?projectId=${projectId}`, { cache: "no-store" });
+        if (res.ok) {
+          const remote = await res.json();
+          if (remote?.projectData) {
+            return {
+              project: remote.projectData as Project,
+              history: remote.history as PersistedHistory,
+            };
+          }
+        }
+      } catch (error) {
+        console.warn("ProjectPersistence.load (convex) failed", error);
+      }
+    }
+    // Fallback to local
+    return loadLocal();
+  },
+};

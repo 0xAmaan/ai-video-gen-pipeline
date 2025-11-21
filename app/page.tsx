@@ -12,7 +12,7 @@ const Home = () => {
   useEffect(() => {
     // Only redirect if auth is loaded and user is signed in
     if (isLoaded && isSignedIn) {
-      router.push("/new");
+      router.push("/home");
     }
   }, [isLoaded, isSignedIn, router]);
 

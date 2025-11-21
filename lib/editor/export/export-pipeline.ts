@@ -1,4 +1,4 @@
-import type { Sequence } from "../types";
+import type { Project, Sequence } from "../types";
 import type {
   EncodeWorkerMessage,
   EncodeRequestMessage,
@@ -9,6 +9,7 @@ export type ExportOptions = {
   resolution: string;
   quality: string;
   format: string;
+  aspectRatio: string;
 };
 
 export type ExportProgressHandler = (progress: number, status: string) => void;
@@ -47,12 +48,20 @@ export class ExportPipeline {
     };
   }
 
-  exportSequence(sequence: Sequence, options: ExportOptions, onProgress?: ExportProgressHandler) {
+  exportProject(
+    project: Project,
+    sequence: Sequence,
+    options: ExportOptions,
+    onProgress?: ExportProgressHandler,
+  ) {
     const requestId = crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     const payload: EncodeRequestMessage = {
       type: "ENCODE_REQUEST",
       requestId,
+      project,
       sequenceId: sequence.id,
+      sequence,
+      assets: project.mediaAssets,
       settings: options,
     };
     return new Promise<Blob>((resolve, reject) => {

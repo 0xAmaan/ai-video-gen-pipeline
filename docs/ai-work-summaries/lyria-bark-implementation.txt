@@ -1,0 +1,187 @@
+TASK: Integrate Google Lyria 2 and Wire Up Suno Bark
+
+CONTEXT:
+- Bark (suno-ai/bark) is already defined in lib/audio-models.ts:125 but not wired to any endpoint
+- Lyria 2 (google/lyria-2) is a superior music generation model that should replace or supplement MusicGen
+- Current music generation uses Replicate MusicGen (meta/musicgen) at lib/audio-models.ts:61
+
+========================================
+PART 1: ADD LYRIA 2 TO AUDIO MODELS
+========================================
+
+File: lib/audio-models.ts
+
+Add new constant:
+const LYRIA2_DEFAULT_MODEL = "google/lyria-2";
+
+Add to AUDIO_MODELS object:
+"lyria-2": {
+  replicateModel: envString(process.env.REPLICATE_LYRIA2_MODEL, LYRIA2_DEFAULT_MODEL),
+  name: "Google Lyria 2",
+  kind: "music_generation",
+  vendor: "replicate",
+  capabilities: ["text_to_audio", "negative_prompt", "high_fidelity"],
+  maxDurationSeconds: 30,
+  estimatedCost: 0.0001,
+  costUnit: "per_second_output",
+  defaultParams: {
+    prompt: "",
+    negative_prompt: "",
+    seed: undefined
+  },
+  docsUrl: "https://replicate.com/google/lyria-2"
+}
+
+========================================
+PART 2: UPDATE REPLICATE MUSIC ADAPTER
+========================================
+
+File: lib/adapters/replicate-music.ts
+
+Add support for Lyria 2 model:
+- Check if modelKey contains "lyria"
+- If Lyria 2: use simple input schema { prompt, negative_prompt?, seed? }
+- Returns 48kHz stereo audio, 30 second max duration
+- Different from MusicGen which has duration, continuation_start, etc.
+
+Example Lyria 2 input:
+{
+  prompt: "upbeat electronic dance music with driving bass",
+  negative_prompt: "vocals, singing, speech",
+  seed: 42 // optional
+}
+
+Example MusicGen input (current):
+{
+  prompt: "...",
+  duration: 30,
+  model_version: "stereo-large",
+  output_format: "wav",
+  normalization_strategy: "peak"
+}
+
+Adapter should detect model type and format input accordingly.
+
+========================================
+PART 3: ADD LYRIA 2 API ENDPOINT
+========================================
+
+File: app/api/generate-music/route.ts
+
+Update to support model selection:
+- Accept "model" param: "musicgen" | "lyria-2" | "bark"
+- Default to "lyria-2" for better quality
+- Handle Lyria 2 specific params: negative_prompt, seed
+- Return same output structure for consistency
+
+Request body:
+{
+  prompt: string,
+  model?: "musicgen" | "lyria-2" | "bark",
+  duration?: number, // only for musicgen
+  negative_prompt?: string, // only for lyria-2
+  seed?: number // for lyria-2
+}
+
+========================================
+PART 4: WIRE UP BARK MODEL
+========================================
+
+Bark is already in lib/audio-models.ts:125 as "bark-v0"
+
+File: lib/adapters/replicate-voice.ts or new lib/adapters/replicate-bark.ts
+
+Bark capabilities (from suno-ai/bark):
+- Text to speech with music/sound effects
+- Can generate both speech AND music
+- Supports voice presets
+- Can include non-speech sounds like [laughs], [music], etc.
+
+Bark input schema:
+{
+  prompt: string, // text with optional tags like [laughs]
+  history_prompt: string | null, // voice preset
+  text_temp: number, // 0.7 default
+  waveform_temp: number // 0.7 default
+}
+
+Create endpoint: /api/generate-bark
+Or add to existing voice endpoint with model selection
+
+========================================
+PART 5: UPDATE UI COMPONENTS
+========================================
+
+File: components/StoryboardPhase.tsx
+
+Music generation section should allow model selection:
+- Dropdown: "Google Lyria 2" (default), "MusicGen Large", "Bark"
+- Show relevant params based on selection
+- Lyria 2: prompt + negative_prompt
+- MusicGen: prompt + duration slider
+- Bark: prompt with sound effect tags
+
+File: components/VoiceSelectionDialog.tsx
+
+Add Bark as voice option for hybrid speech/music:
+- Use case: narration with background sounds
+- Input supports [music], [laughs], [sighs] tags
+
+========================================
+PART 6: TYPE UPDATES
+========================================
+
+File: types/audio.ts
+
+Update MusicGenerationOptions:
+interface MusicGenerationOptions {
+  prompt: string;
+  model?: "musicgen" | "lyria-2" | "bark";
+  duration?: number; // musicgen only
+  negative_prompt?: string; // lyria-2 only
+  seed?: number; // lyria-2 only
+  history_prompt?: string; // bark only
+  text_temp?: number; // bark only
+  waveform_temp?: number; // bark only
+}
+
+========================================
+PART 7: ENVIRONMENT VARIABLES
+========================================
+
+Add to .env.local:
+REPLICATE_LYRIA2_MODEL=google/lyria-2
+REPLICATE_BARK_MODEL=suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787
+
+========================================
+TESTING CHECKLIST
+========================================
+
+1. [ ] Lyria 2 model generates 30s music from text prompt
+2. [ ] Negative prompts work correctly for Lyria 2
+3. [ ] Bark generates speech with sound effects
+4. [ ] UI model selector works in StoryboardPhase
+5. [ ] Audio assets stored correctly with model metadata
+6. [ ] Fallback to MusicGen if Lyria 2 fails
+7. [ ] Cost tracking accurate for each model
+
+========================================
+PRIORITY ORDER
+========================================
+
+1. Add Lyria 2 model config (quick win)
+2. Update music adapter for Lyria 2 support
+3. Update /api/generate-music endpoint
+4. Test Lyria 2 generation end-to-end
+5. Wire up Bark as secondary option
+6. Update UI for model selection
+
+========================================
+EXPECTED IMPROVEMENTS
+========================================
+
+- Higher audio quality (48kHz vs MusicGen's lower sample rate)
+- More professional-sounding output
+- Negative prompt support for better control
+- Consistent pricing with official Google support
+- SynthID watermarking for authenticity

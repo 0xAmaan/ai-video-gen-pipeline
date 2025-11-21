@@ -7,7 +7,9 @@ import { ReactNode } from "react";
 
 const convexUrl =
   process.env.NEXT_PUBLIC_CONVEX_URL ??
-  (process.env.NODE_ENV === "development" ? "http://127.0.0.1:3210" : undefined);
+  (process.env.NODE_ENV === "development"
+    ? "http://127.0.0.1:3210"
+    : undefined);
 
 if (!convexUrl) {
   throw new Error(

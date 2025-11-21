@@ -28,11 +28,45 @@ export interface DemuxErrorMessage {
   error: string;
 }
 
+export interface ThumbnailRequestMessage {
+  type: "THUMBNAIL_REQUEST";
+  requestId: string;
+  assetId: string;
+  mediaUrl: string;
+  duration: number;
+  count: number; // Number of thumbnails to generate
+}
+
+export interface ThumbnailProgressMessage {
+  type: "THUMBNAIL_PROGRESS";
+  requestId: string;
+  progress: number;
+  current: number;
+  total: number;
+}
+
+export interface ThumbnailResponseMessage {
+  type: "THUMBNAIL_RESULT";
+  requestId: string;
+  assetId: string;
+  thumbnails: string[]; // Data URLs
+}
+
+export interface ThumbnailErrorMessage {
+  type: "THUMBNAIL_ERROR";
+  requestId: string;
+  error: string;
+}
+
 export type DemuxWorkerMessage =
   | DemuxRequestMessage
   | DemuxResponseMessage
   | DemuxErrorMessage
-  | DemuxProgressMessage;
+  | DemuxProgressMessage
+  | ThumbnailRequestMessage
+  | ThumbnailProgressMessage
+  | ThumbnailResponseMessage
+  | ThumbnailErrorMessage;
 
 export interface EffectsRequestMessage {
   type: "EFFECTS_REQUEST";
@@ -50,12 +84,28 @@ export interface EffectsResponseMessage {
 export interface EncodeRequestMessage {
   type: "ENCODE_REQUEST";
   requestId: string;
+  project: import("../types").Project;
   sequenceId: string;
+  sequence: any; // Full sequence data
+  assets: Record<string, any>; // Media assets
   settings: {
     resolution: string;
     quality: string;
     format: string;
+    aspectRatio: string;
   };
+}
+
+export interface EncodeFrameMessage {
+  type: "ENCODE_FRAME";
+  requestId: string;
+  frameData: ImageData;
+  timestamp: number;
+}
+
+export interface EncodeCompleteMessage {
+  type: "ENCODE_COMPLETE";
+  requestId: string;
 }
 
 export interface EncodeProgressMessage {
@@ -82,9 +132,13 @@ export interface EncodeCancelMessage {
   requestId: string;
 }
 
-export type EffectsWorkerMessage = EffectsRequestMessage | EffectsResponseMessage;
+export type EffectsWorkerMessage =
+  | EffectsRequestMessage
+  | EffectsResponseMessage;
 export type EncodeWorkerMessage =
   | EncodeRequestMessage
+  | EncodeFrameMessage
+  | EncodeCompleteMessage
   | EncodeProgressMessage
   | EncodeResultMessage
   | EncodeErrorMessage

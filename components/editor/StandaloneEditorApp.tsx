@@ -4,24 +4,28 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { getMediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
 import { PreviewRenderer } from "@/lib/editor/playback/preview-renderer";
+import { WebGpuPreviewRenderer } from "@/lib/editor/playback/webgpu-preview-renderer";
 import { getExportPipeline } from "@/lib/editor/export/export-pipeline";
 import { saveBlob } from "@/lib/editor/export/save-file";
 import { TopBar } from "@/components/editor/TopBar";
 import { MediaPanel } from "@/components/editor/MediaPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
-import { Timeline } from "@/components/editor/Timeline";
 import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
+import { EditorController } from "@/components/editor/EditorController";
 
 interface StandaloneEditorAppProps {
   autoHydrate?: boolean;
+  projectId?: string;
 }
 
-export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppProps) => {
+export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjectId }: StandaloneEditorAppProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<PreviewRenderer | null>(null);
+  const rendererRef = useRef<PreviewRenderer | WebGpuPreviewRenderer | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
+  const [masterVolume, setMasterVolume] = useState(1);
+  const [audioTrackMuted, setAudioTrackMuted] = useState(false);
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);
@@ -79,25 +83,29 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
 
   useEffect(() => {
     if (autoHydrate) {
-      actions.hydrate();
+      actions.hydrate(project?.id ?? propsProjectId);
     }
-  }, [actions, autoHydrate]);
+  }, [actions, autoHydrate, project?.id, propsProjectId]);
 
   useEffect(() => {
     if (!ready || !project || !canvasRef.current) return;
     if (!rendererRef.current) {
-      rendererRef.current = new PreviewRenderer(
-        () => {
-          const state = useProjectStore.getState();
-          if (!state.project) return null;
-          return (
-            state.project.sequences.find(
-              (sequence) => sequence.id === state.project?.settings.activeSequenceId,
-            ) ?? null
-          );
-        },
-        (id) => useProjectStore.getState().project?.mediaAssets[id],
-      );
+      const getSequence = () => {
+        const state = useProjectStore.getState();
+        if (!state.project) return null;
+        return (
+          state.project.sequences.find(
+            (sequence) => sequence.id === state.project?.settings.activeSequenceId,
+          ) ?? null
+        );
+      };
+      const getAsset = (id: string) => useProjectStore.getState().project?.mediaAssets[id];
+      try {
+        rendererRef.current = new WebGpuPreviewRenderer(getSequence, getAsset);
+      } catch (error) {
+        console.warn("WebGPU preview unavailable, falling back to 2D renderer", error);
+        rendererRef.current = new PreviewRenderer(getSequence, getAsset);
+      }
       rendererRef.current
         .attach(canvasRef.current)
         .then(() => rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time)))
@@ -129,7 +137,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
     results.forEach((asset) => actions.addMediaAsset(asset));
   };
 
-  const handleExport = async (options: { resolution: string; quality: string; format: string }) => {
+  const handleExport = async (options: { resolution: string; quality: string; format: string; aspectRatio: string }) => {
     if (!project || !exportManager) {
       if (!exportManager) {
         alert("Export is unavailable in this environment.");
@@ -140,9 +148,14 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
       project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ?? project.sequences[0];
     setExportStatus({ progress: 0, status: "Preparing" });
     try {
-      const blob = await exportManager.exportSequence(sequence, options, (progress, status) => {
-        setExportStatus({ progress, status });
-      });
+      const blob = await exportManager.exportProject(
+        project,
+        sequence,
+        options,
+        (progress, status) => {
+          setExportStatus({ progress, status });
+        },
+      );
       await saveBlob(blob, `${project.title || "export"}.${options.format}`);
       setExportStatus({ progress: 100, status: "Complete" });
     } catch (error) {
@@ -154,7 +167,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
 
   const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
-  const zoom = project?.settings.zoom ?? 1;
 
   if (!ready || !project || !sequence) {
     return (
@@ -175,6 +187,10 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
         onUndo={() => actions.undo()}
         onRedo={() => actions.redo()}
         onExport={() => setExportOpen(true)}
+        masterVolume={masterVolume}
+        onMasterVolumeChange={(value) => setMasterVolume(value)}
+        audioTrackMuted={audioTrackMuted}
+        onToggleAudioTrack={() => setAudioTrackMuted((prev) => !prev)}
       />
       <div className="flex flex-1 overflow-hidden">
         <MediaPanel
@@ -194,18 +210,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true }: StandaloneEditorAppP
             />
           </div>
           <div className="flex-1 min-h-[280px]">
-            <Timeline
-              sequence={sequence}
-              selection={selection}
-              zoom={zoom}
-              snap={project.settings.snap}
-              currentTime={currentTime}
-              onSelectionChange={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
-              onMoveClip={(clipId, trackId, start) => actions.moveClip(clipId, trackId, start)}
-              onTrimClip={(clipId, trimStart, trimEnd) => actions.trimClip(clipId, trimStart, trimEnd)}
-              onSeek={(time) => actions.setCurrentTime(time)}
-              onZoomChange={(value) => actions.setZoom(value)}
-            />
+            <EditorController />
           </div>
         </div>
       </div>
