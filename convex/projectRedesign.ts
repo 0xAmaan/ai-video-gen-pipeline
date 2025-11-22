@@ -337,7 +337,9 @@ export const clearShotImage = mutation({
         .collect(),
       ctx.db
         .query("scenes")
-        .withIndex("by_redesignShot", (q) => q.eq("redesignShotId", args.shotId))
+        .withIndex("by_redesignShot", (q) =>
+          q.eq("redesignShotId", args.shotId),
+        )
         .collect(),
     ]);
 
@@ -651,7 +653,7 @@ export const syncShotToLegacyScene = mutation({
     console.log("[syncShotToLegacyScene] SELECTED IMAGE DATA:", {
       selectedImageId: args.selectedImageId,
       imageUrl: selectedImage.imageUrl,
-      storageId: selectedImage.storageId,
+      imageStorageId: selectedImage.imageStorageId,
       replicateImageId: selectedImage.replicateImageId,
     });
 

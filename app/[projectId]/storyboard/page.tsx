@@ -320,7 +320,7 @@ const StoryboardPage = () => {
           console.log(`[TRACE] Adding shot to sync queue:`, {
             ...syncItem,
             imageUrl: shotWrapper.selectedImage.imageUrl,
-            storageId: shotWrapper.selectedImage.storageId,
+            imageStorageId: shotWrapper.selectedImage.imageStorageId,
             FULL_IMAGE_OBJECT: shotWrapper.selectedImage,
           });
 

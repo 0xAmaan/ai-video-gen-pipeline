@@ -53,8 +53,8 @@ export const useVoiceDictation = (
     return (
       typeof window !== "undefined" &&
       // @ts-ignore - Brave-specific API
-      navigator.brave &&
-      typeof navigator.brave.isBrave === "function"
+      (navigator as any).brave &&
+      typeof (navigator as any).brave.isBrave === "function"
     );
   }, []);
 
