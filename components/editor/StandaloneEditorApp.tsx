@@ -28,7 +28,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
   const [masterVolume, setMasterVolume] = useState(1);
   const [audioTrackMuted, setAudioTrackMuted] = useState(false);
-  const [timelineMode, setTimelineMode] = useState<"twick" | "legacy">("twick");
+  const [timelineMode, setTimelineMode] = useState<"twick" | "legacy">("legacy");
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);

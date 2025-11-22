@@ -320,6 +320,8 @@ export default defineSchema({
     voiceoverScript: v.optional(v.string()),
     usedAssets: v.optional(v.array(v.id("projectAssets"))),
     referencedAssets: v.optional(v.array(v.id("projectAssets"))),
+    linkedShotId: v.optional(v.union(v.id("sceneShots"), v.null())),
+    linkedImageId: v.optional(v.union(v.id("shotImages"), v.null())),
     sourcePromptVersion: v.optional(v.number()),
     initialPrompt: v.optional(v.string()),
     selectedImageId: v.optional(v.id("shotImages")),

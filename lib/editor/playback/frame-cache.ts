@@ -1,4 +1,6 @@
-export class FrameCache<T extends { close?: () => void } = { close?: () => void }> {
+export class FrameCache<
+  T extends { close?: () => void } = { close?: () => void },
+> {
   private cache = new Map<string, T>();
 
   constructor(private readonly maxEntries = 120) {}
@@ -51,5 +53,25 @@ export class FrameCache<T extends { close?: () => void } = { close?: () => void 
         this.cache.delete(key);
       }
     }
+  }
+
+  size() {
+    return this.cache.size;
+  }
+
+  findNearest(targetSeconds: number): T | undefined {
+    let nearest: { key: string; frame: T; diff: number } | null = null;
+
+    for (const [key, frame] of this.cache) {
+      const frameTime = Number.parseFloat(key);
+      if (!Number.isFinite(frameTime)) continue;
+
+      const diff = Math.abs(frameTime - targetSeconds);
+      if (!nearest || diff < nearest.diff) {
+        nearest = { key, frame, diff };
+      }
+    }
+
+    return nearest?.frame;
   }
 }

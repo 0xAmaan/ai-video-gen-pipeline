@@ -477,19 +477,6 @@ export const useProjectProgress = (projectId?: Id<"videoProjects">) => {
   const animationProgress =
     totalShots > 0 ? (shotsWithAnimations / totalShots) * 100 : 0;
 
-  if (typeof window !== "undefined") {
-    console.log("[useProjectProgress]", {
-      projectId,
-      totalScenes,
-      totalShots,
-      shotsWithSelections,
-      shotsWithAnimations,
-      selectionProgress,
-      animationProgress,
-      status: completeData.project?.status ?? null,
-    });
-  }
-
   return {
     totalScenes,
     totalShots,

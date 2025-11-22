@@ -1,7 +1,8 @@
 import type { MediaAssetMeta } from "../types";
 
 const proxyBase =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_R2_PROXY_BASE) || "";
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_R2_PROXY_BASE) ||
+  "";
 
 const normalizeProxyBase = () => {
   if (!proxyBase) return "";
@@ -32,7 +33,10 @@ type AssetUrlResolution = {
 };
 
 export const resolveAssetUrls = (asset: MediaAssetMeta): AssetUrlResolution => {
-  const original = buildAssetUrl(asset.r2Key, asset.sourceUrl ?? asset.url ?? "");
+  const original = buildAssetUrl(
+    asset.r2Key,
+    asset.sourceUrl ?? asset.url ?? "",
+  );
   const proxy = asset.proxyUrl
     ? buildAssetUrl((asset as any).proxyR2Key, asset.proxyUrl)
     : undefined;
@@ -48,6 +52,7 @@ export const playbackUrlForAsset = (asset: MediaAssetMeta) => {
 };
 
 export const exportUrlForAsset = (asset: MediaAssetMeta) => {
-  const { original, proxy } = resolveAssetUrls(asset);
-  return original || proxy || "";
+  // Use same URL resolution as playback to avoid frame loading issues
+  const { proxy, original } = resolveAssetUrls(asset);
+  return proxy || original;
 };

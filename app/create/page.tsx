@@ -151,7 +151,6 @@ const CreateVideoPage = () => {
 
   const handleGenerateVideo = async (scenes: Scene[]) => {
     if (!projectId) {
-      console.error("No project ID available");
       return;
     }
 
@@ -187,7 +186,6 @@ const CreateVideoPage = () => {
       }
 
       const result = await response.json();
-      console.log("Predictions created:", result);
 
       // Create video clip records in Convex with prediction IDs
       const clipRecords = await Promise.all(
@@ -288,7 +286,6 @@ const CreateVideoPage = () => {
             sourceUrl: result.sourceUrl ?? result.videoUrl,
             kind: "video",
           });
-          console.log(`Clip ${clipId} completed: ${result.videoUrl}`);
         } else if (result.status === "failed") {
           // Update Convex with failure
           await updateVideoClip({
@@ -303,7 +300,6 @@ const CreateVideoPage = () => {
             errorMessage: result.errorMessage,
             kind: "video",
           });
-          console.error(`Clip ${clipId} failed: ${result.errorMessage}`);
         } else if (result.status === "processing") {
           // Update to processing status if not already
           await updateVideoClip({
@@ -349,8 +345,6 @@ const CreateVideoPage = () => {
   };
 
   const handleVideoGenerationComplete = (clips: any[]) => {
-    console.log("All clips generated:", clips);
-
     // Pass real clips to editor
     setProject((prev) =>
       prev ? { ...prev, videoUrl: "placeholder", clips: clips } : null,

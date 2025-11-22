@@ -145,6 +145,12 @@ const LoadingPage = () => {
               </div>
             </div>
           )}
+
+          <div className="flex flex-col items-center gap-4">
+            <p className="text-xs text-gray-500 text-center">
+              This screen closes automatically once the scene prompts are ready.
+            </p>
+          </div>
         </div>
       </div>
     </div>

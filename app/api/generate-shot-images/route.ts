@@ -8,24 +8,12 @@ import { getFlowTracker } from "@/lib/flow-tracker";
 import { getDemoModeFromHeaders } from "@/lib/demo-mode";
 import { apiError, apiResponse } from "@/lib/api-response";
 import { mockDelay } from "@/lib/demo-mocks";
-import {
-  DEFAULT_IMAGE_MODEL,
-  FALLBACK_IMAGE_MODEL,
-  IMAGE_MODELS,
-} from "@/lib/image-models";
+import { FALLBACK_IMAGE_MODEL, IMAGE_MODELS } from "@/lib/image-models";
 import type { ProjectAsset } from "@/lib/types/redesign";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
-
-const MODEL_KEY = DEFAULT_IMAGE_MODEL;
-const MODEL_CONFIG =
-  IMAGE_MODELS[MODEL_KEY] || IMAGE_MODELS[FALLBACK_IMAGE_MODEL];
-
-if (!MODEL_CONFIG) {
-  throw new Error("No valid image model configuration found");
-}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -33,6 +21,7 @@ interface GenerateRequestBody {
   projectId: Id<"videoProjects">;
   sceneId: Id<"projectScenes">;
   shotId: Id<"sceneShots">;
+  modelKey?: string;
   iterationNumber?: number;
   parentImageId?: Id<"shotImages">;
   fixPrompt?: string;
@@ -75,25 +64,20 @@ const normalizeOutput = (output: any): string[] => {
 };
 
 const runPrediction = async (
+  modelId: string,
   prompt: string,
   imageInputs: string[] = [],
 ): Promise<{ predictionId: string; urls: string[] }> => {
-  const limitedImageInputs = (imageInputs || []).filter(Boolean).slice(0, 14);
-
   const input: Record<string, any> = {
     prompt,
-    resolution: "2K",
-    output_format: "jpg",
-    safety_filter_level: "block_only_high",
   };
 
-  if (limitedImageInputs.length > 0) {
-    input.image_input = limitedImageInputs;
-    input.aspect_ratio = "match_input_image";
+  if (imageInputs.length > 0) {
+    input.image_input = imageInputs;
   }
 
   const prediction = await replicate.predictions.create({
-    version: MODEL_CONFIG.id,
+    version: modelId,
     input,
   });
 
@@ -123,6 +107,7 @@ const buildIterationPrompt = (
   shotPrompt: string,
   brandAssetsPrompt?: string,
   fixPrompt?: string,
+  characterReference?: { label: string; description?: string },
 ) => {
   let prompt = `${SYSTEM_PROMPT}
 Scene prompt: ${sceneDescription || "N/A"}
@@ -131,6 +116,14 @@ Shot prompt: ${shotPrompt || "N/A"}
 
   if (brandAssetsPrompt) {
     prompt += `\n${brandAssetsPrompt}`;
+  }
+
+  if (characterReference) {
+    prompt += `\nCharacter consistency: Match the identity, face, hairstyle, and wardrobe from ${characterReference.label}. Keep them recognizable even if the pose or camera angle changes.${
+      characterReference.description
+        ? ` Use this linked shot for appearance reference: ${characterReference.description}`
+        : ""
+    }`;
   }
 
   if (fixPrompt) {
@@ -221,6 +214,9 @@ export async function POST(req: Request) {
       return apiError("Shot not found", 404);
     }
 
+    const hasLinkedReference =
+      !!shotData.shot.linkedShotId && !!shotData.shot.linkedImageId;
+
     if (
       shotData.shot.projectId !== projectId ||
       shotData.scene._id !== sceneId
@@ -233,7 +229,9 @@ export async function POST(req: Request) {
     );
     const isInitialRequest = !parentImageId;
 
-    if (isInitialRequest && hasInitialIteration) {
+    // Allow re-generation when a linked reference is provided (character-consistency case)
+    // even if an initial iteration already exists.
+    if (isInitialRequest && hasInitialIteration && !hasLinkedReference) {
       const existingIteration = shotData.images.filter(
         (image) => image.iterationNumber === 0,
       );
@@ -282,6 +280,47 @@ export async function POST(req: Request) {
         referencedAssetIds.some((id) => id === asset._id),
       ) ?? [];
 
+    let linkedReference:
+      | {
+          shotId: Id<"sceneShots">;
+          imageId: Id<"shotImages">;
+          imageUrl: string;
+          label: string;
+          description?: string;
+        }
+      | null = null;
+
+    if (shotData.shot.linkedShotId && shotData.shot.linkedImageId) {
+      try {
+        const linkedShotData = await convex.query(
+          api.projectRedesign.getShotWithScene,
+          { shotId: shotData.shot.linkedShotId },
+        );
+
+        if (linkedShotData) {
+          const linkedImages = await convex.query(
+            api.projectRedesign.getShotImages,
+            { shotId: linkedShotData.shot._id },
+          );
+          const linkedImage = linkedImages.find(
+            (img) => img._id === shotData.shot.linkedImageId,
+          );
+
+          if (linkedImage) {
+            linkedReference = {
+              shotId: linkedShotData.shot._id,
+              imageId: linkedImage._id,
+              imageUrl: linkedImage.imageUrl,
+              label: `Shot ${linkedShotData.scene.sceneNumber}.${linkedShotData.shot.shotNumber}`,
+              description: linkedShotData.shot.description,
+            };
+          }
+        }
+      } catch (linkError) {
+        console.error("Failed to resolve linked reference shot", linkError);
+      }
+    }
+
     const referencedAssetsWithImages = referencedAssets
       .filter((asset) => !!asset.imageUrl)
       .slice(0, 3);
@@ -290,24 +329,24 @@ export async function POST(req: Request) {
       referencedAssetsWithImages,
     );
 
-    const assetReferenceUrls = referencedAssetsWithImages
-      .map((asset) => asset.imageUrl)
-      .filter((url): url is string => !!url);
-
-    const referenceImages = parentImage?.imageUrl
-      ? Array.from(
-          new Set([
-            parentImage.imageUrl,
-            ...assetReferenceUrls.filter((url) => url !== parentImage.imageUrl),
-          ]),
-        )
-      : Array.from(new Set(assetReferenceUrls));
+    const referenceImages = Array.from(
+      new Set([
+        ...referencedAssetsWithImages
+          .map((asset) => asset.imageUrl)
+          .filter((url): url is string => !!url),
+        ...(parentImage?.imageUrl ? [parentImage.imageUrl] : []),
+        ...(linkedReference?.imageUrl ? [linkedReference.imageUrl] : []),
+      ]),
+    );
 
     const fullPromptForGeneration = buildIterationPrompt(
       shotData.scene.description,
       shotData.shot.initialPrompt ?? "",
       brandAssetPrompt,
       fixPrompt,
+      linkedReference
+        ? { label: linkedReference.label, description: linkedReference.description }
+        : undefined,
     );
 
     // Store only the user's refinement command for display in UI
@@ -317,6 +356,12 @@ export async function POST(req: Request) {
       (iterationNumber === 0 ? shotData.shot.description : "Refinement");
 
     const runs = mode === "preview" ? 1 : 3;
+    const selectedModelKey =
+      (body.modelKey && IMAGE_MODELS[body.modelKey]?.id
+        ? body.modelKey
+        : null) ?? FALLBACK_IMAGE_MODEL;
+    const modelConfig =
+      IMAGE_MODELS[selectedModelKey] || IMAGE_MODELS[FALLBACK_IMAGE_MODEL];
     let variantPayloads: Array<{
       variantNumber: number;
       imageUrl: string;
@@ -341,9 +386,9 @@ export async function POST(req: Request) {
       );
     } else {
       flowTracker.trackModelSelection(
-        MODEL_CONFIG.name,
-        MODEL_CONFIG.id,
-        MODEL_CONFIG.estimatedCost,
+        modelConfig.name,
+        modelConfig.id,
+        modelConfig.estimatedCost,
         parentImage ? "Guided refinement" : "Initial exploration",
       );
 
@@ -356,6 +401,7 @@ export async function POST(req: Request) {
       for (let runIndex = 0; runIndex < runs; runIndex++) {
         try {
           const result = await runPrediction(
+            modelConfig.id,
             fullPromptForGeneration,
             referenceImages,
           );

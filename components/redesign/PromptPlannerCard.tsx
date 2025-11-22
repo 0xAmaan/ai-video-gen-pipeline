@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   RefreshCw,
+  Link2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -63,6 +64,7 @@ interface PromptPlannerCardProps {
   onUpdateShotAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
   assets?: ProjectAsset[];
   resettingShotIds?: Id<"sceneShots">[];
+  onOpenLinkModal?: (shot: SceneShot, scene: ProjectScene) => void;
 }
 
 interface ShotCardProps {
@@ -83,6 +85,7 @@ interface ShotCardProps {
   onUpdateAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
   assets?: ProjectAsset[];
   isResetting?: boolean;
+  onOpenLinkModal?: (shot: SceneShot, scene: ProjectScene) => void;
 }
 
 const ShotCard = ({
@@ -103,6 +106,7 @@ const ShotCard = ({
   onUpdateAssets,
   assets,
   isResetting = false,
+  onOpenLinkModal,
 }: ShotCardProps) => {
   const [localDescription, setLocalDescription] = useState(shot.description);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -243,16 +247,31 @@ const ShotCard = ({
               {shot.selectedImageId && <CheckCircle2 className="w-3 h-3" />}
               {label}
             </Badge>
-            <div
-              onClick={(event) => event.stopPropagation()}
-              className="pt-0.5"
-            >
-              <ShotBrandAssetPicker
-                label={label}
-                assets={assets}
-                selectedAssetIds={shot.referencedAssets}
-                onChange={(nextAssets) => onUpdateAssets?.(shot._id, nextAssets)}
-              />
+            <div className="flex items-center gap-2 pt-0.5">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenLinkModal?.(shot, scene);
+                }}
+                className={cn(
+                  "h-8 px-3 border-blue-500/40 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20 hover:text-white",
+                  shot.linkedShotId &&
+                    "border-emerald-400/50 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20",
+                )}
+              >
+                <Link2 className="w-4 h-4 mr-1.5" />
+                {shot.linkedShotId ? "Linked" : "Link shot"}
+              </Button>
+              <div onClick={(event) => event.stopPropagation()}>
+                <ShotBrandAssetPicker
+                  label={label}
+                  assets={assets}
+                  selectedAssetIds={shot.referencedAssets}
+                  onChange={(nextAssets) => onUpdateAssets?.(shot._id, nextAssets)}
+                />
+              </div>
             </div>
           </div>
 
@@ -356,6 +375,13 @@ const ShotCard = ({
         </div>
       )}
 
+      {shot.linkedShotId && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+          <Link2 className="w-3 h-3" />
+          <span>Character consistency is linked to another shot&apos;s frame.</span>
+        </div>
+      )}
+
       <ShotImageGrid
         images={previewCleared ? [] : previewImages}
         isLoading={
@@ -402,6 +428,7 @@ export const PromptPlannerCard = ({
   onUpdateShotAssets,
   assets,
   resettingShotIds,
+  onOpenLinkModal,
 }: PromptPlannerCardProps) => {
   const {
     attributes: sceneAttributes,
@@ -522,6 +549,7 @@ export const PromptPlannerCard = ({
               onUpdateAssets={onUpdateShotAssets}
               assets={assets}
               isResetting={resettingShotIds?.includes(shot._id)}
+              onOpenLinkModal={onOpenLinkModal}
             />
           ))}
 

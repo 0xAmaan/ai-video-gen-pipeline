@@ -437,6 +437,30 @@ const StoryboardPage = () => {
     }
   }, [clips?.length]); // Only run when clips array length changes
 
+  // Auto-update project status when all clips are complete
+  useEffect(() => {
+    if (!clips || !convexScenes || !projectId) return;
+
+    // Check if we have clips for all scenes
+    const allScenesHaveClips = convexScenes.length > 0 &&
+      convexScenes.every(scene =>
+        clips.some(clip => clip.sceneId === scene._id)
+      );
+
+    if (!allScenesHaveClips) return;
+
+    // Check if all clips are complete
+    const allComplete = clips.every(clip => clip.status === "complete");
+
+    // Update status if all complete and not already set
+    if (allComplete && projectProgress?.projectStatus !== "video_generated") {
+      updateProjectStatus({
+        projectId,
+        status: "video_generated",
+      }).catch(error => console.error("Failed to update project status:", error));
+    }
+  }, [clips, convexScenes, projectId, projectProgress?.projectStatus, updateProjectStatus]);
+
   if (!projectId) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">

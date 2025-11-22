@@ -182,6 +182,8 @@ export const createSceneShot = mutation({
     description: v.string(),
     initialPrompt: v.string(),
     referencedAssets: v.optional(v.array(v.id("projectAssets"))),
+    linkedShotId: v.optional(v.union(v.id("sceneShots"), v.null())),
+    linkedImageId: v.optional(v.union(v.id("shotImages"), v.null())),
     lastImageGenerationAt: v.optional(v.number()),
     lastImageStatus: v.optional(
       v.union(
@@ -202,6 +204,8 @@ export const createSceneShot = mutation({
       description: args.description,
       initialPrompt: args.initialPrompt,
       referencedAssets: args.referencedAssets,
+      linkedShotId: args.linkedShotId,
+      linkedImageId: args.linkedImageId,
       lastImageGenerationAt: args.lastImageGenerationAt,
       lastImageStatus: args.lastImageStatus,
       createdAt: now,
@@ -219,6 +223,8 @@ export const updateSceneShot = mutation({
     initialPrompt: v.optional(v.string()),
     selectedImageId: v.optional(v.id("shotImages")),
     referencedAssets: v.optional(v.array(v.id("projectAssets"))),
+    linkedShotId: v.optional(v.union(v.id("sceneShots"), v.null())),
+    linkedImageId: v.optional(v.union(v.id("shotImages"), v.null())),
     lastImageGenerationAt: v.optional(v.number()),
     lastImageStatus: v.optional(
       v.union(
@@ -239,6 +245,8 @@ export const updateSceneShot = mutation({
       updates.selectedImageId = args.selectedImageId;
     if (args.referencedAssets !== undefined)
       updates.referencedAssets = args.referencedAssets;
+    if (args.linkedShotId !== undefined) updates.linkedShotId = args.linkedShotId;
+    if (args.linkedImageId !== undefined) updates.linkedImageId = args.linkedImageId;
     if (args.lastImageGenerationAt !== undefined)
       updates.lastImageGenerationAt = args.lastImageGenerationAt;
     if (args.lastImageStatus !== undefined)
@@ -650,13 +658,6 @@ export const syncShotToLegacyScene = mutation({
       throw new Error("Selected image not found or unauthorized");
     }
 
-    console.log("[syncShotToLegacyScene] SELECTED IMAGE DATA:", {
-      selectedImageId: args.selectedImageId,
-      imageUrl: selectedImage.imageUrl,
-      imageStorageId: selectedImage.imageStorageId,
-      replicateImageId: selectedImage.replicateImageId,
-    });
-
     const now = Date.now();
 
     const projectScenes = await ctx.db
@@ -716,14 +717,6 @@ export const syncShotToLegacyScene = mutation({
     const existingScene = scenesByShotId.get(args.shotId);
     let syncedSceneId: Id<"scenes">;
 
-    console.log("[syncShotToLegacyScene] SAVING TO LEGACY SCENE:", {
-      shotId: args.shotId,
-      targetSceneNumber,
-      imageUrl: selectedImage.imageUrl,
-      willUpdate: !!existingScene,
-      existingSceneId: existingScene?._id,
-    });
-
     if (existingScene) {
       await ctx.db.patch(existingScene._id, {
         sceneNumber: targetSceneNumber,
@@ -752,8 +745,6 @@ export const syncShotToLegacyScene = mutation({
         updatedAt: now,
       });
     }
-
-    console.log("[syncShotToLegacyScene] SYNCED SCENE ID:", syncedSceneId);
 
     const latestLegacyScenes = await ctx.db
       .query("scenes")

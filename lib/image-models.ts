@@ -255,22 +255,21 @@ export const IMAGE_MODELS: Record<string, ImageModel> = {
       "Open-source 17B parameter model delivering state-of-the-art artistic and photorealistic results.",
   },
 
-  // Google Nano Banana family
+  // Legacy/fallback
   "nano-banana-pro": {
     id: "google/nano-banana-pro",
     name: "Nano Banana Pro",
-    speed: "fast",
+    speed: "medium",
     quality: "great",
-    cost: "low",
-    bestFor: ["brand-consistency", "quick-generation"],
-    features: ["simple", "fast", "reference-image-support"],
+    cost: "moderate",
+    bestFor: ["brand-fidelity", "prompt-adherence", "image-reference"],
+    features: ["reference-image-support", "upgraded-quality", "fast-iterations"],
     supportsImageInput: true,
-    estimatedCost: 0.004,
+    estimatedCost: 0.01,
     notes:
-      "Supports up to 14 reference images via image_input and matches their aspect ratio automatically.",
+      "Upgraded Nano Banana variant with better prompt adherence and reference image handling. Uses Replicate google/nano-banana-pro.",
   },
 
-  // Legacy/fallback
   "nano-banana": {
     id: "google/nano-banana",
     name: "Nano Banana",
