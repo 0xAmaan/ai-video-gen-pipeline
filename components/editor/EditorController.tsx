@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import VideoEditor, {
   DEFAULT_TIMELINE_TICK_CONFIGS,
   usePlayerControl,
@@ -11,6 +11,10 @@ import { LivePlayerProvider, useLivePlayerContext } from "@twick/live-player";
 import { TimelineProvider, useTimelineContext } from "@twick/timeline";
 import { projectToTimelineJSON, timelineToProject } from "@/lib/editor/twick-adapter";
 import { useProjectStore } from "@/lib/editor/core/project-store";
+import { useSnapManager } from "@/lib/editor/hooks/useSnapManager";
+import { BeatGridOverlay } from "./BeatGridOverlay";
+import { ThumbnailInjector } from "./ThumbnailInjector";
+import { ElementIdInjector } from "./ElementIdInjector";
 
 // Type guard for Twick selected items with IDs
 interface TwickItemWithId {
@@ -31,8 +35,16 @@ const EditorBridge = () => {
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const actions = useProjectStore((state) => state.actions);
+  const selection = useProjectStore((state) => state.selection);
+  const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
   const assets = project?.mediaAssets ?? {};
-  
+
+  // Beat grid support
+  const { beatMarkers } = useSnapManager();
+  const [containerWidth, setContainerWidth] = useState(1200);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // Twick hooks integration
   const { editor, present, changeLog, selectedItem } = useTimelineContext();
   const { togglePlayback } = usePlayerControl();
@@ -63,17 +75,73 @@ const EditorBridge = () => {
   useEffect(() => {
     if (!livePlayerContext) return;
     const { playerState } = livePlayerContext;
-    
+
     // Sync play/pause state
     const isPlaying = playerState?.playing ?? false;
     const storeIsPlaying = useProjectStore.getState().isPlaying;
-    
+
     if (isPlaying !== storeIsPlaying) {
       actions.togglePlayback(isPlaying);
     }
   }, [livePlayerContext, actions]);
 
-  // Expose Twick editor methods to window for debugging and external access
+  // Global keyboard shortcuts for editor operations
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // S key: Split clip at playhead
+      if (event.key === 's' || event.key === 'S') {
+        event.preventDefault();
+        const selectedClipId = selection.clipIds[0];
+        if (selectedClipId) {
+          console.log('[EditorController] Splitting clip at playhead:', selectedClipId);
+          actions.splitAtPlayhead(selectedClipId);
+        } else {
+          console.log('[EditorController] No clip selected for split operation');
+        }
+      }
+
+      // Delete key: Remove selected clip (with ripple edit if enabled)
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        const selectedClipId = selection.clipIds[0];
+        if (selectedClipId) {
+          console.log('[EditorController] Deleting clip:', selectedClipId, 'Ripple:', rippleEditEnabled);
+          // Always use rippleDelete - it handles both ripple and normal deletion
+          // based on the rippleEditEnabled flag check
+          if (rippleEditEnabled) {
+            actions.rippleDelete(selectedClipId);
+          } else {
+            // For non-ripple deletion, we need to use Twick's deleteItem with the selected item
+            if (selectedItem && isItemWithId(selectedItem)) {
+              deleteItem(selectedItem);
+            }
+          }
+        } else {
+          console.log('[EditorController] No clip selected for delete operation');
+        }
+      }
+
+      // R key: Toggle ripple edit mode
+      if (event.key === 'r' || event.key === 'R') {
+        event.preventDefault();
+        console.log('[EditorController] Toggling ripple edit mode');
+        actions.toggleRippleEdit();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selection, rippleEditEnabled, actions, deleteItem, selectedItem]);
+
+  // Expose Twick editor methods and project store actions to window for debugging and external access
   useEffect(() => {
     if (typeof window !== 'undefined' && editor) {
       (window as any).__twickEditor = {
@@ -86,15 +154,22 @@ const EditorBridge = () => {
         undo: handleUndo,
         redo: handleRedo,
         livePlayerContext,
+        // Project store actions for keyboard shortcuts
+        projectStore: {
+          toggleRippleEdit: actions.toggleRippleEdit,
+          splitAtPlayhead: actions.splitAtPlayhead,
+          rippleDelete: actions.rippleDelete,
+          rippleEditEnabled,
+        },
       };
     }
-    
+
     return () => {
       if (typeof window !== 'undefined') {
         delete (window as any).__twickEditor;
       }
     };
-  }, [editor, togglePlayback, addElement, updateElement, splitElement, deleteItem, handleUndo, handleRedo, livePlayerContext]);
+  }, [editor, togglePlayback, addElement, updateElement, splitElement, deleteItem, handleUndo, handleRedo, livePlayerContext, actions, rippleEditEnabled]);
 
   useEffect(() => {
     if (!ready || !project) return;
@@ -133,17 +208,95 @@ const EditorBridge = () => {
     void actions.loadProject(nextProject, { persist: true });
   }, [actions, assets, changeLog, present, project, ready]);
 
+  // Track container width for beat grid overlay
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Observe Twick timeline scroll for beat grid sync
+  useEffect(() => {
+    // Use setTimeout to ensure Twick has rendered
+    const findAndAttachScrollListener = () => {
+      const timelineScrollContainer = document.querySelector('.twick-timeline-scroll-container');
+
+      if (!timelineScrollContainer) {
+        return false;
+      }
+
+      const handleScroll = () => {
+        setScrollLeft(timelineScrollContainer.scrollLeft);
+      };
+
+      timelineScrollContainer.addEventListener('scroll', handleScroll);
+      // Get initial scroll position
+      handleScroll();
+
+      return () => {
+        timelineScrollContainer.removeEventListener('scroll', handleScroll);
+      };
+    };
+
+    // Try immediately
+    let cleanup = findAndAttachScrollListener();
+
+    // If not found, retry with delays
+    if (!cleanup) {
+      const timeouts: NodeJS.Timeout[] = [];
+      [100, 500, 1000].forEach(delay => {
+        timeouts.push(setTimeout(() => {
+          if (!cleanup) {
+            cleanup = findAndAttachScrollListener();
+          }
+        }, delay));
+      });
+
+      return () => {
+        timeouts.forEach(t => clearTimeout(t));
+      };
+    }
+
+    return cleanup;
+  }, []);
+
+  const sequence = project?.sequences[0];
+  const duration = sequence?.duration ?? 300; // Default 5 minutes
+
   return (
-    <div id="twick-timeline-only" className="h-full w-full">
+    <div ref={containerRef} id="twick-timeline-only" className="relative h-full w-full">
+      {/* Timeline thumbnail injectors - add thumbnails to timeline elements */}
+      <ThumbnailInjector />
+      <ElementIdInjector />
+
       <VideoEditor
         editorConfig={{
           videoProps: {
-            width: project?.sequences[0]?.width ?? 1920,
-            height: project?.sequences[0]?.height ?? 1080,
+            width: sequence?.width ?? 1920,
+            height: sequence?.height ?? 1080,
           },
           timelineTickConfigs: DEFAULT_TIMELINE_TICK_CONFIGS,
         }}
       />
+
+      {/* Beat Grid Overlay */}
+      {beatMarkers.length > 0 && (
+        <BeatGridOverlay
+          beatMarkers={beatMarkers}
+          duration={duration}
+          containerWidth={containerWidth}
+          scrollLeft={scrollLeft}
+          zoom={1.5} // Twick's default zoom
+        />
+      )}
     </div>
   );
 };

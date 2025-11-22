@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { KonvaTimeline } from "./KonvaTimeline";
 import { useProjectStore } from "@/lib/editor/core/project-store";
+import { useSnapManager } from "@/lib/editor/hooks/useSnapManager";
 import type { Clip, Sequence } from "@/lib/editor/types";
 
 const findClipAndTrack = (sequence: Sequence, clipId: string) => {
@@ -21,6 +22,9 @@ export const LegacyEditorController = () => {
   const currentTime = useProjectStore((state) => state.currentTime);
   const [containerWidth, setContainerWidth] = useState(1200);
   const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Get beat markers and snap settings from audio analysis
+  const { beatMarkers, snapEnabled } = useSnapManager();
 
   const sequence = useMemo(
     () =>
@@ -104,6 +108,8 @@ export const LegacyEditorController = () => {
         onScrub={(time) => actions.setCurrentTime(time)}
         onScrubStart={() => actions.togglePlayback(false)}
         onScrubEnd={() => undefined}
+        beatMarkers={beatMarkers}
+        snapToBeats={snapEnabled}
         magneticSnapEnabled
         magneticSnapThreshold={0.1}
       />

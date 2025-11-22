@@ -145,11 +145,14 @@ export interface ProjectStoreState {
   isPlaying: boolean;
   currentTime: number;
   history: HistoryState;
-  
+
   // Tri-State Architecture (PRD Section 5.2)
   dirty: boolean; // Has unsaved changes in session state
   lastSavedSignature: string | null; // Hash of last persisted state
-  
+
+  // Editor modes
+  rippleEditEnabled: boolean;
+
   actions: {
     hydrate: (projectId?: string) => Promise<void>;
     reset: () => void;
@@ -171,6 +174,7 @@ export interface ProjectStoreState {
     redo: () => void;
     save: () => Promise<void>; // Explicit save to Convex (PRD Tri-State)
     markDirty: () => void; // Mark session as dirty without persisting
+    toggleRippleEdit: () => void;
   };
 }
 
@@ -181,11 +185,14 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
   history: { past: [], future: [] },
-  
+
   // Tri-State Architecture (PRD Section 5.2)
   dirty: false,
   lastSavedSignature: null,
-  
+
+  // Editor modes
+  rippleEditEnabled: false,
+
   actions: {
     hydrate: async (projectId?: string) => {
       const snapshot = await ProjectPersistence.load(projectId);
@@ -473,6 +480,9 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     
     // Mark session state as dirty without triggering persistence
     markDirty: () => set({ dirty: true }),
+
+    // Toggle ripple edit mode
+    toggleRippleEdit: () => set((state) => ({ rippleEditEnabled: !state.rippleEditEnabled })),
   },
 }));
 

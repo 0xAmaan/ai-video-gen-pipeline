@@ -97,6 +97,11 @@ const clipToElement = (clip: Clip, asset?: MediaAssetMeta): ElementJSON => {
       trimEnd,
       opacity,
       volume,
+      // Timeline preview data (matching legacy editor)
+      thumbnails: asset?.thumbnails ?? [],
+      thumbnailCount: asset?.thumbnailCount ?? 0,
+      assetName: asset?.name ?? "",
+      assetType: asset?.type,
     },
   };
 };

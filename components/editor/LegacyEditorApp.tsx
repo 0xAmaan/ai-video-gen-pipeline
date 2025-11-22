@@ -9,6 +9,7 @@ import { FilterLibrary } from "@/components/editor/FilterLibrary";
 import { ExportModal } from "@/components/ExportModal";
 import { KonvaTimeline } from "@/components/editor/KonvaTimeline";
 import { useProjectStore } from "@/lib/editor/core/project-store";
+import { useSnapManager } from "@/lib/editor/hooks/useSnapManager";
 import { getMediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
 import { playbackUrlForAsset } from "@/lib/editor/io/asset-url";
 import { PreviewRenderer } from "@/lib/editor/playback/preview-renderer";
@@ -43,6 +44,9 @@ export const LegacyEditorApp = ({
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
   const actions = useProjectStore((state) => state.actions);
+  
+  // Get beat markers and snap settings from audio analysis
+  const { beatMarkers, snapEnabled } = useSnapManager();
 
   const mediaManager = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -310,6 +314,8 @@ export const LegacyEditorApp = ({
             onScrub={(time) => rendererRef.current?.seek(time)}
             onScrubStart={() => rendererRef.current?.pause()}
             onScrubEnd={() => undefined}
+            beatMarkers={beatMarkers}
+            snapToBeats={snapEnabled}
             magneticSnapEnabled
             magneticSnapThreshold={0.1}
           />
