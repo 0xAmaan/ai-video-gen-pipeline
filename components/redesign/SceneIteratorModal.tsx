@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ChatInput } from "@/components/redesign/ChatInput";
 import { IterationRow } from "@/components/redesign/IterationRow";
 import { Check, ArrowDown, AlertCircle } from "lucide-react";
@@ -51,6 +52,7 @@ export const SceneIteratorModal = ({
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [isSubmittingSelection, setIsSubmittingSelection] = useState(false);
   const chatInputRef = useRef<HTMLDivElement | null>(null);
+  const pendingIterationRef = useRef<HTMLDivElement | null>(null);
 
   const groupedIterations = useMemo<GroupedIteration[]>(() => {
     if (!shotData?.images) return [];
@@ -102,6 +104,18 @@ export const SceneIteratorModal = ({
       }, 300);
     }
   }, [isOpen, selectedImageId]);
+
+  // Auto-scroll to pending iteration skeleton when generation starts
+  useEffect(() => {
+    if (isGenerating && groupedIterations.length > 0 && pendingIterationRef.current) {
+      setTimeout(() => {
+        pendingIterationRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest"
+        });
+      }, 100);
+    }
+  }, [isGenerating, groupedIterations.length]);
 
   const triggerGeneration = async (options?: {
     parentImageId?: Id<"shotImages">;
@@ -240,13 +254,23 @@ export const SceneIteratorModal = ({
         <div className="flex-1 overflow-y-auto px-8 py-6 pb-24">
           <div className="space-y-10 mb-8">
             {groupedIterations.length === 0 && isGenerating ? (
-              <div className="flex flex-col items-center justify-center min-h-[400px] gap-6">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[var(--color-primary)]"></div>
-                <p className="text-xl text-gray-300 font-medium">
-                  Generating images...
-                </p>
-                <p className="text-sm text-gray-500">
-                  Creating 3 variations for your shot
+              <div className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#111] border border-gray-800 flex items-center justify-center">
+                    <Skeleton className="w-4 h-4 rounded-full" />
+                  </div>
+                  <Skeleton className="h-4 w-24" />
+                </div>
+                <div className="grid grid-cols-3 gap-6">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="space-y-3">
+                      <Skeleton className="w-full aspect-video rounded-2xl" />
+                      <Skeleton className="h-4 w-20" />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-gray-500 text-center">
+                  Creating 3 variations for your shot...
                 </p>
               </div>
             ) : groupedIterations.length === 0 ? (
@@ -254,40 +278,95 @@ export const SceneIteratorModal = ({
                 No preview generated yet. Close this modal and click &quot;Generate previews&quot; first.
               </div>
             ) : (
-              groupedIterations.map((iteration, index) => (
-                <div key={iteration.iterationNumber} className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#111] border border-gray-800 flex items-center justify-center text-sm font-semibold text-gray-300">
-                      {iteration.iterationNumber}
+              <>
+                {groupedIterations.map((iteration, index) => (
+                  <div key={iteration.iterationNumber} className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#111] border border-gray-800 flex items-center justify-center text-sm font-semibold text-gray-300">
+                        {iteration.iterationNumber}
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        Iteration {iteration.iterationNumber}
+                      </span>
                     </div>
-                    <span className="text-xs text-gray-500">
-                      Iteration {iteration.iterationNumber}
-                    </span>
+
+                    <IterationRow
+                      iterationNumber={iteration.iterationNumber}
+                      images={iteration.images}
+                      parentImage={iteration.parentImage}
+                      selectedImageId={selectedImageId}
+                      onSelectImage={handleSelectImage}
+                    />
+
+                    {index < groupedIterations.length - 1 && (
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1 border-t border-gray-900" />
+                        <div className="flex items-center gap-3 bg-[#0b0b0b] border border-gray-900 rounded-2xl px-4 py-3">
+                          <ArrowDown className="w-4 h-4 text-[var(--color-primary)]" />
+                          <span className="text-sm text-gray-300">
+                            {groupedIterations[index + 1].prompt ||
+                              "Prompt unavailable"}
+                          </span>
+                        </div>
+                        <div className="flex-1 border-t border-gray-900" />
+                      </div>
+                    )}
                   </div>
+                ))}
 
-                  <IterationRow
-                    iterationNumber={iteration.iterationNumber}
-                    images={iteration.images}
-                    parentImage={iteration.parentImage}
-                    selectedImageId={selectedImageId}
-                    onSelectImage={handleSelectImage}
-                  />
-
-                  {index < groupedIterations.length - 1 && (
+                {/* Pending iteration skeleton row - shown when generating new iteration */}
+                {isGenerating && groupedIterations.length > 0 && (
+                  <div ref={pendingIterationRef} className="space-y-4">
+                    {/* Prompt divider before new iteration */}
                     <div className="flex items-center gap-4">
                       <div className="flex-1 border-t border-gray-900" />
                       <div className="flex items-center gap-3 bg-[#0b0b0b] border border-gray-900 rounded-2xl px-4 py-3">
                         <ArrowDown className="w-4 h-4 text-[var(--color-primary)]" />
                         <span className="text-sm text-gray-300">
-                          {groupedIterations[index + 1].prompt ||
-                            "Prompt unavailable"}
+                          Generating new iteration...
                         </span>
                       </div>
                       <div className="flex-1 border-t border-gray-900" />
                     </div>
-                  )}
-                </div>
-              ))
+
+                    {/* New iteration header */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#111] border border-gray-800 flex items-center justify-center">
+                        <Skeleton className="w-4 h-4 rounded-full" />
+                      </div>
+                      <Skeleton className="h-4 w-24" />
+                    </div>
+
+                    {/* Skeleton iteration row */}
+                    <div className="w-full">
+                      <div className="flex gap-6">
+                        {/* Parent image skeleton */}
+                        <div className="flex-shrink-0 w-64">
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-12" />
+                            <Skeleton className="w-full aspect-video rounded-xl" />
+                          </div>
+                        </div>
+
+                        {/* Arrow */}
+                        <div className="flex items-center justify-center flex-shrink-0">
+                          <ArrowDown className="w-6 h-6 text-gray-600 rotate-[-90deg]" />
+                        </div>
+
+                        {/* Variants grid skeleton */}
+                        <div className="flex-1 grid grid-cols-3 gap-6">
+                          {[1, 2, 3].map((i) => (
+                            <div key={i} className="space-y-3">
+                              <Skeleton className="w-full aspect-video rounded-xl" />
+                              <Skeleton className="h-4 w-20" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -305,7 +384,7 @@ export const SceneIteratorModal = ({
               )}
               {isGenerating && (
                 <div className="text-sm text-gray-400 flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--color-primary)]"></div>
+                  <Skeleton className="h-4 w-4 rounded-full" />
                   Generating images...
                 </div>
               )}

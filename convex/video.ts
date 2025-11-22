@@ -848,6 +848,36 @@ export const getVideoClips = query({
   },
 });
 
+export const clearVideoClips = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify project ownership
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    // Delete all video clips for this project
+    const clips = await ctx.db
+      .query("videoClips")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    for (const clip of clips) {
+      await ctx.db.delete(clip._id);
+    }
+
+    return clips.length;
+  },
+});
+
 // Create final video record
 export const createFinalVideo = mutation({
   args: {

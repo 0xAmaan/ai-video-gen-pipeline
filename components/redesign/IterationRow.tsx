@@ -31,7 +31,7 @@ const ImageWithSkeleton = ({
   return (
     <>
       {isLoading && (
-        <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
+        <Skeleton className="absolute inset-0 w-full h-full rounded-xl bg-gray-800/80" />
       )}
       {src ? (
         <img

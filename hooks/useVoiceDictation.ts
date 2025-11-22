@@ -44,6 +44,19 @@ export const useVoiceDictation = (
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const finalTranscriptRef = useRef("");
   const existingTextRef = useRef(""); // Store text that existed before dictation started
+  const startTimeRef = useRef<number>(0); // Track when recognition started
+  const retryCountRef = useRef(0); // Track retry attempts
+  const autoRestartRef = useRef(false); // Flag to prevent manual stop from restarting
+
+  // Detect Brave browser
+  const isBrave = useCallback(() => {
+    return (
+      typeof window !== "undefined" &&
+      // @ts-ignore - Brave-specific API
+      navigator.brave &&
+      typeof navigator.brave.isBrave === "function"
+    );
+  }, []);
 
   // Check for browser support
   useEffect(() => {
@@ -51,6 +64,13 @@ export const useVoiceDictation = (
       const SpeechRecognition =
         window.SpeechRecognition || window.webkitSpeechRecognition;
       setIsSupported(!!SpeechRecognition);
+
+      // Log browser info for debugging
+      if (isBrave()) {
+        console.log(
+          "[VoiceDictation] Brave browser detected - speech recognition may require Shields to be disabled",
+        );
+      }
 
       if (SpeechRecognition && !recognitionRef.current) {
         const recognition = new SpeechRecognition();
@@ -60,8 +80,29 @@ export const useVoiceDictation = (
         recognition.maxAlternatives = 1;
 
         recognition.onstart = () => {
+          startTimeRef.current = Date.now();
+          console.log("[VoiceDictation] Recognition started");
           setIsListening(true);
           setError(null);
+        };
+
+        recognition.onaudiostart = () => {
+          console.log("[VoiceDictation] Audio capture started");
+        };
+
+        recognition.onaudioend = () => {
+          const duration = Date.now() - startTimeRef.current;
+          console.log(
+            `[VoiceDictation] Audio capture ended (duration: ${duration}ms)`,
+          );
+        };
+
+        recognition.onspeechstart = () => {
+          console.log("[VoiceDictation] Speech detected");
+        };
+
+        recognition.onspeechend = () => {
+          console.log("[VoiceDictation] Speech ended");
         };
 
         recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -93,6 +134,12 @@ export const useVoiceDictation = (
         };
 
         recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+          const duration = Date.now() - startTimeRef.current;
+          console.error(
+            `[VoiceDictation] Error: ${event.error} (duration: ${duration}ms)`,
+            event,
+          );
+
           let errorMessage = "Voice recognition error occurred";
 
           switch (event.error) {
@@ -100,20 +147,37 @@ export const useVoiceDictation = (
               errorMessage = "No speech detected. Please try again.";
               break;
             case "audio-capture":
-              errorMessage = "No microphone found. Please check your settings.";
+              errorMessage = isBrave()
+                ? "Microphone blocked. Try disabling Brave Shields for this site."
+                : "No microphone found. Please check your settings.";
               break;
             case "not-allowed":
-              errorMessage = "Microphone access denied. Please allow access.";
+              errorMessage = isBrave()
+                ? "Microphone access denied. Check Brave Settings > Privacy and security > Site settings > Microphone."
+                : "Microphone access denied. Please allow access.";
               break;
             case "network":
-              errorMessage = "Network error occurred.";
+              errorMessage = isBrave()
+                ? "⚠️ Brave Shields is blocking speech recognition. Click the shield icon in your address bar and turn Shields OFF for this site, then try again."
+                : "Network error occurred.";
+              console.warn(
+                "[VoiceDictation] Network error - if using Brave, disable Shields by clicking the shield icon in the address bar",
+              );
+              break;
+            case "aborted":
+              errorMessage = isBrave()
+                ? "Speech recognition was aborted. This often happens with Brave Shields enabled."
+                : "Speech recognition was aborted.";
               break;
             default:
-              errorMessage = `Error: ${event.error}`;
+              errorMessage = isBrave()
+                ? `Error: ${event.error}. Try disabling Brave Shields for this site.`
+                : `Error: ${event.error}`;
           }
 
           setError(errorMessage);
           setIsListening(false);
+          autoRestartRef.current = false; // Don't auto-restart on error
 
           if (onError) {
             onError(errorMessage);
@@ -121,7 +185,49 @@ export const useVoiceDictation = (
         };
 
         recognition.onend = () => {
-          setIsListening(false);
+          const duration = Date.now() - startTimeRef.current;
+          console.log(
+            `[VoiceDictation] Recognition ended (duration: ${duration}ms, retries: ${retryCountRef.current})`,
+          );
+
+          // Auto-restart if ended prematurely (within 3 seconds) and we haven't tried too many times
+          // This helps with Brave's tendency to immediately close recognition
+          if (
+            autoRestartRef.current &&
+            duration < 3000 &&
+            retryCountRef.current < 3
+          ) {
+            console.log(
+              `[VoiceDictation] Premature end detected (${duration}ms), auto-restarting...`,
+            );
+            retryCountRef.current++;
+
+            setTimeout(() => {
+              if (recognitionRef.current && autoRestartRef.current) {
+                try {
+                  recognitionRef.current.start();
+                } catch (err) {
+                  console.error("[VoiceDictation] Auto-restart failed:", err);
+                  setIsListening(false);
+                  autoRestartRef.current = false;
+                }
+              }
+            }, 200); // Small delay before restart
+          } else {
+            setIsListening(false);
+            autoRestartRef.current = false;
+            retryCountRef.current = 0;
+
+            // Show Brave-specific guidance if we hit retry limit
+            if (retryCountRef.current >= 3 && isBrave()) {
+              const braveMsg =
+                "Speech recognition keeps stopping. Try disabling Brave Shields for this site (click the shield icon in the address bar).";
+              setError(braveMsg);
+              if (onError) {
+                onError(braveMsg);
+              }
+            }
+          }
         };
 
         recognitionRef.current = recognition;
@@ -147,6 +253,8 @@ export const useVoiceDictation = (
         finalTranscriptRef.current = "";
         setTranscript(existingText); // Start with existing text
         setError(null);
+        autoRestartRef.current = true; // Enable auto-restart for this session
+        retryCountRef.current = 0; // Reset retry counter
         recognitionRef.current.start();
       } catch (err) {
         console.error("Error starting recognition:", err);
@@ -157,6 +265,7 @@ export const useVoiceDictation = (
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
+      autoRestartRef.current = false; // Disable auto-restart when manually stopping
       recognitionRef.current.stop();
     }
   }, [isListening]);

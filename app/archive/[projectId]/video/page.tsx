@@ -354,6 +354,7 @@ const VideoPage = () => {
           await updateVideoClip({
             clipId,
             status: "failed",
+            errorMessage: result.errorMessage || "Video generation failed",
           });
           activeVideoPolls.current.delete(clipId);
           console.error("[VideoPage] Clip failed while polling", {
@@ -407,13 +408,84 @@ const VideoPage = () => {
 
   // Generate video clips when page loads
   useEffect(() => {
+    console.log("[TRACE] ========== VIDEO PAGE EFFECT TRIGGERED ==========");
+    console.log("[TRACE] Convex scenes:", convexScenes.length);
+    console.log("[TRACE] Clips:", clips?.length || 0);
+    console.log("[TRACE] isGenerating:", isGenerating);
+    console.log("[TRACE] hasStartedGeneration:", hasStartedGeneration.current);
+
+    // Check if we have stale clips from a previous generation
+    // This happens when scenes have different redesignShotIds than the clips' sceneIds
+    if (convexScenes.length > 0 && clips && clips.length > 0) {
+      const sceneIds = new Set(convexScenes.map(s => s._id));
+      const staleClips = clips.filter(c => !sceneIds.has(c.sceneId));
+
+      if (staleClips.length > 0) {
+        console.warn("[TRACE] ⚠️ FOUND STALE CLIPS - clips reference scenes that no longer exist");
+        console.warn("[TRACE] Stale clip count:", staleClips.length);
+        console.warn("[TRACE] This usually means scenes were re-synced. Need to clear and regenerate.");
+      }
+
+      // Check if ALL clips are stale (complete mismatch)
+      if (clips.length > 0 && clips.every(c => !sceneIds.has(c.sceneId))) {
+        console.error("[TRACE] ✗✗✗ ALL CLIPS ARE STALE - COMPLETE MISMATCH ✗✗✗");
+        console.error("[TRACE] Scene IDs:", Array.from(sceneIds));
+        console.error("[TRACE] Clip scene IDs:", clips.map(c => c.sceneId));
+        console.error("[TRACE] The scenes table was updated but old clips remain. Delete old clips or reset the project.");
+      }
+    }
+
+    // Check if all scenes have imageUrls before generating
+    const allScenesHaveImages = convexScenes.every(
+      (scene) => scene.imageUrl && scene.imageUrl.length > 0
+    );
+
+    console.log("[TRACE] allScenesHaveImages check:", allScenesHaveImages);
+    console.log("[TRACE] Scene imageUrl status:");
+    convexScenes.forEach((s, i) => {
+      console.log(`[TRACE]   Scene ${i + 1} (${s.sceneNumber}):`, {
+        _id: s._id,
+        hasImageUrl: !!s.imageUrl,
+        imageUrlLength: s.imageUrl?.length || 0,
+        imageUrlFULL: s.imageUrl || "NONE",
+        imageUrlPreview: s.imageUrl?.substring(0, 80) || "NONE",
+        redesignShotId: s.redesignShotId,
+      });
+    });
+
     const shouldGenerate =
       convexScenes.length > 0 &&
+      allScenesHaveImages &&
       clips?.length === 0 &&
       !isGenerating &&
       !hasStartedGeneration.current;
 
+    console.log("[TRACE] shouldGenerate:", shouldGenerate, {
+      hasScenes: convexScenes.length > 0,
+      allScenesHaveImages,
+      noClips: clips?.length === 0,
+      notGenerating: !isGenerating,
+      notStarted: !hasStartedGeneration.current,
+    });
+
+    if (!shouldGenerate && convexScenes.length > 0 && !allScenesHaveImages) {
+      console.error("[TRACE] ✗✗✗ CANNOT GENERATE - MISSING IMAGES ✗✗✗");
+      console.warn("[VideoPage] Cannot generate - some scenes missing imageUrl", {
+        scenes: convexScenes.map((s) => ({
+          sceneNumber: s.sceneNumber,
+          hasImage: Boolean(s.imageUrl),
+          imageUrl: s.imageUrl,
+        })),
+      });
+    }
+
+    if (!shouldGenerate && convexScenes.length > 0 && clips && clips.length > 0) {
+      console.log("[TRACE] ⏸️ NOT GENERATING - Clips already exist");
+      console.log("[TRACE] To regenerate, you need to delete existing clips first");
+    }
+
     if (shouldGenerate) {
+      console.log("[TRACE] ✓✓✓ STARTING GENERATION ✓✓✓");
       hasStartedGeneration.current = true;
       setIsGenerating(true);
       console.log("[VideoPage] Auto-starting video generation", {
@@ -465,11 +537,16 @@ const VideoPage = () => {
 
   const generateVideoClips = async () => {
     try {
-      console.log(
-        "Starting video clip generation for",
-        convexScenes.length,
-        "scenes",
-      );
+      console.log("[TRACE] ========== STARTING VIDEO GENERATION ==========");
+      console.log("[TRACE] Scene count:", convexScenes.length);
+      console.log("[TRACE] Raw scenes from Convex:", convexScenes.map(s => ({
+        _id: s._id,
+        sceneNumber: s.sceneNumber,
+        imageUrl: s.imageUrl,
+        hasImageUrl: !!s.imageUrl,
+        imageUrlLength: s.imageUrl?.length || 0,
+        redesignShotId: s.redesignShotId,
+      })));
 
       if (modelSelectionEnabled && selectedVideoModel) {
         try {
@@ -491,7 +568,27 @@ const VideoPage = () => {
         description: scene.description,
         duration: scene.duration,
       }));
-      console.log("[VideoPage] Prepared scenes payload", scenesData);
+
+      console.log("[TRACE] Prepared scenes payload for API:");
+      scenesData.forEach((scene, i) => {
+        console.log(`[TRACE] Scene ${i + 1}:`, {
+          sceneNumber: scene.sceneNumber,
+          hasImageUrl: !!scene.imageUrl,
+          imageUrlLength: scene.imageUrl.length,
+          imageUrlFULL: scene.imageUrl,
+          imageUrlPreview: scene.imageUrl ? scene.imageUrl.substring(0, 80) + "..." : "EMPTY",
+        });
+      });
+
+      const scenesWithoutImages = scenesData.filter(s => !s.imageUrl || s.imageUrl.length === 0);
+      if (scenesWithoutImages.length > 0) {
+        console.error("[TRACE] ✗✗✗ SCENES WITHOUT IMAGES ✗✗✗", {
+          count: scenesWithoutImages.length,
+          sceneNumbers: scenesWithoutImages.map(s => s.sceneNumber),
+        });
+      } else {
+        console.log("[TRACE] ✓ All scenes have imageUrl");
+      }
 
       // Call API to create Replicate predictions
       console.log("[VideoPage] Calling /api/generate-all-clips", {
@@ -610,6 +707,42 @@ const VideoPage = () => {
           >
             Back to Storyboard
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if scenes are missing images (sync may be in progress)
+  const scenesWithoutImages = convexScenes.filter(
+    (scene) => !scene.imageUrl || scene.imageUrl.length === 0
+  );
+
+  if (scenesWithoutImages.length > 0 && clips?.length === 0) {
+    console.warn("[VideoPage] Some scenes missing imageUrl - sync may be in progress", {
+      scenesWithoutImages: scenesWithoutImages.map((s) => s.sceneNumber),
+    });
+    return (
+      <div className="container mx-auto px-4 py-24">
+        <div className="max-w-2xl mx-auto text-center bg-muted/30 border border-muted rounded-3xl p-10 space-y-4">
+          <h1 className="text-2xl font-semibold">Preparing scenes...</h1>
+          <p className="text-muted-foreground">
+            {scenesWithoutImages.length} scene{scenesWithoutImages.length > 1 ? 's are' : ' is'} still being prepared for video generation.
+            This usually takes just a moment. If this persists, please go back to the storyboard and ensure all shots have selected images.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-full text-sm font-semibold"
+              onClick={() => window.location.reload()}
+            >
+              Refresh Page
+            </button>
+            <button
+              className="px-6 py-3 border border-muted-foreground/20 rounded-full text-sm font-semibold"
+              onClick={() => router.push(`/${projectId}/storyboard`)}
+            >
+              Back to Storyboard
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -624,6 +624,13 @@ export const syncShotToLegacyScene = mutation({
       throw new Error("Selected image not found or unauthorized");
     }
 
+    console.log("[syncShotToLegacyScene] SELECTED IMAGE DATA:", {
+      selectedImageId: args.selectedImageId,
+      imageUrl: selectedImage.imageUrl,
+      storageId: selectedImage.storageId,
+      replicateImageId: selectedImage.replicateImageId,
+    });
+
     const now = Date.now();
 
     const projectScenes = await ctx.db
@@ -639,18 +646,17 @@ export const syncShotToLegacyScene = mutation({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
     const sortedShots = allShots.sort((a, b) => {
-      const sceneNumberA = sceneOrderMap.get(a.sceneId) ?? Number.MAX_SAFE_INTEGER;
-      const sceneNumberB = sceneOrderMap.get(b.sceneId) ?? Number.MAX_SAFE_INTEGER;
+      const sceneNumberA =
+        sceneOrderMap.get(a.sceneId) ?? Number.MAX_SAFE_INTEGER;
+      const sceneNumberB =
+        sceneOrderMap.get(b.sceneId) ?? Number.MAX_SAFE_INTEGER;
       if (sceneNumberA !== sceneNumberB) {
         return sceneNumberA - sceneNumberB;
       }
       return a.shotNumber - b.shotNumber;
     });
 
-    const desiredSceneNumbers = new Map<
-      Id<"sceneShots">,
-      number
-    >();
+    const desiredSceneNumbers = new Map<Id<"sceneShots">, number>();
     sortedShots.forEach((shotDoc, index) => {
       desiredSceneNumbers.set(shotDoc._id, index + 1);
     });
@@ -664,7 +670,10 @@ export const syncShotToLegacyScene = mutation({
       (scene) => scene.redesignShotId !== undefined,
     );
     const scenesByShotId = new Map(
-      redesignScenes.map((scene) => [scene.redesignShotId as Id<"sceneShots">, scene]),
+      redesignScenes.map((scene) => [
+        scene.redesignShotId as Id<"sceneShots">,
+        scene,
+      ]),
     );
 
     const targetSceneNumber =
@@ -680,6 +689,14 @@ export const syncShotToLegacyScene = mutation({
 
     const existingScene = scenesByShotId.get(args.shotId);
     let syncedSceneId: Id<"scenes">;
+
+    console.log("[syncShotToLegacyScene] SAVING TO LEGACY SCENE:", {
+      shotId: args.shotId,
+      targetSceneNumber,
+      imageUrl: selectedImage.imageUrl,
+      willUpdate: !!existingScene,
+      existingSceneId: existingScene?._id,
+    });
 
     if (existingScene) {
       await ctx.db.patch(existingScene._id, {
@@ -709,6 +726,8 @@ export const syncShotToLegacyScene = mutation({
         updatedAt: now,
       });
     }
+
+    console.log("[syncShotToLegacyScene] SYNCED SCENE ID:", syncedSceneId);
 
     const latestLegacyScenes = await ctx.db
       .query("scenes")

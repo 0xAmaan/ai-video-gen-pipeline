@@ -13,6 +13,8 @@ import {
   useProjectProgress,
   useSyncShotToLegacyScene,
 } from "@/lib/hooks/useProjectRedesign";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 const StoryboardPage = () => {
   const params = useParams<{ projectId: string }>();
@@ -22,15 +24,18 @@ const StoryboardPage = () => {
   const allMasterShotsSet = useAllMasterShotsSet(projectId);
   const projectProgress = useProjectProgress(projectId);
   const selectionsComplete = Boolean(projectProgress?.isSelectionComplete);
-  const canGenerateVideo = Boolean(projectId) && selectionsComplete;
   const syncShotToLegacyScene = useSyncShotToLegacyScene();
+  const clearVideoClips = useMutation(api.video.clearVideoClips);
   const syncedShotIds = useRef<Set<string>>(new Set());
+  const [isSyncing, setIsSyncing] = useState(false);
+  const canGenerateVideo = Boolean(projectId) && selectionsComplete && !isSyncing;
 
   if (typeof window !== "undefined") {
     console.log("[StoryboardPage] projectId", projectId);
     console.log("[StoryboardPage] projectProgress", projectProgress);
     console.log("[StoryboardPage] storyboardRows", storyboardRows);
     console.log("[StoryboardPage] selectionsComplete", selectionsComplete);
+    console.log("[StoryboardPage] isSyncing", isSyncing);
   }
 
   const [selectedSceneId, setSelectedSceneId] =
@@ -48,31 +53,100 @@ const StoryboardPage = () => {
   useEffect(() => {
     if (!storyboardRows || !projectId) return;
 
-    storyboardRows.forEach((row) => {
-      row.shots.forEach((shotWrapper) => {
-        if (!shotWrapper.selectedImage) return;
-        const shotId = shotWrapper.shot._id;
-        if (syncedShotIds.current.has(shotId)) return;
+    const syncAllShots = async () => {
+      const shotsToSync: Array<{
+        projectId: Id<"videoProjects">;
+        sceneId: Id<"projectScenes">;
+        shotId: Id<"sceneShots">;
+        selectedImageId: Id<"shotImages">;
+      }> = [];
 
-        syncedShotIds.current.add(shotId);
-        console.log("[StoryboardPage] Syncing shot to legacy scene", {
-          projectId,
-          sceneId: row.scene._id,
-          shotId,
-          imageId: shotWrapper.selectedImage._id,
+      // Collect all shots that need syncing
+      console.log("[TRACE] Starting shot collection for sync", {
+        rowCount: storyboardRows.length,
+      });
+
+      storyboardRows.forEach((row, rowIndex) => {
+        console.log(`[TRACE] Row ${rowIndex}: scene ${row.scene.sceneNumber}`, {
+          shotCount: row.shots.length,
         });
 
-        syncShotToLegacyScene({
-          projectId,
-          sceneId: row.scene._id,
-          shotId,
-          selectedImageId: shotWrapper.selectedImage._id,
-        }).catch((error) => {
-          console.error("[StoryboardPage] Failed syncing shot", error);
-          syncedShotIds.current.delete(shotId);
+        row.shots.forEach((shotWrapper, shotIndex) => {
+          console.log(`[TRACE] Row ${rowIndex}, Shot ${shotIndex}:`, {
+            shotId: shotWrapper.shot._id,
+            shotNumber: shotWrapper.shot.shotNumber,
+            hasSelectedImage: !!shotWrapper.selectedImage,
+            selectedImageId: shotWrapper.selectedImage?._id,
+            imageUrl: shotWrapper.selectedImage?.imageUrl,
+          });
+
+          if (!shotWrapper.selectedImage) {
+            console.warn(`[TRACE] Shot ${shotWrapper.shot._id} has NO selectedImage - SKIPPING SYNC`);
+            return;
+          }
+
+          const shotId = shotWrapper.shot._id;
+          if (syncedShotIds.current.has(shotId)) {
+            console.log(`[TRACE] Shot ${shotId} already synced - SKIPPING`);
+            return;
+          }
+
+          const syncItem = {
+            projectId,
+            sceneId: row.scene._id,
+            shotId,
+            selectedImageId: shotWrapper.selectedImage._id,
+          };
+
+          console.log(`[TRACE] Adding shot to sync queue:`, {
+            ...syncItem,
+            imageUrl: shotWrapper.selectedImage.imageUrl,
+            storageId: shotWrapper.selectedImage.storageId,
+            FULL_IMAGE_OBJECT: shotWrapper.selectedImage,
+          });
+
+          shotsToSync.push(syncItem);
         });
       });
-    });
+
+      console.log("[TRACE] Shot collection complete", {
+        totalToSync: shotsToSync.length,
+        shotsData: shotsToSync,
+      });
+
+      if (shotsToSync.length === 0) {
+        console.log("[TRACE] No shots to sync - exiting");
+        return;
+      }
+
+      setIsSyncing(true);
+      console.log("[StoryboardPage] Starting sync of", shotsToSync.length, "shots");
+
+      try {
+        // Sync all shots in parallel and wait for all to complete
+        await Promise.all(
+          shotsToSync.map(async (syncData, index) => {
+            try {
+              syncedShotIds.current.add(syncData.shotId);
+              console.log(`[TRACE] Syncing shot ${index + 1}/${shotsToSync.length}:`, syncData);
+              await syncShotToLegacyScene(syncData);
+              console.log(`[TRACE] ✓ Shot ${index + 1} synced successfully`);
+            } catch (error) {
+              console.error(`[TRACE] ✗ Shot ${index + 1} sync FAILED:`, error);
+              syncedShotIds.current.delete(syncData.shotId);
+              throw error;
+            }
+          })
+        );
+        console.log("[TRACE] ✓✓✓ ALL SHOTS SYNCED SUCCESSFULLY ✓✓✓");
+      } catch (error) {
+        console.error("[TRACE] ✗✗✗ SHOT SYNC ERROR ✗✗✗", error);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    syncAllShots();
   }, [storyboardRows, projectId, syncShotToLegacyScene]);
 
   if (!projectId) {
@@ -109,8 +183,12 @@ const StoryboardPage = () => {
             projectId={projectId}
             storyboardLocked={false}
             storyboardLockMessage={lockMessage}
-            videoLocked={!selectionsComplete}
-            videoLockMessage="Select master shots for every scene to unlock video generation"
+            videoLocked={!selectionsComplete || isSyncing}
+            videoLockMessage={
+              isSyncing
+                ? "Preparing scenes for video generation..."
+                : "Select master shots for every scene to unlock video generation"
+            }
             editorLocked={projectProgress?.projectStatus !== "video_generated"}
             editorLockMessage="Generate video clips before editing"
           />
@@ -127,16 +205,35 @@ const StoryboardPage = () => {
             <Button
               className="bg-white text-black hover:bg-gray-200"
               disabled={!canGenerateVideo}
-              onClick={() => {
+              onClick={async () => {
                 console.log("[StoryboardPage] Generate Video clicked", {
                   projectId,
                   canGenerateVideo,
                   selectionsComplete,
+                  isSyncing,
                 });
+
+                // Wait for any ongoing sync to complete before navigating
+                if (isSyncing) {
+                  console.log("[StoryboardPage] Waiting for sync to complete...");
+                  return;
+                }
+
+                // Clear old video clips before navigating
+                if (projectId) {
+                  console.log("[StoryboardPage] Clearing old video clips...");
+                  try {
+                    const clearedCount = await clearVideoClips({ projectId });
+                    console.log(`[StoryboardPage] Cleared ${clearedCount} old clips`);
+                  } catch (error) {
+                    console.error("[StoryboardPage] Failed to clear clips:", error);
+                  }
+                }
+
                 projectId && router.push(`/${projectId}/video`);
               }}
             >
-              Generate Video
+              {isSyncing ? "Preparing..." : "Generate Video"}
             </Button>
           </div>
         </div>
