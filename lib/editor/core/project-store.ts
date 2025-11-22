@@ -169,6 +169,7 @@ export interface ProjectStoreState {
     trimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
     splitClip: (clipId: string, offset: number) => void;
     splitAtPlayhead: (clipId: string) => void;
+    deleteClip: (clipId: string) => void;
     rippleDelete: (clipId: string) => void;
     undo: () => void;
     redo: () => void;
@@ -415,6 +416,28 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       
       // Use existing splitClip implementation
       get().actions.splitClip(clipId, offset);
+    },
+    deleteClip: (clipId) => {
+      const project = get().project;
+      if (!project) return;
+      const snapshot = deepClone(project);
+      const sequence = getSequence(snapshot);
+      for (const track of sequence.tracks) {
+        const index = track.clips.findIndex((clip) => clip.id === clipId);
+        if (index === -1) {
+          continue;
+        }
+        // Remove clip without shifting subsequent clips (non-ripple delete)
+        track.clips.splice(index, 1);
+        sortTrackClips(track);
+        break;
+      }
+      const duration = recalculateSequenceDuration(sequence);
+      snapshot.updatedAt = Date.now();
+      const state = get();
+      const history = historyAfterPush(state, project);
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
+      void timelineService.deleteClip(clipId);
     },
     rippleDelete: (clipId) => {
       const project = get().project;

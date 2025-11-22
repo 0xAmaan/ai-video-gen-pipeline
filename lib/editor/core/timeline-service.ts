@@ -14,6 +14,9 @@ export const timelineService = {
   async splitClip(_clipId: string, _offset: number) {
     return;
   },
+  async deleteClip(_clipId: string) {
+    return;
+  },
   async rippleDelete(_clipId: string) {
     return;
   },

@@ -112,15 +112,10 @@ const EditorBridge = () => {
         const selectedClipId = selection.clipIds[0];
         if (selectedClipId) {
           console.log('[EditorController] Deleting clip:', selectedClipId, 'Ripple:', rippleEditEnabled);
-          // Always use rippleDelete - it handles both ripple and normal deletion
-          // based on the rippleEditEnabled flag check
           if (rippleEditEnabled) {
             actions.rippleDelete(selectedClipId);
           } else {
-            // For non-ripple deletion, we need to use Twick's deleteItem with the selected item
-            if (selectedItem && isItemWithId(selectedItem)) {
-              deleteItem(selectedItem);
-            }
+            actions.deleteClip(selectedClipId);
           }
         } else {
           console.log('[EditorController] No clip selected for delete operation');
@@ -139,7 +134,7 @@ const EditorBridge = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selection, rippleEditEnabled, actions, deleteItem, selectedItem]);
+  }, [selection, rippleEditEnabled, actions]);
 
   // Expose Twick editor methods and project store actions to window for debugging and external access
   useEffect(() => {
@@ -158,6 +153,7 @@ const EditorBridge = () => {
         projectStore: {
           toggleRippleEdit: actions.toggleRippleEdit,
           splitAtPlayhead: actions.splitAtPlayhead,
+          deleteClip: actions.deleteClip,
           rippleDelete: actions.rippleDelete,
           rippleEditEnabled,
         },
