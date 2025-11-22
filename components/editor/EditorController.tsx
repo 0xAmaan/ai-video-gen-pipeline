@@ -17,6 +17,7 @@ import { isItemWithId } from "@/lib/editor/types/twick-integration";
 import { BeatGridOverlay } from "./BeatGridOverlay";
 import { ThumbnailInjector } from "./ThumbnailInjector";
 import { EditingModeIndicator } from "./EditingModeIndicator";
+import { SlipSlideDragInterceptor } from "./SlipSlideDragInterceptor";
 
 /**
  * EditorBridge Component
@@ -588,6 +589,9 @@ const EditorBridge = () => {
     <div ref={containerRef} id="twick-timeline-only" className="relative h-full w-full">
       {/* Timeline thumbnail injector - adds thumbnails to timeline elements via direct styling */}
       <ThumbnailInjector />
+
+      {/* Slip/slide drag interceptor - intercepts drag events when Alt/Cmd+Alt is held */}
+      <SlipSlideDragInterceptor />
 
       <VideoEditor
         editorConfig={{
