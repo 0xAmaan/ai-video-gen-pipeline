@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useState, useEffect } from "react";
 import {
   Play,
   Pause,
@@ -13,9 +13,11 @@ import {
   Check,
   X,
   Scissors,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Slider } from "../ui/slider";
+import { HelpDialog } from "./HelpDialog";
 
 interface TopBarProps {
   title: string;
@@ -71,6 +73,7 @@ const TopBarComponent = ({
 }: TopBarProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(title);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const startEdit = () => {
     setIsEditing(true);
@@ -98,6 +101,20 @@ const TopBarComponent = ({
       cancelEdit();
     }
   };
+
+  // Global keyboard shortcut for help dialog (Cmd+/ or Ctrl+/)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd+/ (Mac) or Ctrl+/ (Windows)
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        setHelpOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   return (
     <div className="flex items-center justify-between border-b border-border bg-card/80 px-4 py-2">
@@ -194,6 +211,15 @@ const TopBarComponent = ({
           <Button onClick={onExport} className="gap-2">
             <Download className="h-4 w-4" /> Export
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setHelpOpen(true)}
+            title="Help & Keyboard Shortcuts"
+            aria-label="Help"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </Button>
         </div>
         <div className="flex items-center gap-3 border-l border-border pl-4">
           <Button
@@ -244,6 +270,9 @@ const TopBarComponent = ({
             )}
         </div>
       </div>
+
+      {/* Help Dialog */}
+      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 };
