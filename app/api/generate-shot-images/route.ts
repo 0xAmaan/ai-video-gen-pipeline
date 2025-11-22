@@ -374,6 +374,16 @@ export async function POST(req: Request) {
       ...(shouldAutoSelect && { selectedImageId: newDocs[0]._id }),
     });
 
+    // Create storyboard selection for preview mode auto-select
+    if (shouldAutoSelect) {
+      await convex.mutation(api.projectRedesign.createStoryboardSelection, {
+        projectId,
+        sceneId,
+        shotId,
+        selectedImageId: newDocs[0]._id,
+      });
+    }
+
     flowTracker.trackTiming(
       "Shot iteration generation",
       Date.now() - startedAt,

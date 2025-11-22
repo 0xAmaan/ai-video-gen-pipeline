@@ -38,17 +38,9 @@ const StoryboardPage = () => {
     console.log("[StoryboardPage] isSyncing", isSyncing);
   }
 
-  const [selectedSceneId, setSelectedSceneId] =
-    useState<Id<"projectScenes"> | null>(null);
   const [selectedShotId, setSelectedShotId] = useState<Id<"sceneShots"> | null>(
     null,
   );
-
-  useEffect(() => {
-    if (storyboardRows && storyboardRows.length > 0) {
-      setSelectedSceneId((prev) => prev ?? storyboardRows[0].scene._id);
-    }
-  }, [storyboardRows]);
 
   useEffect(() => {
     if (!storyboardRows || !projectId) return;
@@ -254,9 +246,7 @@ const StoryboardPage = () => {
             <StoryboardSceneRow
               key={row.scene._id}
               scene={row}
-              isSelected={selectedSceneId === row.scene._id}
               selectedShotId={selectedShotId}
-              onSceneSelect={(sceneId) => setSelectedSceneId(sceneId)}
               onShotSelect={(shotId) => setSelectedShotId(shotId)}
             />
           ))
