@@ -31,6 +31,7 @@ export const LegacyEditorApp = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PreviewRenderer | null>(null);
   const thumbnailInflight = useRef<Set<string>>(new Set());
+  const thumbnailsCompletedRef = useRef<Set<string>>(new Set());
   const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(
@@ -177,29 +178,50 @@ export const LegacyEditorApp = ({
       clipCount: audioClipCount
     };
   }, [sequence]);
+  
+  // Memoize video asset IDs that need thumbnails to prevent excessive re-renders
+  const videoAssetIdsNeedingThumbnails = useMemo(() => {
+    if (!project) return [];
+    return Object.values(project.mediaAssets)
+      .filter(asset =>
+        asset.type === 'video' &&
+        (!asset.thumbnails || asset.thumbnails.length === 0)
+      )
+      .map(asset => asset.id);
+  }, [project?.mediaAssets]);
 
   // Legacy thumbnail generation (first-frame)
   useEffect(() => {
     if (!ready || !project || !mediaManager) return;
-    Object.values(project.mediaAssets).forEach((asset) => {
-      if (asset.type !== "video") return;
-      if (asset.thumbnails && asset.thumbnails.length > 0) return;
-      if (thumbnailInflight.current.has(asset.id)) return;
+    
+    // Only process assets that need thumbnails and haven't been completed yet
+    videoAssetIdsNeedingThumbnails.forEach((assetId) => {
+      // Skip if already completed (persists across renders)
+      if (thumbnailsCompletedRef.current.has(assetId)) return;
+      // Skip if currently processing
+      if (thumbnailInflight.current.has(assetId)) return;
+      
+      const asset = project.mediaAssets[assetId];
+      if (!asset) return;
+      
       const url = playbackUrlForAsset(asset);
       if (!url) return;
-      thumbnailInflight.current.add(asset.id);
+      
+      thumbnailInflight.current.add(assetId);
       void mediaManager
-        .generateThumbnails(asset.id, url, asset.duration, 1)
+        .generateThumbnails(assetId, url, asset.duration, 1)
         .then((thumbs) => {
-          actions.updateMediaAsset(asset.id, {
+          actions.updateMediaAsset(assetId, {
             thumbnails: thumbs ?? [],
             thumbnailCount: thumbs?.length ?? 0,
           });
+          // Mark as completed to prevent re-generation on future renders
+          thumbnailsCompletedRef.current.add(assetId);
         })
         .catch(() => undefined)
-        .finally(() => thumbnailInflight.current.delete(asset.id));
+        .finally(() => thumbnailInflight.current.delete(assetId));
     });
-  }, [ready, project, mediaManager, actions]);
+  }, [ready, videoAssetIdsNeedingThumbnails, mediaManager, project, actions]);
 
   if (!ready || !project || !sequence) {
     return (

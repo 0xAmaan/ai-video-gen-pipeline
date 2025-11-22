@@ -37,6 +37,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
   const actions = useProjectStore((state) => state.actions);
   const thumbnailInflight = useRef<Set<string>>(new Set());
+  const thumbnailsCompletedRef = useRef<Set<string>>(new Set());
   const webGpuFailed = useRef(false);
 
   // STABILITY FIX: Use WebGL in legacy mode; allow Twick mode to use WebGPU when available.
@@ -257,6 +258,17 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   };
 
   const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
+  
+  // Memoize video asset IDs that need thumbnails to prevent excessive re-renders
+  const videoAssetIdsNeedingThumbnails = useMemo(() => {
+    if (!project) return [];
+    return Object.values(project.mediaAssets)
+      .filter(asset =>
+        asset.type === 'video' &&
+        (!asset.thumbnails || asset.thumbnails.length === 0)
+      )
+      .map(asset => asset.id);
+  }, [project?.mediaAssets]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
   
   // Calculate audio track and clip counts for export modal
@@ -271,34 +283,41 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   }, [sequence]);
 
   useEffect(() => {
-    if (!mediaManager) return;
-    assets.forEach((asset) => {
-      if (asset.type !== "video") return;
-      if (asset.thumbnails && asset.thumbnails.length > 0) return;
+    if (!mediaManager || !project) return;
+    
+    // Only process assets that need thumbnails and haven't been completed yet
+    videoAssetIdsNeedingThumbnails.forEach((assetId) => {
+      // Skip if already completed (persists across renders)
+      if (thumbnailsCompletedRef.current.has(assetId)) return;
+      // Skip if currently processing
+      if (thumbnailInflight.current.has(assetId)) return;
+      
+      const asset = project.mediaAssets[assetId];
+      if (!asset) return;
+      
       const url = playbackUrlForAsset(asset);
       if (!url) return;
-      if (thumbnailInflight.current.has(asset.id)) return;
-      thumbnailInflight.current.add(asset.id);
+      
+      thumbnailInflight.current.add(assetId);
       void mediaManager
         // Reduced from 12 to 6 thumbnails to prevent Convex document size limit
         // TODO: Move thumbnails to R2 storage for proper solution
-        .generateThumbnails(asset.id, url, asset.duration, 6)
+        .generateThumbnails(assetId, url, asset.duration, 6)
         .then((thumbs) => {
           if (!thumbs?.length) return;
-          actions.updateMediaAsset(asset.id, {
+          actions.updateMediaAsset(assetId, {
             thumbnails: thumbs,
             thumbnailCount: thumbs.length,
           });
+          // Mark as completed to prevent re-generation on future renders
+          thumbnailsCompletedRef.current.add(assetId);
         })
-        .catch((error) => console.warn("thumbnail generation failed", asset.id, error))
+        .catch((error) => console.warn("thumbnail generation failed", assetId, error))
         .finally(() => {
-          thumbnailInflight.current.delete(asset.id);
+          thumbnailInflight.current.delete(assetId);
         });
     });
-    return () => {
-      thumbnailInflight.current.clear();
-    };
-  }, [assets, mediaManager, actions]);
+  }, [videoAssetIdsNeedingThumbnails, mediaManager, project, actions]);
 
   if (!ready || !project || !sequence) {
     return (
