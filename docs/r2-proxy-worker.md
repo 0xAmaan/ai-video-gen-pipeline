@@ -6,7 +6,7 @@ This worker implements the storage pieces called out in `docs/PRDs/VideoEditorPR
 - `workers/r2-proxy.ts`
 
 ## Routes
-- `GET /asset/:key` — Streams objects from `R2_BUCKET`. **Current behavior:** Range support is disabled and the full object is returned with `200` to avoid Cloudflare rewriting `206` responses to `200 + Content-Range`, which was breaking WebCodecs/MediaBunny demuxing. `Accept-Ranges: bytes` remains, but no partial is served. If we re-enable ranges later, verify the edge actually sends `206` before turning it back on.
+- `GET /asset/:key` — Streams objects from `R2_BUCKET` with **HTTP 206 Range Request support** for efficient 4K video seeking. When a `Range: bytes=...` header is present, the worker passes it to R2 and returns a `206 Partial Content` response with the appropriate `Content-Range` header. This is critical for MediaBunny/WebCodecs to perform frame-accurate seeking without downloading entire files. Full objects return `200 OK` when no range is requested.
 - `POST /ingest` — Body: `{ "sourceUrl": "https://...", "key": "path/in/r2.mp4" }`. Streams the upstream response into R2 using `objectSize` to avoid buffering. Rejects if `Content-Length` is missing. Requires auth when `AUTH_TOKEN` is configured.
 - `OPTIONS` — CORS preflight.
 

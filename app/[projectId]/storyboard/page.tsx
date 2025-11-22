@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { StoryboardSceneRow } from "@/components/redesign/StoryboardSceneRow";
@@ -47,6 +47,52 @@ const StoryboardPage = () => {
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
 
   const canGenerateVideo = Boolean(projectId) && selectionsComplete && !isSyncing && !isGenerating;
+
+  // Helper function to check if all clips are complete and update project status
+  const checkAllClipsComplete = React.useCallback(async () => {
+    if (!projectId) return;
+    
+    const allComplete = clips.every(clip => clip.status === "complete");
+    const hasClips = clips.length > 0;
+    
+    console.log("[StoryboardPage] Checking clip completion status", {
+      totalClips: clips.length,
+      completeClips: clips.filter(c => c.status === "complete").length,
+      allComplete,
+      currentProjectStatus: projectProgress?.projectStatus,
+    });
+    
+    if (allComplete && hasClips && projectProgress?.projectStatus !== "video_generated") {
+      console.log("[StoryboardPage] All clips complete! Updating project status to video_generated");
+      try {
+        await updateProjectStatus({
+          projectId: projectId as Id<"videoProjects">,
+          status: "video_generated",
+        });
+        console.log("[StoryboardPage] Project status updated successfully");
+      } catch (error) {
+        console.error("[StoryboardPage] Failed to update project status:", error);
+      }
+    }
+  }, [projectId, clips, projectProgress?.projectStatus, updateProjectStatus]);
+  
+  // Debug logging for button state
+  useEffect(() => {
+    if (projectProgress) {
+      console.log("[StoryboardPage] Editor button state:", {
+        projectStatus: projectProgress.projectStatus,
+        editorLocked: projectProgress.projectStatus !== "video_generated",
+        shouldBeUnlocked: projectProgress.projectStatus === "video_generated",
+      });
+    }
+  }, [projectProgress?.projectStatus]);
+  
+  // Check completion status whenever clips change
+  useEffect(() => {
+    if (clips.length > 0 && !isGenerating) {
+      checkAllClipsComplete();
+    }
+  }, [clips, isGenerating, checkAllClipsComplete]);
 
   // Retry handler for individual clips
   const retryVideoClip = async (clipId: Id<"videoClips">, sceneId: Id<"scenes">) => {
@@ -146,7 +192,12 @@ const StoryboardPage = () => {
             videoUrl: result.videoUrl,
           });
           activeVideoPolls.current.delete(clipId);
-          // Skip lipsync - just mark as complete
+          
+          console.log("[StoryboardPage] Clip completed, checking if all clips done", { clipId });
+          
+          // Check if all clips are now complete and update project status
+          checkAllClipsComplete();
+          
           return;
         }
 
@@ -296,19 +347,8 @@ const StoryboardPage = () => {
 
       setIsGenerating(false);
 
-      // Update project status when all videos complete
-      const checkAllComplete = () => {
-        const allComplete = clips.every(clip => clip.status === "complete");
-        if (allComplete && clips.length > 0) {
-          updateProjectStatus({
-            projectId: projectId as Id<"videoProjects">,
-            status: "video_generated",
-          }).catch(error => console.error("Failed to update project status:", error));
-        }
-      };
-
-      // Check completion status after a delay
-      setTimeout(checkAllComplete, 2000);
+      // Check completion status after initial generation starts
+      setTimeout(() => checkAllClipsComplete(), 2000);
     } catch (error) {
       console.error("Error generating video clips:", error);
       setIsGenerating(false);

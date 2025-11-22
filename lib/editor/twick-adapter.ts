@@ -66,42 +66,81 @@ export const timelineToProject = (
   return project;
 };
 
-const clipToElement = (clip: Clip, asset?: MediaAssetMeta): ElementJSON => ({
-  id: clip.id,
-  type: clip.kind,
-  s: clip.start,
-  e: clip.start + clip.duration,
-  props: {
-    assetId: clip.mediaId,
-    src: asset?.proxyUrl ?? asset?.url ?? asset?.sourceUrl ?? "",
-    r2Key: asset?.r2Key,
-    trimStart: clip.trimStart,
-    trimEnd: clip.trimEnd,
-    opacity: clip.opacity,
-    volume: clip.volume,
-  },
-});
+const clipToElement = (clip: Clip, asset?: MediaAssetMeta): ElementJSON => {
+  // Validate and sanitize time values to prevent NaN/Infinity propagation
+  const start = Number.isFinite(clip.start) && clip.start >= 0 ? clip.start : 0;
+  const duration = Number.isFinite(clip.duration) && clip.duration > 0 ? clip.duration : 1;
+  const trimStart = Number.isFinite(clip.trimStart) && clip.trimStart >= 0 ? clip.trimStart : 0;
+  const trimEnd = Number.isFinite(clip.trimEnd) && clip.trimEnd >= 0 ? clip.trimEnd : 0;
+  const opacity = Number.isFinite(clip.opacity) && clip.opacity >= 0 && clip.opacity <= 1 ? clip.opacity : 1;
+  const volume = Number.isFinite(clip.volume) && clip.volume >= 0 ? clip.volume : 1;
+  
+  // Log warning if values were corrected
+  if (clip.start !== start || clip.duration !== duration) {
+    console.warn('[TwickAdapter] clipToElement: Invalid time values corrected', {
+      clipId: clip.id,
+      original: { start: clip.start, duration: clip.duration },
+      corrected: { start, duration },
+    });
+  }
+  
+  return {
+    id: clip.id,
+    type: clip.kind,
+    s: start,
+    e: start + duration,
+    props: {
+      assetId: clip.mediaId,
+      src: asset?.proxyUrl ?? asset?.url ?? asset?.sourceUrl ?? "",
+      r2Key: asset?.r2Key,
+      trimStart,
+      trimEnd,
+      opacity,
+      volume,
+    },
+  };
+};
 
 const elementToClip = (
   element: ElementJSON,
   trackId: string,
   assets: Record<string, MediaAssetMeta>,
 ): Clip => {
-  const duration = Math.max(0.1, (element.e ?? element.s) - element.s);
-  const assetId = (element as any)?.props?.assetId ?? element.id;
+  // Validate and sanitize all numeric values from Twick
+  const s = Number.isFinite(element.s) && element.s >= 0 ? element.s : 0;
+  const e = Number.isFinite(element.e) && element.e > s ? element.e : s + 1;
+  const duration = Math.max(0.1, e - s);
+  
+  const props = (element as any)?.props ?? {};
+  const trimStart = Number.isFinite(props.trimStart) && props.trimStart >= 0 ? props.trimStart : 0;
+  const trimEnd = Number.isFinite(props.trimEnd) && props.trimEnd >= 0 ? props.trimEnd : 0;
+  const opacity = Number.isFinite(props.opacity) && props.opacity >= 0 && props.opacity <= 1 ? props.opacity : 1;
+  const volume = Number.isFinite(props.volume) && props.volume >= 0 ? props.volume : 1;
+  
+  const assetId = props.assetId ?? element.id;
   const asset = assets[assetId];
   const clipKind: Clip["kind"] = element.type === "audio" ? "audio" : element.type === "image" ? "image" : "video";
+  
+  // Log warning if values were corrected
+  if (!Number.isFinite(element.s) || !Number.isFinite(element.e) || element.s < 0 || element.e <= element.s) {
+    console.warn('[TwickAdapter] elementToClip: Invalid time values corrected', {
+      elementId: element.id,
+      original: { s: element.s, e: element.e },
+      corrected: { s, e, duration },
+    });
+  }
+  
   return {
     id: element.id,
     mediaId: assetId,
     trackId,
     kind: clipKind,
-    start: element.s,
+    start: s,
     duration,
-    trimStart: (element as any)?.props?.trimStart ?? 0,
-    trimEnd: (element as any)?.props?.trimEnd ?? 0,
-    opacity: (element as any)?.props?.opacity ?? 1,
-    volume: (element as any)?.props?.volume ?? 1,
+    trimStart,
+    trimEnd,
+    opacity,
+    volume,
     effects: [],
     transitions: [],
     speedCurve: null,

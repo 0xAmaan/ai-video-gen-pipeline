@@ -3,6 +3,14 @@ export class FrameCache<T extends { close?: () => void } = { close?: () => void 
 
   constructor(private readonly maxEntries = 120) {}
 
+  get size() {
+    return this.cache.size;
+  }
+
+  entries() {
+    return this.cache.entries();
+  }
+
   get(key: string) {
     const value = this.cache.get(key);
     if (!value) return undefined;

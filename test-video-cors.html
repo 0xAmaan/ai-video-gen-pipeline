@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R2 Proxy Video CORS Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        video {
+            width: 100%;
+            max-width: 640px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>R2 Proxy Video CORS Test</h1>
+    
+    <div class="info status">
+        <strong>Test Video URL:</strong><br>
+        https://video-editor-proxy.manoscasey.workers.dev/asset/videos%2Fk0yh94jtahrma0ctn6tvqx7g9g.mp4
+    </div>
+
+    <h2>Test 1: Native HTML5 Video Element</h2>
+    <video id="testVideo" controls crossorigin="anonymous">
+        <source src="https://video-editor-proxy.manoscasey.workers.dev/asset/videos%2Fk0yh94jtahrma0ctn6tvqx7g9g.mp4" type="video/mp4">
+        Your browser doesn't support HTML5 video.
+    </video>
+    <div id="videoStatus" class="status"></div>
+
+    <h2>Test 2: Fetch API (Simulates MediaBunny)</h2>
+    <button onclick="testFetch()">Test Fetch with Range Request</button>
+    <button onclick="testHead()">Test HEAD Request</button>
+    <div id="fetchStatus" class="status" style="display:none;"></div>
+
+    <h2>Test 3: CORS Headers Check</h2>
+    <button onclick="checkCORS()">Check CORS Headers</button>
+    <div id="corsStatus" class="status" style="display:none;"></div>
+
+    <script>
+        const VIDEO_URL = 'https://video-editor-proxy.manoscasey.workers.dev/asset/videos%2Fk0yh94jtahrma0ctn6tvqx7g9g.mp4';
+        
+        // Test 1: Monitor video element
+        const video = document.getElementById('testVideo');
+        const videoStatus = document.getElementById('videoStatus');
+        
+        video.addEventListener('loadedmetadata', () => {
+            videoStatus.className = 'status success';
+            videoStatus.innerHTML = `
+                ✅ <strong>Video Loaded Successfully!</strong><br>
+                Duration: ${video.duration.toFixed(2)}s<br>
+                Width: ${video.videoWidth}px<br>
+                Height: ${video.videoHeight}px
+            `;
+        });
+        
+        video.addEventListener('error', (e) => {
+            const error = video.error;
+            let errorMessage = 'Unknown error';
+            
+            switch(error.code) {
+                case MediaError.MEDIA_ERR_ABORTED:
+                    errorMessage = 'MEDIA_ERR_ABORTED: Loading was aborted';
+                    break;
+                case MediaError.MEDIA_ERR_NETWORK:
+                    errorMessage = 'MEDIA_ERR_NETWORK: Network error while loading';
+                    break;
+                case MediaError.MEDIA_ERR_DECODE:
+                    errorMessage = 'MEDIA_ERR_DECODE: Decoding error';
+                    break;
+                case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                    errorMessage = 'MEDIA_ERR_SRC_NOT_SUPPORTED: Format not supported or CORS error';
+                    break;
+            }
+            
+            videoStatus.className = 'status error';
+            videoStatus.innerHTML = `
+                ❌ <strong>Video Load Failed!</strong><br>
+                Error Code: ${error.code}<br>
+                ${errorMessage}<br>
+                <br>
+                <strong>Possible causes:</strong><br>
+                1. CORS headers not properly configured<br>
+                2. Video file doesn't exist at URL<br>
+                3. Browser cached old CORS failure (try hard refresh: Cmd+Shift+R)
+            `;
+        });
+        
+        // Test 2: Fetch with range request
+        async function testFetch() {
+            const fetchStatus = document.getElementById('fetchStatus');
+            fetchStatus.style.display = 'block';
+            fetchStatus.className = 'status info';
+            fetchStatus.textContent = 'Testing fetch with Range header...';
+            
+            try {
+                const response = await fetch(VIDEO_URL, {
+                    headers: {
+                        'Range': 'bytes=0-1023'
+                    }
+                });
+                
+                const headers = {};
+                response.headers.forEach((value, key) => {
+                    headers[key] = value;
+                });
+                
+                const bytes = await response.arrayBuffer();
+                
+                fetchStatus.className = 'status success';
+                fetchStatus.innerHTML = `
+                    ✅ <strong>Fetch Successful!</strong><br>
+                    Status: ${response.status} ${response.statusText}<br>
+                    Bytes received: ${bytes.byteLength}<br>
+                    <br>
+                    <strong>Response Headers:</strong><br>
+                    ${Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('<br>')}
+                `;
+                
+                if (response.status !== 206) {
+                    fetchStatus.className = 'status error';
+                    fetchStatus.innerHTML += `<br><br>⚠️ <strong>Warning:</strong> Expected status 206, got ${response.status}`;
+                }
+            } catch (error) {
+                fetchStatus.className = 'status error';
+                fetchStatus.innerHTML = `
+                    ❌ <strong>Fetch Failed!</strong><br>
+                    Error: ${error.message}<br>
+                    <br>
+                    This is likely a CORS issue. The browser blocked the request.
+                `;
+            }
+        }
+        
+        // Test 3: HEAD request
+        async function testHead() {
+            const fetchStatus = document.getElementById('fetchStatus');
+            fetchStatus.style.display = 'block';
+            fetchStatus.className = 'status info';
+            fetchStatus.textContent = 'Testing HEAD request...';
+            
+            try {
+                const response = await fetch(VIDEO_URL, {
+                    method: 'HEAD'
+                });
+                
+                const headers = {};
+                response.headers.forEach((value, key) => {
+                    headers[key] = value;
+                });
+                
+                fetchStatus.className = 'status success';
+                fetchStatus.innerHTML = `
+                    ✅ <strong>HEAD Request Successful!</strong><br>
+                    Status: ${response.status} ${response.statusText}<br>
+                    <br>
+                    <strong>Response Headers:</strong><br>
+                    ${Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('<br>')}
+                `;
+            } catch (error) {
+                fetchStatus.className = 'status error';
+                fetchStatus.innerHTML = `
+                    ❌ <strong>HEAD Request Failed!</strong><br>
+                    Error: ${error.message}<br>
+                    <br>
+                    This is likely a CORS issue.
+                `;
+            }
+        }
+        
+        // Test 4: CORS headers check
+        async function checkCORS() {
+            const corsStatus = document.getElementById('corsStatus');
+            corsStatus.style.display = 'block';
+            corsStatus.className = 'status info';
+            corsStatus.textContent = 'Checking CORS headers...';
+            
+            try {
+                const response = await fetch(VIDEO_URL, {
+                    method: 'HEAD'
+                });
+                
+                const corsHeaders = {
+                    'access-control-allow-origin': response.headers.get('access-control-allow-origin'),
+                    'access-control-allow-methods': response.headers.get('access-control-allow-methods'),
+                    'access-control-expose-headers': response.headers.get('access-control-expose-headers'),
+                    'cross-origin-resource-policy': response.headers.get('cross-origin-resource-policy'),
+                };
+                
+                const checks = [];
+                
+                // Check 1: Allow-Origin
+                if (corsHeaders['access-control-allow-origin']) {
+                    checks.push(`✅ Access-Control-Allow-Origin: ${corsHeaders['access-control-allow-origin']}`);
+                } else {
+                    checks.push(`❌ Access-Control-Allow-Origin: MISSING`);
+                }
+                
+                // Check 2: Expose Headers
+                if (corsHeaders['access-control-expose-headers']) {
+                    checks.push(`✅ Access-Control-Expose-Headers: ${corsHeaders['access-control-expose-headers']}`);
+                } else {
+                    checks.push(`❌ Access-Control-Expose-Headers: MISSING`);
+                }
+                
+                // Check 3: CORP
+                if (corsHeaders['cross-origin-resource-policy'] === 'cross-origin') {
+                    checks.push(`✅ Cross-Origin-Resource-Policy: cross-origin`);
+                } else {
+                    checks.push(`⚠️ Cross-Origin-Resource-Policy: ${corsHeaders['cross-origin-resource-policy'] || 'MISSING'}`);
+                }
+                
+                corsStatus.className = 'status success';
+                corsStatus.innerHTML = `
+                    <strong>CORS Headers:</strong><br>
+                    ${checks.join('<br>')}
+                `;
+            } catch (error) {
+                corsStatus.className = 'status error';
+                corsStatus.innerHTML = `
+                    ❌ <strong>CORS Check Failed!</strong><br>
+                    Error: ${error.message}
+                `;
+            }
+        }
+        
+        // Auto-check CORS on load
+        setTimeout(checkCORS, 1000);
+    </script>
+</body>
+</html>

@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, Check, Download } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Loader2, Check, Download, Volume2, VolumeX } from "lucide-react";
 
 interface ExportModalProps {
   open: boolean;
@@ -25,6 +26,8 @@ interface ExportModalProps {
   duration: number;
   onExport: (options: ExportConfig) => Promise<void>;
   status?: { progress: number; status: string } | null;
+  audioTrackCount?: number;
+  audioClipCount?: number;
 }
 
 export type ExportConfig = {
@@ -32,6 +35,7 @@ export type ExportConfig = {
   quality: string;
   format: string;
   aspectRatio: string;
+  includeAudio?: boolean;
 };
 
 export const ExportModal = ({
@@ -40,11 +44,14 @@ export const ExportModal = ({
   duration,
   onExport,
   status,
+  audioTrackCount = 0,
+  audioClipCount = 0,
 }: ExportModalProps) => {
   const [resolution, setResolution] = useState("1080p");
   const [quality, setQuality] = useState("high");
   const [format, setFormat] = useState("mp4");
   const [aspectRatio, setAspectRatio] = useState("16:9");
+  const [includeAudio, setIncludeAudio] = useState(true);
   const [state, setState] = useState<"config" | "exporting" | "complete">(
     "config",
   );
@@ -65,7 +72,7 @@ export const ExportModal = ({
 
   const handleExport = async () => {
     setState("exporting");
-    await onExport({ resolution, quality, format, aspectRatio });
+    await onExport({ resolution, quality, format, aspectRatio, includeAudio });
   };
 
   return (
@@ -85,10 +92,14 @@ export const ExportModal = ({
             format={format}
             aspectRatio={aspectRatio}
             duration={duration}
+            includeAudio={includeAudio}
+            audioTrackCount={audioTrackCount}
+            audioClipCount={audioClipCount}
             onResolutionChange={setResolution}
             onQualityChange={setQuality}
             onFormatChange={setFormat}
             onAspectRatioChange={setAspectRatio}
+            onIncludeAudioChange={setIncludeAudio}
             onExport={handleExport}
           />
         )}
@@ -135,10 +146,14 @@ interface ConfiguratorProps {
   format: string;
   aspectRatio: string;
   duration: number;
+  includeAudio: boolean;
+  audioTrackCount: number;
+  audioClipCount: number;
   onResolutionChange: (value: string) => void;
   onQualityChange: (value: string) => void;
   onFormatChange: (value: string) => void;
   onAspectRatioChange: (value: string) => void;
+  onIncludeAudioChange: (value: boolean) => void;
   onExport: () => void;
 }
 
@@ -148,10 +163,14 @@ const ExportConfigurator = ({
   format,
   aspectRatio,
   duration,
+  includeAudio,
+  audioTrackCount,
+  audioClipCount,
   onResolutionChange,
   onQualityChange,
   onFormatChange,
   onAspectRatioChange,
+  onIncludeAudioChange,
   onExport,
 }: ConfiguratorProps) => {
   const formatDuration = (seconds: number) => {
@@ -236,6 +255,30 @@ const ExportConfigurator = ({
           <SelectItem value="4:5">4:5 (Portrait)</SelectItem>
         </SelectCard>
       </div>
+
+      {/* Audio Settings */}
+      {audioClipCount > 0 && (
+        <div className="flex items-center justify-between p-4 border rounded-lg">
+          <div className="flex items-center gap-3">
+            {includeAudio ? (
+              <Volume2 className="h-5 w-5 text-primary" />
+            ) : (
+              <VolumeX className="h-5 w-5 text-muted-foreground" />
+            )}
+            <div>
+              <div className="font-medium">Include Audio</div>
+              <div className="text-sm text-muted-foreground">
+                {audioClipCount} clip{audioClipCount !== 1 ? 's' : ''} on {audioTrackCount} track{audioTrackCount !== 1 ? 's' : ''}
+              </div>
+            </div>
+          </div>
+          <Switch
+            checked={includeAudio}
+            onCheckedChange={onIncludeAudioChange}
+          />
+        </div>
+      )}
+
       <Card className="p-4 bg-accent/30">
         <h4 className="font-semibold mb-3">Export Summary</h4>
         <div className="space-y-2 text-sm">
@@ -247,6 +290,21 @@ const ExportConfigurator = ({
             <span className="text-muted-foreground">Output Resolution:</span>
             <span className="font-medium">{getResolutionOutput()}</span>
           </div>
+          {audioClipCount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Audio:</span>
+              <span className="font-medium">
+                {includeAudio ? (
+                  <>
+                    {quality === 'high' ? '256' : quality === 'medium' ? '192' : '128'} kbps,{' '}
+                    48 kHz stereo
+                  </>
+                ) : (
+                  'Excluded'
+                )}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">Estimated File Size:</span>
             <span className="font-medium">{calculateFileSize()} MB</span>

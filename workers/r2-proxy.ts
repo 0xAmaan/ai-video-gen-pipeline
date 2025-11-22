@@ -38,18 +38,18 @@ export default {
 
     // CORS preflight
     if (request.method === "OPTIONS") {
-      return withCors(new Response(null, { status: 204 }), env);
+      return withCors(new Response(null, { status: 204 }), env, request);
     }
 
     if (url.pathname.startsWith("/asset/") && (request.method === "GET" || request.method === "HEAD")) {
-      return withCors(await serveAsset(request, env, url.pathname.replace("/asset/", "")), env);
+      return withCors(await serveAsset(request, env, url.pathname.replace("/asset/", "")), env, request);
     }
 
     if (url.pathname === "/ingest" && request.method === "POST") {
       if (!isAuthorized(request, env)) {
-        return withCors(new Response("Unauthorized", { status: 401 }), env);
+        return withCors(new Response("Unauthorized", { status: 401 }), env, request);
       }
-      return withCors(await ingestToR2(request, env), env);
+      return withCors(await ingestToR2(request, env), env, request);
     }
 
     return new Response("Not found", { status: 404 });
@@ -71,20 +71,57 @@ async function serveAsset(request: Request, env: Env, key: string): Promise<Resp
   })();
 
   try {
-    // Always serve the full object to avoid Cloudflare rewriting partial responses to 200.
-    const object = await env.R2_BUCKET.get(objectKey);
+    // Parse Range header for HTTP 206 support (critical for video seeking)
+    const rangeHeader = request.headers.get("Range");
+    const range = rangeHeader ? parseRange(rangeHeader) : null;
+
+    // Fetch object from R2 with range if specified
+    const object = await env.R2_BUCKET.get(objectKey, range ? { range } : undefined);
     if (!object || !object.body) {
       return json({ error: "Not found" }, { status: 404 });
     }
 
     const responseHeaders = new Headers();
     responseHeaders.set("accept-ranges", "bytes");
-    responseHeaders.set("x-proxy-version", "2025-11-22-02");
-    responseHeaders.set("cache-control", "private, no-store, no-cache, must-revalidate");
+    responseHeaders.set("x-proxy-version", "2025-11-22-03-range");
+    // Allow short-lived caching for better seek performance
+    responseHeaders.set("cache-control", "private, max-age=300");
     const contentType =
       object.httpMetadata?.contentType ?? object.customMetadata?.contentType ?? "application/octet-stream";
     responseHeaders.set("content-type", contentType);
 
+    // Handle Range response (HTTP 206)
+    if (range && object.range) {
+      // Use actual R2 response range values for accuracy
+      const { offset } = object.range;
+      const actualLength = object.range.length ?? object.size - offset;
+      const end = offset + actualLength - 1;
+      
+      // Validate range boundaries
+      if (offset >= object.size || actualLength <= 0) {
+        console.warn("Invalid range response from R2:", { offset, actualLength, size: object.size });
+        return json({ error: "Range not satisfiable" }, { status: 416 });
+      }
+      
+      responseHeaders.set("content-range", `bytes ${offset}-${end}/${object.size}`);
+      responseHeaders.set("content-length", actualLength.toString());
+      
+      console.log("serveAsset range", {
+        key: objectKey,
+        requestedRange: rangeHeader,
+        offset,
+        length: actualLength,
+        contentRange: `bytes ${offset}-${end}/${object.size}`,
+        status: 206
+      });
+      
+      if (request.method === "HEAD") {
+        return new Response(null, { status: 206, headers: responseHeaders });
+      }
+      return new Response(object.body, { status: 206, headers: responseHeaders });
+    }
+
+    // Full object response (HTTP 200)
     responseHeaders.set("content-length", object.size.toString());
     console.log("serveAsset full", { key: objectKey, size: object.size, status: 200 });
     if (request.method === "HEAD") {
@@ -129,16 +166,32 @@ async function ingestToR2(request: Request, env: Env): Promise<Response> {
 }
 
 function parseRange(header: string): RangeShape | null {
-  // Example: bytes=0-1023 or bytes=1024-
-  const match = /^bytes=(\d+)-(\d+)?$/i.exec(header.trim());
+  // Example: bytes=0-1023 or bytes=1024- (open-ended)
+  const match = /^bytes=(\d+)-(\d*)?$/i.exec(header.trim());
   if (!match) return null;
-  const start = Number.parseInt(match[1] ?? "0", 10);
-  const end = match[2] ? Number.parseInt(match[2], 10) : undefined;
-  if (Number.isNaN(start)) return null;
-  if (end !== undefined) {
-    return { offset: start, length: Math.max(0, end - start + 1) };
+  
+  const start = Number.parseInt(match[1], 10);
+  const endStr = match[2];
+  
+  // Validate start offset
+  if (Number.isNaN(start) || start < 0) {
+    console.warn("Invalid range start:", header);
+    return null;
   }
-  return { offset: start };
+  
+  // Handle open-ended range (bytes=1024-)
+  if (endStr === "" || endStr === undefined) {
+    return { offset: start }; // R2 will return from start to end of file
+  }
+  
+  // Handle specific range (bytes=0-1023)
+  const end = Number.parseInt(endStr, 10);
+  if (Number.isNaN(end) || end < start) {
+    console.warn("Invalid range end:", header);
+    return null;
+  }
+  
+  return { offset: start, length: end - start + 1 };
 }
 
 async function safeJson(request: Request): Promise<any | null> {
@@ -155,16 +208,46 @@ function isAuthorized(request: Request, env: Env): boolean {
   return header === `Bearer ${env.AUTH_TOKEN}`;
 }
 
-function withCors(response: Response, env: Env): Response {
-  const allowed = env.ALLOWED_ORIGINS?.split(",").map((v) => v.trim()) ?? [];
-  const origin = allowed.length ? allowed : ["*"];
+function withCors(response: Response, env: Env, request?: Request): Response {
+  const allowed = env.ALLOWED_ORIGINS?.split(",").map((v) => v.trim()).filter(Boolean) ?? [];
+  const requestOrigin = request?.headers.get("origin") ?? "";
+  
+  // Determine which origin to allow
+  let allowedOrigin = "*";
+  
+  if (allowed.length > 0) {
+    // If wildcard is in the list, use it
+    if (allowed.includes("*")) {
+      allowedOrigin = "*";
+    }
+    // If request origin matches an allowed origin, reflect it back
+    else if (requestOrigin && allowed.includes(requestOrigin)) {
+      allowedOrigin = requestOrigin;
+    }
+    // If there's only one allowed origin, use it
+    else if (allowed.length === 1) {
+      allowedOrigin = allowed[0];
+    }
+    // Otherwise, use the first one (fallback)
+    else {
+      allowedOrigin = allowed[0];
+    }
+  }
 
   const headers = new Headers(response.headers);
-  headers.set("access-control-allow-origin", origin.join(","));
-  headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
+  headers.set("access-control-allow-origin", allowedOrigin);
+  headers.set("access-control-allow-methods", "GET,POST,OPTIONS,HEAD");
   headers.set("access-control-allow-headers", "authorization,content-type,range");
-  headers.set("access-control-expose-headers", "content-range,accept-ranges");
+  headers.set("access-control-expose-headers", "content-range,accept-ranges,content-length,content-type");
   // Required when the client is using COEP/COOP; allows media to be fetched cross-origin.
   headers.set("cross-origin-resource-policy", "cross-origin");
-  return new Response(response.body, { ...response, headers });
+  
+  console.log("CORS:", { requestOrigin, allowedOrigin, allowed });
+  
+  // IMPORTANT: Preserve the original status code (e.g., 206 for range requests)
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
 }

@@ -164,18 +164,6 @@ const TopBarComponent = ({
           >
             <Redo2 className="h-4 w-4" />
           </Button>
-          <Button
-            variant="secondary"
-            size="icon"
-            onClick={onTogglePlayback}
-            aria-label="Toggle playback"
-          >
-            {isPlaying ? (
-              <Pause className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-          </Button>
           {onToggleTimelineMode && timelineMode && (
             <Button variant="outline" size="sm" onClick={onToggleTimelineMode}>
               Timeline: {timelineMode === "twick" ? "Twick" : "Legacy"}

@@ -161,6 +161,17 @@ export const LegacyEditorApp = ({
 
   const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
+  
+  // Calculate audio track and clip counts for export modal
+  const audioStats = useMemo(() => {
+    if (!sequence) return { trackCount: 0, clipCount: 0 };
+    const audioTracks = sequence.tracks.filter(track => track.kind === 'audio');
+    const audioClipCount = audioTracks.reduce((total, track) => total + track.clips.length, 0);
+    return {
+      trackCount: audioTracks.length,
+      clipCount: audioClipCount
+    };
+  }, [sequence]);
 
   // Legacy thumbnail generation (first-frame)
   useEffect(() => {
@@ -311,6 +322,8 @@ export const LegacyEditorApp = ({
         duration={sequence.duration}
         onExport={handleExport}
         status={exportStatus}
+        audioTrackCount={audioStats.trackCount}
+        audioClipCount={audioStats.clipCount}
       />
     </div>
   );

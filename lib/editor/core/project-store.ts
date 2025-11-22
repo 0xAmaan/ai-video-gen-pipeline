@@ -145,6 +145,11 @@ export interface ProjectStoreState {
   isPlaying: boolean;
   currentTime: number;
   history: HistoryState;
+  
+  // Tri-State Architecture (PRD Section 5.2)
+  dirty: boolean; // Has unsaved changes in session state
+  lastSavedSignature: string | null; // Hash of last persisted state
+  
   actions: {
     hydrate: (projectId?: string) => Promise<void>;
     reset: () => void;
@@ -160,9 +165,12 @@ export interface ProjectStoreState {
     moveClip: (clipId: string, trackId: string, start: number) => void;
     trimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
     splitClip: (clipId: string, offset: number) => void;
+    splitAtPlayhead: (clipId: string) => void;
     rippleDelete: (clipId: string) => void;
     undo: () => void;
     redo: () => void;
+    save: () => Promise<void>; // Explicit save to Convex (PRD Tri-State)
+    markDirty: () => void; // Mark session as dirty without persisting
   };
 }
 
@@ -173,6 +181,11 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
   history: { past: [], future: [] },
+  
+  // Tri-State Architecture (PRD Section 5.2)
+  dirty: false,
+  lastSavedSignature: null,
+  
   actions: {
     hydrate: async (projectId?: string) => {
       const snapshot = await ProjectPersistence.load(projectId);
@@ -194,6 +207,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const snapshot = deepClone(project);
       const history = options?.history ?? { past: [], future: [] };
       await timelineService.setSequence(getSequence(snapshot));
+      
+      const signature = JSON.stringify(snapshot);
       set({
         project: snapshot,
         ready: true,
@@ -201,9 +216,13 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         selection: { clipIds: [], trackIds: [] },
         currentTime: 0,
         isPlaying: false,
+        dirty: false, // Fresh load is not dirty
+        lastSavedSignature: signature,
       });
+      
+      // Optionally persist immediately on load
       if (options?.persist !== false) {
-        persistLater(snapshot, history);
+        await ProjectPersistence.save({ project: snapshot, history });
       }
     },
     refreshTimeline: async () => {
@@ -228,8 +247,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         next.mediaAssets[asset.id] = asset;
         next.updatedAt = Date.now();
         const history = historyAfterPush(state, state.project);
-        persistLater(next, history);
-        return { ...state, project: next, history };
+        return { ...state, project: next, history, dirty: true };
       }),
     updateMediaAsset: (assetId, updates) =>
       set((state) => {
@@ -240,8 +258,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         next.mediaAssets[assetId] = { ...existing, ...updates };
         next.updatedAt = Date.now();
         const history = historyAfterPush(state, state.project);
-        persistLater(next, history);
-        return { ...state, project: next, history };
+        return { ...state, project: next, history, dirty: true };
       }),
     appendClipFromAsset: (assetId) => {
       const project = get().project;
@@ -278,8 +295,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, state.project!);
-      persistLater(snapshot, history);
-      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.upsertClip(clip);
     },
     moveClip: (clipId, trackId, start) => {
@@ -307,8 +323,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
-      persistLater(snapshot, history);
-      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.moveClip(clipId, trackId, nextStart);
     },
     trimClip: (clipId, trimStart, trimEnd) => {
@@ -325,8 +340,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
-      persistLater(snapshot, history);
-      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.trimClip(clipId, trimStart, trimEnd);
     },
     splitClip: (clipId, offset) => {
@@ -354,9 +368,46 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
-      persistLater(snapshot, history);
-      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.splitClip(clipId, offset);
+    },
+    splitAtPlayhead: (clipId) => {
+      const state = get();
+      const project = state.project;
+      if (!project) return;
+      
+      const currentTime = state.currentTime;
+      const sequence = getSequence(project);
+      
+      // Find the clip to split
+      let targetClip: Clip | undefined;
+      for (const track of sequence.tracks) {
+        targetClip = track.clips.find((clip) => clip.id === clipId);
+        if (targetClip) break;
+      }
+      
+      if (!targetClip) {
+        console.warn('[ProjectStore] splitAtPlayhead: clip not found:', clipId);
+        return;
+      }
+      
+      // Calculate offset from clip start
+      const offset = currentTime - targetClip.start;
+      
+      // Validate that playhead is within clip bounds
+      if (offset <= 0 || offset >= targetClip.duration) {
+        console.warn('[ProjectStore] splitAtPlayhead: playhead not within clip bounds', {
+          clipId,
+          clipStart: targetClip.start,
+          clipDuration: targetClip.duration,
+          playhead: currentTime,
+          offset,
+        });
+        return;
+      }
+      
+      // Use existing splitClip implementation
+      get().actions.splitClip(clipId, offset);
     },
     rippleDelete: (clipId) => {
       const project = get().project;
@@ -382,8 +433,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       snapshot.updatedAt = Date.now();
       const state = get();
       const history = historyAfterPush(state, project);
-      persistLater(snapshot, history);
-      set((current) => ({ project: snapshot, history, currentTime: Math.min(current.currentTime, duration) }));
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.rippleDelete(clipId);
     },
     undo: () =>
@@ -395,9 +445,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           ? [deepClone(state.project), ...state.history.future]
           : [...state.history.future];
         const history = { past, future };
-        persistLater(previous, history);
         void timelineService.setSequence(getSequence(previous));
-        return { ...state, project: previous, history };
+        return { ...state, project: previous, history, dirty: true };
       }),
     redo: () =>
       set((state) => {
@@ -407,11 +456,35 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           ? [...state.history.past, deepClone(state.project)]
           : [...state.history.past];
         const history = { past, future: rest };
-        persistLater(next, history);
         void timelineService.setSequence(getSequence(next));
-        return { ...state, project: next, history };
+        return { ...state, project: next, history, dirty: true };
       }),
+    
+    // Tri-State Architecture: Explicit save (PRD Section 5.2)
+    save: async () => {
+      const { project, history, dirty } = get();
+      if (!project || !dirty) return;
+      
+      await ProjectPersistence.save({ project, history });
+      
+      const signature = JSON.stringify(project);
+      set({ dirty: false, lastSavedSignature: signature });
+    },
+    
+    // Mark session state as dirty without triggering persistence
+    markDirty: () => set({ dirty: true }),
   },
 }));
 
 export const useEditorStore = useProjectStore;
+
+// Auto-save interval (PRD Section 5.2: Tri-State Architecture)
+// Saves dirty state to Convex every 5 seconds
+if (typeof window !== "undefined") {
+  setInterval(() => {
+    const state = useProjectStore.getState();
+    if (state.dirty && state.project) {
+      void state.actions.save();
+    }
+  }, 5000); // 5 second auto-save
+}

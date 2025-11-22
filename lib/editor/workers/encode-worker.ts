@@ -96,7 +96,8 @@ async function renderComposition(
     latencyMode: "quality",
   });
 
-  const audioSource = hasAudio(sequence) ? createAudioSource(settings.quality) : null;
+  const shouldIncludeAudio = settings.includeAudio !== false && hasAudio(sequence);
+  const audioSource = shouldIncludeAudio ? await createAudioSource(settings.quality) : null;
   output.addVideoTrack(videoTrack, { frameRate: fps });
   if (audioSource) {
     output.addAudioTrack(audioSource, { languageCode: "und" });
@@ -106,11 +107,22 @@ async function renderComposition(
 
   const renderCtx = createRenderContext(project);
   try {
+    let lastFrameHadContent = false;
+    let blackFrameCount = 0;
+    
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
       if (!activeRequests.get(requestId)) {
         throw new Error("cancelled");
       }
       const timelineTime = frameIndex * frameDuration;
+      
+      // Track whether this frame will have content
+      const frameWillHaveContent = sequence?.tracks.some(track =>
+        track.clips.some(clip =>
+          timelineTime >= clip.start && timelineTime < clip.start + clip.duration
+        )
+      ) ?? false;
+      
       await renderFrame(
         context,
         targetWidth,
@@ -121,6 +133,17 @@ async function renderComposition(
         renderCtx,
       );
       await videoTrack.add(timelineTime, frameDuration);
+      
+      // Detect black frame pattern
+      if (!frameWillHaveContent) {
+        blackFrameCount++;
+        if (frameIndex < 10 || (frameIndex % 10 === 0 && blackFrameCount > frameIndex * 0.3)) {
+          console.warn(
+            '[EncodeWorker] Frame', frameIndex, 'at', timelineTime.toFixed(3),
+            's has no clips (black frame) - total black frames:', blackFrameCount
+          );
+        }
+      }
       if (frameIndex % Math.max(1, Math.floor(totalFrames / 25)) === 0) {
         reportProgress(
           requestId,
@@ -184,11 +207,74 @@ const reportProgress = (requestId: string, progress: number, status: string) => 
   });
 };
 
-const createAudioSource = (quality: string) =>
-  new AudioSampleSource({
-    codec: "aac",
-    bitrate: pickAudioBitrate(quality),
-  });
+const checkAudioEncoderSupport = async (mimeCodec: string, bitrate: number, sampleRate: number, channels: number): Promise<boolean> => {
+  if (typeof AudioEncoder === 'undefined' || typeof AudioEncoder.isConfigSupported !== 'function') {
+    console.warn('[EncodeWorker] AudioEncoder.isConfigSupported not available');
+    return false;
+  }
+  
+  try {
+    const config = {
+      codec: mimeCodec, // MIME codec string like 'mp4a.40.2'
+      sampleRate,
+      numberOfChannels: channels,
+      bitrate,
+    };
+    const result = await AudioEncoder.isConfigSupported(config);
+    return result.supported ?? false;
+  } catch (error) {
+    console.warn('[EncodeWorker] AudioEncoder.isConfigSupported failed for', mimeCodec, error);
+    return false;
+  }
+};
+
+const createAudioSource = async (quality: string) => {
+  const baseBitrate = pickAudioBitrate(quality);
+  
+  // List of codec configurations to try, in order of preference
+  // mimeCodec is for browser support checking, codec is for AudioSampleSource
+  const codecConfigs = [
+    // AAC with original bitrate
+    { mimeCodec: 'mp4a.40.2', codec: 'aac' as const, bitrate: baseBitrate, desc: 'AAC' },
+    // AAC with lower bitrate
+    { mimeCodec: 'mp4a.40.2', codec: 'aac' as const, bitrate: 128_000, desc: 'AAC at 128kbps' },
+    // Opus (WebM container)
+    { mimeCodec: 'opus', codec: 'opus' as const, bitrate: Math.min(baseBitrate, 192_000), desc: 'Opus' },
+    // AAC Low Complexity profile
+    { mimeCodec: 'mp4a.40.5', codec: 'aac' as const, bitrate: 128_000, desc: 'AAC-LC at 128kbps' },
+  ];
+  
+  // Check browser support for each config
+  for (const config of codecConfigs) {
+    const supported = await checkAudioEncoderSupport(
+      config.mimeCodec,
+      config.bitrate,
+      TARGET_SAMPLE_RATE,
+      TARGET_CHANNELS
+    );
+    
+    if (supported) {
+      console.log('[EncodeWorker] Using', config.desc, 'at', config.bitrate, 'bps');
+      try {
+        return new AudioSampleSource({
+          codec: config.codec,
+          bitrate: config.bitrate,
+        });
+      } catch (error) {
+        console.warn('[EncodeWorker] Failed to create AudioSampleSource with', config.desc, ':', error);
+        continue;
+      }
+    } else {
+      console.log('[EncodeWorker]', config.desc, 'not supported by browser');
+    }
+  }
+  
+  // If all configs failed, throw error
+  throw new Error(
+    'No supported audio codec configuration found. Tried: ' +
+    codecConfigs.map(c => c.desc).join(', ')
+  );
+};
 
 type RenderContext = {
   videos: Map<string, VideoLoader>;
@@ -284,9 +370,16 @@ const renderFrame = async (
         if (frame) {
           drawVideoFrame(context, frame, width, height, clip.opacity);
           frame.close();
+        } else {
+          console.warn(
+            '[EncodeWorker] Missing video frame:',
+            'clip=', clip.id,
+            'time=', localTime.toFixed(3),
+            'asset=', asset.id
+          );
         }
       } catch (error) {
-        console.warn?.("Video decode failed", error);
+        console.warn('[EncodeWorker] Video decode failed:', error);
       }
     }
   }

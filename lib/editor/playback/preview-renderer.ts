@@ -5,6 +5,7 @@ import type { TransitionType } from "../transitions/presets";
 import { getEasingFunction } from "../transitions/presets";
 import { applyClipEffects } from "../effects";
 import { calculateSpeedAtTime } from "../effects/speed-interpolation";
+import { VideoLoader } from "./video-loader";
 
 export type TimeUpdateHandler = (time: number) => void;
 
@@ -37,6 +38,12 @@ export class PreviewRenderer {
   private audioLoadPromises: Map<string, Promise<void>> = new Map();
   private masterVolume = 1;
 
+  // VideoLoader support for Canvas Compositor Pattern (PRD Section 2.3)
+  private videoLoaders: Map<string, VideoLoader> = new Map();
+  private useVideoFramePipeline = false; // Temporarily disabled - using HTMLVideoElement for stability
+  private currentFrame?: VideoFrame;
+  private nextFrame?: VideoFrame;
+
   // Performance metrics
   private frameCount = 0;
   private lastFpsTime = 0;
@@ -49,10 +56,15 @@ export class PreviewRenderer {
   ) {}
 
   async attach(canvas: HTMLCanvasElement) {
+    console.log('[PreviewRenderer] attach() called with canvas:', canvas);
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d") ?? undefined;
     if (!this.videoEl) {
+      console.log('[PreviewRenderer] attach(): Creating media elements');
       await this.createMediaElements();
+      console.log('[PreviewRenderer] attach(): Media elements created, videoEl:', this.videoEl);
+    } else {
+      console.log('[PreviewRenderer] attach(): Media elements already exist');
     }
   }
 
@@ -185,12 +197,89 @@ export class PreviewRenderer {
   }
 
   async play() {
+    console.log('[PreviewRenderer] play() called');
     this.playing = true;
     this.lastFrameTime = undefined; // Reset timing on play
-    await this.audioContext?.resume();
-    await this.videoEl?.play().catch(() => undefined);
-    this.syncAudioToTimeline();
-    this.loop();
+    
+    try {
+      // CRITICAL: Sync media BEFORE attempting to play
+      // This ensures the video element has a src loaded
+      this.syncMediaToTimeline();
+      
+      await this.audioContext?.resume();
+      
+      if (this.videoEl && this.videoEl.src) {
+        console.log('[PreviewRenderer] play(): videoEl state:', {
+          src: this.videoEl.src,
+          readyState: this.videoEl.readyState,
+          currentTime: this.videoEl.currentTime,
+          paused: this.videoEl.paused,
+        });
+        
+        // Wait for video to be ready before playing
+        if (this.videoEl.readyState < 2) {
+          console.log('[PreviewRenderer] Waiting for video to load metadata...');
+          await new Promise<void>((resolve, reject) => {
+            const video = this.videoEl!;
+            const timeout = setTimeout(() => {
+              cleanup();
+              console.warn('[PreviewRenderer] Video load timeout after 5s');
+              resolve(); // Don't reject - try playing anyway
+            }, 5000);
+            
+            const onLoadedData = () => {
+              cleanup();
+              console.log('[PreviewRenderer] Video metadata loaded, readyState:', video.readyState);
+              resolve();
+            };
+            
+            const onError = (e: Event) => {
+              cleanup();
+              console.error('[PreviewRenderer] Video load error:', e);
+              reject(new Error('Video failed to load'));
+            };
+            
+            const cleanup = () => {
+              clearTimeout(timeout);
+              video.removeEventListener('loadeddata', onLoadedData);
+              video.removeEventListener('error', onError);
+            };
+            
+            video.addEventListener('loadeddata', onLoadedData, { once: true });
+            video.addEventListener('error', onError, { once: true });
+            
+            // If already loaded, resolve immediately
+            if (video.readyState >= 2) {
+              cleanup();
+              resolve();
+            }
+          });
+        }
+        
+        try {
+          console.log('[PreviewRenderer] Attempting to play video...');
+          await this.videoEl.play();
+          console.log('[PreviewRenderer] Video playing successfully');
+        } catch (playError) {
+          console.error('[PreviewRenderer] Video playback failed:', playError);
+          // Try seeking to start and retrying once
+          if (this.videoEl.currentTime !== 0) {
+            this.videoEl.currentTime = 0;
+            await this.videoEl.play().catch((retryError) => {
+              console.error('[PreviewRenderer] Video playback retry failed:', retryError);
+            });
+          }
+        }
+      } else {
+        console.warn('[PreviewRenderer] No video source available to play');
+      }
+      
+      this.syncAudioToTimeline();
+      this.loop();
+    } catch (error) {
+      console.error('[PreviewRenderer] Play failed:', error);
+      this.playing = false;
+    }
   }
 
   pause() {
@@ -253,6 +342,10 @@ export class PreviewRenderer {
     this.workletNode?.disconnect();
     this.audioGainNode?.disconnect();
     this.audioContext?.close();
+    
+    // Clean up VideoLoader resources (PRD 6.2 - prevent memory leaks)
+    this.closeFrames();
+    this.disposeLoaders();
   }
 
   private loop = (timestamp?: number) => {
@@ -315,19 +408,80 @@ export class PreviewRenderer {
 
   private syncMediaToTimeline() {
     const sequence = this.getSequence();
-    if (!sequence) return;
+    if (!sequence) {
+      console.warn('[PreviewRenderer] syncMediaToTimeline: No sequence available');
+      return;
+    }
     const clip = this.resolveClip(sequence, this.currentTime);
     if (!clip) {
+      // Debug: Show more info about why no clip was found
+      if (Math.random() < 0.1) { // Log occasionally to avoid spam
+        const videoTrack = sequence.tracks.find(t => t.kind === 'video');
+        console.log('[PreviewRenderer] syncMediaToTimeline: No clip at currentTime:', this.currentTime, '- track has', videoTrack?.clips.length, 'clips:',
+          videoTrack?.clips.map(c => `${c.id}: ${c.start}-${c.start + c.duration}`));
+      }
       this.currentClip = undefined;
       this.nextClip = undefined;
       return;
     }
+    
+    // Debug: Log when we find a clip
     if (!this.currentClip || this.currentClip.id !== clip.id) {
+      console.log('[PreviewRenderer] syncMediaToTimeline: Found clip:', clip.id, 'at time:', this.currentTime);
+    }
+    if (!this.currentClip || this.currentClip.id !== clip.id) {
+      console.log('[PreviewRenderer] syncMediaToTimeline: Loading new clip:', clip.id, 'mediaId:', clip.mediaId);
       this.currentClip = clip;
       const asset = this.getAsset(clip.mediaId);
-      if (asset && this.videoEl && this.videoEl.src !== asset.url) {
-        this.videoEl.src = asset.url;
-        this.videoEl.currentTime = clip.trimStart;
+      
+      if (!asset) {
+        console.error('[PreviewRenderer] syncMediaToTimeline: Asset not found for clip:', clip.mediaId);
+        return;
+      }
+      
+      console.log('[PreviewRenderer] syncMediaToTimeline: Asset found:', {
+        id: asset.id,
+        type: asset.type,
+        hasUrl: !!asset.url,
+        hasProxyUrl: !!asset.proxyUrl,
+        url: asset.url,
+        proxyUrl: asset.proxyUrl,
+      });
+      
+      // Prefer proxyUrl over url for better playback compatibility
+      const videoUrl = asset.proxyUrl || asset.url;
+      
+      if (!videoUrl) {
+        console.error('[PreviewRenderer] syncMediaToTimeline: No URL available for asset:', asset);
+        return;
+      }
+      
+      if (this.videoEl) {
+        if (this.videoEl.src !== videoUrl) {
+          console.log('[PreviewRenderer] syncMediaToTimeline: Setting video src:', videoUrl);
+          this.videoEl.src = videoUrl;
+          this.videoEl.load(); // Explicitly trigger load
+          this.videoEl.currentTime = clip.trimStart;
+          
+          // Add load event listener for debugging
+          this.videoEl.addEventListener('loadedmetadata', () => {
+            console.log('[PreviewRenderer] Video metadata loaded:', {
+              duration: this.videoEl?.duration,
+              videoWidth: this.videoEl?.videoWidth,
+              videoHeight: this.videoEl?.videoHeight,
+              readyState: this.videoEl?.readyState,
+            });
+          }, { once: true });
+          
+          this.videoEl.addEventListener('error', (e) => {
+            console.error('[PreviewRenderer] Video load error:', e, this.videoEl?.error);
+          }, { once: true });
+        } else {
+          console.log('[PreviewRenderer] syncMediaToTimeline: Video src already set, updating time only');
+          this.videoEl.currentTime = clip.trimStart;
+        }
+      } else {
+        console.error('[PreviewRenderer] syncMediaToTimeline: videoEl not initialized');
       }
 
       // Load next clip for transitions
@@ -382,7 +536,10 @@ export class PreviewRenderer {
   }
 
   private drawFrame() {
-    if (!this.canvas || !this.ctx) return;
+    if (!this.canvas || !this.ctx) {
+      console.warn('[PreviewRenderer] drawFrame: No canvas or context');
+      return;
+    }
 
     // Safety check: ensure canvas has valid dimensions
     if (this.canvas.width === 0 || this.canvas.height === 0) {
@@ -390,10 +547,31 @@ export class PreviewRenderer {
       return;
     }
 
+    // Debug: Log draw frame attempt every 60 frames (once per second at 60fps)
+    if (Math.random() < 0.016) {
+      console.log('[PreviewRenderer] drawFrame: currentClip:', this.currentClip?.id, 'videoEl:', {
+        exists: !!this.videoEl,
+        src: this.videoEl?.src,
+        readyState: this.videoEl?.readyState,
+        videoWidth: this.videoEl?.videoWidth,
+        videoHeight: this.videoEl?.videoHeight,
+        currentTime: this.videoEl?.currentTime,
+      });
+    }
+
     // Render coalescing: skip if already drawing
     if (this.isDrawingFrame) return;
     this.isDrawingFrame = true;
 
+    // Use VideoFrame pipeline if enabled (PRD Section 2.3 - Canvas Compositor Pattern)
+    if (this.useVideoFramePipeline) {
+      this.drawFrameFromVideoLoader().finally(() => {
+        this.isDrawingFrame = false;
+      });
+      return;
+    }
+
+    // Legacy fallback: HTMLVideoElement rendering (deprecated)
     const canvasWidth = this.canvas.width;
     const canvasHeight = this.canvas.height;
     const video = this.videoEl;
@@ -782,6 +960,238 @@ export class PreviewRenderer {
       };
 
       this.audioSources.set(clip.id, source);
+    }
+  }
+
+  /**
+   * Draw frame using VideoFrame → Canvas pipeline (PRD Section 2.3: Canvas Compositor Pattern)
+   * This replaces the legacy HTMLVideoElement approach for better 4K performance
+   */
+  private async drawFrameFromVideoLoader() {
+    if (!this.canvas || !this.ctx) return;
+
+    const sequence = this.getSequence();
+    if (!sequence) {
+      this.ctx.fillStyle = "#050505";
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.fillStyle = "#888";
+      this.ctx.fillText("No sequence", 24, 32);
+      return;
+    }
+
+    // Find clip at current time
+    const clip = this.resolveClip(sequence, this.currentTime);
+    if (!clip) {
+      this.ctx.fillStyle = "#050505";
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.fillStyle = "#888";
+      this.ctx.fillText("No media", 24, 32);
+      return;
+    }
+
+    const asset = this.getAsset(clip.mediaId);
+    if (!asset || asset.type !== 'video') {
+      return;
+    }
+
+    try {
+      // Get VideoLoader and fetch frame
+      const loader = await this.getLoader(asset);
+      const frameTime = this.currentTime - clip.start + clip.trimStart;
+      
+      // Close previous frame before getting new one (PRD 6.2 - memory management)
+      this.closeFrames();
+      
+      const frame = await loader.getFrameAt(frameTime);
+      if (!frame) return;
+
+      this.currentFrame = frame;
+
+      // Check for transition
+      const transitionInfo = this.getActiveTransition();
+      const nextClip = this.findNextClip(sequence, this.currentTime);
+
+      if (transitionInfo && nextClip) {
+        // Render transition with VideoFrames
+        await this.drawTransitionFromVideoFrames(frame, clip, nextClip, transitionInfo);
+      } else {
+        // Single frame rendering
+        this.drawVideoFrameToCanvas(this.ctx, frame, this.canvas.width, this.canvas.height, clip);
+      }
+
+    } catch (error) {
+      console.error('[PreviewRenderer] VideoFrame draw error:', error);
+      // Fall back to showing error state
+      this.ctx.fillStyle = "#050505";
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+  }
+
+  /**
+   * Draw a VideoFrame to canvas with proper aspect ratio and effects
+   */
+  private drawVideoFrameToCanvas(
+    ctx: CanvasRenderingContext2D,
+    frame: VideoFrame,
+    canvasWidth: number,
+    canvasHeight: number,
+    clip?: Clip,
+  ) {
+    // Fill background
+    ctx.fillStyle = "#050505";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Calculate aspect-fit dimensions
+    const frameAspect = frame.displayWidth / frame.displayHeight;
+    const canvasAspect = canvasWidth / canvasHeight;
+
+    let drawWidth: number;
+    let drawHeight: number;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (frameAspect > canvasAspect) {
+      // Frame is wider - fit to width
+      drawWidth = canvasWidth;
+      drawHeight = canvasWidth / frameAspect;
+      offsetY = (canvasHeight - drawHeight) / 2;
+    } else {
+      // Frame is taller - fit to height
+      drawHeight = canvasHeight;
+      drawWidth = canvasHeight * frameAspect;
+      offsetX = (canvasWidth - drawWidth) / 2;
+    }
+
+    // Draw VideoFrame directly to canvas (zero-copy from GPU)
+    ctx.drawImage(frame, offsetX, offsetY, drawWidth, drawHeight);
+
+    // Apply clip effects if present
+    if (clip?.effects && clip.effects.length > 0) {
+      const frameNumber = Math.floor(this.currentTime * 30);
+      applyClipEffects(ctx, clip, frameNumber);
+    }
+  }
+
+  /**
+   * Render transition between two clips using VideoFrames
+   */
+  private async drawTransitionFromVideoFrames(
+    currentFrame: VideoFrame,
+    currentClip: Clip,
+    nextClip: Clip,
+    transitionInfo: { type: string; progress: number },
+  ) {
+    if (!this.canvas || !this.ctx) return;
+
+    const nextAsset = this.getAsset(nextClip.mediaId);
+    if (!nextAsset || nextAsset.type !== 'video') {
+      // No next frame, just draw current
+      this.drawVideoFrameToCanvas(this.ctx, currentFrame, this.canvas.width, this.canvas.height, currentClip);
+      return;
+    }
+
+    try {
+      const nextLoader = await this.getLoader(nextAsset);
+      const nextFrameTime = Math.max(0, this.currentTime - nextClip.start) + nextClip.trimStart;
+      const nextFrame = await nextLoader.getFrameAt(nextFrameTime);
+
+      if (!nextFrame) {
+        this.drawVideoFrameToCanvas(this.ctx, currentFrame, this.canvas.width, this.canvas.height, currentClip);
+        return;
+      }
+
+      this.nextFrame = nextFrame;
+
+      // Create temporary canvases for transition rendering
+      const fromCanvas = document.createElement('canvas');
+      fromCanvas.width = this.canvas.width;
+      fromCanvas.height = this.canvas.height;
+      const fromCtx = fromCanvas.getContext('2d');
+
+      const toCanvas = document.createElement('canvas');
+      toCanvas.width = this.canvas.width;
+      toCanvas.height = this.canvas.height;
+      const toCtx = toCanvas.getContext('2d');
+
+      if (fromCtx && toCtx) {
+        // Draw both VideoFrames to temp canvases
+        this.drawVideoFrameToCanvas(fromCtx, currentFrame, this.canvas.width, this.canvas.height, currentClip);
+        this.drawVideoFrameToCanvas(toCtx, nextFrame, this.canvas.width, this.canvas.height, nextClip);
+
+        // Render transition
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        renderTransition(transitionInfo.type as TransitionType, {
+          ctx: this.ctx,
+          width: this.canvas.width,
+          height: this.canvas.height,
+          fromFrame: fromCanvas,
+          toFrame: toCanvas,
+          progress: transitionInfo.progress,
+        });
+      }
+    } catch (error) {
+      console.error('[PreviewRenderer] Transition frame error:', error);
+      // Fall back to current frame
+      this.drawVideoFrameToCanvas(this.ctx, currentFrame, this.canvas.width, this.canvas.height, currentClip);
+    }
+  }
+
+  /**
+   * Find the next clip in sequence for transition detection
+   */
+  private findNextClip(sequence: Sequence, time: number): Clip | null {
+    let nearestNext: Clip | null = null;
+    let nearestStart = Infinity;
+
+    for (const track of sequence.tracks) {
+      for (const clip of track.clips) {
+        if (clip.start > time && clip.start < nearestStart) {
+          nearestNext = clip;
+          nearestStart = clip.start;
+        }
+      }
+    }
+
+    return nearestNext;
+  }
+
+  /**
+   * Get or create a VideoLoader for the given asset (Canvas Compositor Pattern - PRD 2.3)
+   */
+  private async getLoader(asset: MediaAssetMeta): Promise<VideoLoader> {
+    const existing = this.videoLoaders.get(asset.id);
+    if (existing) return existing;
+
+    const loader = new VideoLoader(asset, {
+      cacheSize: 60, // Cache 2 seconds at 30fps
+      lookaheadSeconds: 0.5,
+    });
+    await loader.init();
+    this.videoLoaders.set(asset.id, loader);
+    return loader;
+  }
+
+  /**
+   * Clean up VideoLoader resources
+   */
+  private disposeLoaders() {
+    for (const loader of this.videoLoaders.values()) {
+      loader.dispose();
+    }
+    this.videoLoaders.clear();
+  }
+
+  /**
+   * Clean up VideoFrame resources (critical for preventing memory leaks - PRD 6.2)
+   */
+  private closeFrames() {
+    if (this.currentFrame) {
+      this.currentFrame.close();
+      this.currentFrame = undefined;
+    }
+    if (this.nextFrame) {
+      this.nextFrame.close();
+      this.nextFrame = undefined;
     }
   }
 }

@@ -14,11 +14,22 @@ interface PreviewPanelProps {
 }
 
 const formatTime = (seconds: number) => {
-  if (!Number.isFinite(seconds)) return "0:00";
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60)
+  // Robust validation: handle NaN, Infinity, negative, and undefined
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  
+  // Clamp to reasonable max (99:59:59 = ~100 hours)
+  const clampedSeconds = Math.min(seconds, 359999);
+  
+  const hours = Math.floor(clampedSeconds / 3600);
+  const mins = Math.floor((clampedSeconds % 3600) / 60);
+  const secs = Math.floor(clampedSeconds % 60)
     .toString()
     .padStart(2, "0");
+  
+  // Show hours only if >= 1 hour
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, "0")}:${secs}`;
+  }
   return `${mins}:${secs}`;
 };
 
@@ -62,11 +73,20 @@ const PreviewPanelComponent = ({
         <input
           type="range"
           min={0}
-          max={duration || 1}
+          max={Number.isFinite(duration) && duration > 0 ? duration : 1}
           step={0.01}
-          value={Math.min(currentTime, duration || 1)}
+          value={(() => {
+            const safeTime = Number.isFinite(currentTime) && currentTime >= 0 ? currentTime : 0;
+            const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 1;
+            return Math.min(safeTime, safeDuration);
+          })()}
           className="flex-1 h-1 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-          onChange={(event) => onSeek(parseFloat(event.target.value))}
+          onChange={(event) => {
+            const value = parseFloat(event.target.value);
+            if (Number.isFinite(value) && value >= 0) {
+              onSeek(value);
+            }
+          }}
         />
         <div className="text-xs font-mono text-muted-foreground w-24 text-right">
           {formatTime(currentTime)} / {formatTime(duration)}

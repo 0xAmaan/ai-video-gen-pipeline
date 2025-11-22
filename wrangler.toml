@@ -8,7 +8,7 @@ bucket_name = "replicate-videos"
 
 [vars]
 # Comma-separated origins, adjust for prod
-ALLOWED_ORIGINS = "http://localhost:3000"
+ALLOWED_ORIGINS = "http://localhost:3000,null"
 
 # AUTH_TOKEN is set as a secret:
 #   wrangler secret put AUTH_TOKEN

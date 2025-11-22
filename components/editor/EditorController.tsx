@@ -7,6 +7,21 @@ import { TimelineProvider, useTimelineContext } from "@twick/timeline";
 import { projectToTimelineJSON, timelineToProject } from "@/lib/editor/twick-adapter";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 
+// Type guard for Twick selected items with IDs
+interface TwickItemWithId {
+  id: string;
+  [key: string]: unknown;
+}
+
+function isItemWithId(item: unknown): item is TwickItemWithId {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'id' in item &&
+    typeof (item as TwickItemWithId).id === 'string'
+  );
+}
+
 const EditorBridge = () => {
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
@@ -21,12 +36,14 @@ const EditorBridge = () => {
 
   // Sync Twick selection to Project Store
   useEffect(() => {
-    if (selectedItem && 'id' in selectedItem) {
+    if (isItemWithId(selectedItem)) {
       // We assume it's a clip/element if it has an ID. 
       // Twick types distinguish Track vs TrackElement, but both have IDs.
       // For now, we just select it. The properties panel will decide if it's valid.
-      actions.setSelection({ clipIds: [(selectedItem as any).id], trackIds: [] });
+      console.log('[EditorController] Syncing selection to store:', selectedItem.id);
+      actions.setSelection({ clipIds: [selectedItem.id], trackIds: [] });
     } else {
+      console.log('[EditorController] Clearing selection');
       actions.setSelection({ clipIds: [], trackIds: [] });
     }
   }, [selectedItem, actions]);

@@ -154,7 +154,11 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         try {
           rendererRef.current = new WebGpuPreviewRenderer(getSequence, getAsset);
         } catch (error) {
-          console.warn("WebGPU preview unavailable, falling back to 2D renderer", error);
+          console.warn("[WebGPU] Renderer creation failed, falling back to WebGL", {
+            error,
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+          });
           webGpuFailed.current = true;
           rendererRef.current = new PreviewRenderer(getSequence, getAsset);
         }
@@ -165,7 +169,24 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         .attach(canvasRef.current)
         .then(() => rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time)))
         .catch((error) => {
-          console.warn("preview attach failed", error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+
+          // Enhanced error logging with context
+          console.error("[Renderer] Attach failed:", {
+            error: errorMessage,
+            rendererType: rendererRef.current instanceof WebGpuPreviewRenderer ? "WebGPU" : "WebGL",
+            canvasSize: canvasRef.current ? {
+              width: canvasRef.current.width,
+              height: canvasRef.current.height,
+            } : null,
+          });
+
+          // Mark WebGPU as failed if that was the issue
+          if (rendererRef.current instanceof WebGpuPreviewRenderer) {
+            console.warn("[WebGPU] Adapter attach failed, marking WebGPU as unavailable and falling back");
+            webGpuFailed.current = true;
+          }
+
           swapToFallbackRenderer();
         });
     }
@@ -173,15 +194,21 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
 
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer) return;
+    console.log('[StandaloneEditorApp] isPlaying changed:', isPlaying, 'renderer exists:', !!renderer);
+    if (!renderer) {
+      console.warn('[StandaloneEditorApp] Cannot play/pause - renderer not initialized');
+      return;
+    }
     if (isPlaying) {
+      console.log('[StandaloneEditorApp] Calling renderer.play()');
       renderer
         .play()
         .catch((error) => {
-          console.warn("playback failed", error);
+          console.error('[StandaloneEditorApp] Playback failed:', error);
           swapToFallbackRenderer();
         });
     } else {
+      console.log('[StandaloneEditorApp] Calling renderer.pause()');
       renderer.pause();
     }
   }, [isPlaying]);
@@ -230,6 +257,17 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
 
   const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
+  
+  // Calculate audio track and clip counts for export modal
+  const audioStats = useMemo(() => {
+    if (!sequence) return { trackCount: 0, clipCount: 0 };
+    const audioTracks = sequence.tracks.filter(track => track.kind === 'audio');
+    const audioClipCount = audioTracks.reduce((total, track) => total + track.clips.length, 0);
+    return {
+      trackCount: audioTracks.length,
+      clipCount: audioClipCount
+    };
+  }, [sequence]);
 
   useEffect(() => {
     if (!mediaManager) return;
@@ -356,6 +394,8 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         duration={sequence.duration}
         onExport={handleExport}
         status={exportStatus}
+        audioTrackCount={audioStats.trackCount}
+        audioClipCount={audioStats.clipCount}
       />
     </div>
   );

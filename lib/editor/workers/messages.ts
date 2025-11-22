@@ -93,6 +93,7 @@ export interface EncodeRequestMessage {
     quality: string;
     format: string;
     aspectRatio: string;
+    includeAudio?: boolean;
   };
 }
 

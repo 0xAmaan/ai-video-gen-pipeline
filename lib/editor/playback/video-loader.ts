@@ -96,7 +96,41 @@ export class VideoLoader {
 
     await this.decodeAround(timeSeconds);
     const decoded = this.cache.get(cacheKey);
-    return decoded ? decoded.clone() : null;
+    if (decoded) {
+      return decoded.clone();
+    }
+    
+    // Fallback: Find nearest frame within tolerance (50ms)
+    // This handles timestamp precision mismatches
+    const nearestFrame = this.getNearestFrame(timeSeconds, 0.05);
+    if (nearestFrame) {
+      // Only log occasionally to avoid spam
+      if (Math.random() < 0.05) {
+        console.log('[VideoLoader] Using nearest frame for', timeSeconds.toFixed(6), '- exact match not found, cache size:', this.cache.size);
+      }
+      return nearestFrame;
+    }
+    
+    console.error('[VideoLoader] No frame found near', timeSeconds.toFixed(6), 's - cache size:', this.cache.size, 'cache keys:', Array.from(this.cache.entries()).slice(0, 5).map(([k]) => k));
+    return null;
+  }
+  
+  private getNearestFrame(timeSeconds: number, toleranceSeconds: number): VideoFrame | null {
+    let nearestFrame: VideoFrame | null = null;
+    let nearestDelta = Infinity;
+    
+    for (const [key, frame] of this.cache.entries()) {
+      const frameTime = Number.parseFloat(key);
+      if (!Number.isFinite(frameTime)) continue;
+      
+      const delta = Math.abs(frameTime - timeSeconds);
+      if (delta <= toleranceSeconds && delta < nearestDelta) {
+        nearestDelta = delta;
+        nearestFrame = frame;
+      }
+    }
+    
+    return nearestFrame ? nearestFrame.clone() : null;
   }
 
   async seek(timeSeconds: number) {
@@ -155,8 +189,9 @@ export class VideoLoader {
   }
 
   private keyFor(timeSeconds: number) {
-    // Normalize to millisecond precision for cache hits.
-    return timeSeconds.toFixed(3);
+    // Use microsecond precision to better match video frame timestamps
+    // This reduces cache misses caused by floating-point precision issues
+    return timeSeconds.toFixed(6);
   }
 
   private reconfigureDecoder() {
