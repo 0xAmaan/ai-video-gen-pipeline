@@ -44,21 +44,21 @@ const PRESET_CONFIGS: Record<
   },
   balanced: {
     textToTextModel: "openai/gpt-4o-mini",
-    textToImageModel: "leonardo-phoenix",
+    textToImageModel: "flux-pro",
     imageToVideoModel: "wan-video/wan-2.5-i2v-fast",
   },
   "high-quality": {
     textToTextModel: "openai/gpt-4.1-mini",
     textToImageModel: "flux-pro",
-    imageToVideoModel: "veo/veo-3.1",
+    imageToVideoModel: "google/veo-3.1",
   },
 };
 
 const DEFAULT_MODEL_SELECTION = {
   textToTextModel: "openai/gpt-oss-20b", // Fast default
-  textToImageModel: "leonardo-phoenix", // From TEXT_TO_IMAGE_MODELS
+  textToImageModel: "flux-schnell", // From TEXT_TO_IMAGE_MODELS
   imageToVideoModel: "wan-video/wan-2.5-i2v-fast", // From IMAGE_TO_VIDEO_MODELS
-  sceneRegenerationModel: "leonardo-phoenix", // Same as textToImageModel
+  sceneRegenerationModel: "flux-schnell", // Same as textToImageModel
   modelPreset: "balanced" as ModelPreset,
 };
 

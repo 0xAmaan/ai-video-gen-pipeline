@@ -41,6 +41,7 @@ export interface ImageToVideoModel extends ModelConfig {
   defaultDuration?: number;
   supportedResolutions?: string[];
   supportedAspectRatios?: string[];
+  supportsAudio?: boolean;
 }
 
 export interface ModelSelectionState {
@@ -294,6 +295,7 @@ export const IMAGE_TO_VIDEO_MODELS: ImageToVideoModel[] = [
     supportedResolutions: ["720p", "1080p"],
     supportedAspectRatios: ["16:9", "9:16"],
     isAvailable: true,
+    supportsAudio: true,
   },
   {
     id: "google/veo-3.1-fast",
@@ -309,6 +311,7 @@ export const IMAGE_TO_VIDEO_MODELS: ImageToVideoModel[] = [
     supportedResolutions: ["720p", "1080p"],
     supportedAspectRatios: ["16:9", "9:16"],
     isAvailable: true,
+    supportsAudio: true,
   },
   {
     id: "minimax/hailuo-2.3-fast",
