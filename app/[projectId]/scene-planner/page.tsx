@@ -444,14 +444,6 @@ const PromptPlannerPage = () => {
 
     if (!shot) return;
 
-    const parentImageId =
-      shot.selectedImageId ?? shotPreviewMap.get(shot._id)?.[0]?._id;
-
-    if (!parentImageId) {
-      toast.error("Generate or select an image before refining this shot.");
-      return;
-    }
-
     try {
       // TODO: Decide on API integration approach for chat refinements
       // Option A: image + original description + command (CURRENT IMPLEMENTATION)
@@ -477,7 +469,7 @@ const PromptPlannerPage = () => {
           sceneId: shot.sceneId,
           shotId: shot._id,
           fixPrompt: message.trim(),
-          parentImageId, // Ensure the previous image is the base for refinement
+          parentImageId: shot.selectedImageId, // Use current selected image for image-to-image
           mode: "preview",
         }),
       });
@@ -916,12 +908,12 @@ const PromptPlannerPage = () => {
 
                           {/* Only show Add Scene button after the last scene */}
                           {isLastScene && (
-                            <Card className="group mt-4 p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 hover:bg-[#1d1d1d] transition-all">
+                            <Card className="mt-4 p-4 bg-[#171717] border border-gray-800 hover:border-gray-600/70 transition-all">
                               <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="sm"
                                 onClick={() => handleAddSceneBelow(scene._id)}
-                                className="w-full justify-center text-gray-300 group-hover:text-gray-100 hover:bg-transparent focus-visible:ring-0 focus-visible:border-transparent"
+                                className="w-full border-dashed border-gray-700 hover:border-gray-500 text-gray-300 hover:text-gray-100"
                               >
                                 <Plus className="w-4 h-4 mr-2" />
                                 Add Scene

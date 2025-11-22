@@ -8,24 +8,15 @@ import { getFlowTracker } from "@/lib/flow-tracker";
 import { getDemoModeFromHeaders } from "@/lib/demo-mode";
 import { apiError, apiResponse } from "@/lib/api-response";
 import { mockDelay } from "@/lib/demo-mocks";
-import {
-  DEFAULT_IMAGE_MODEL,
-  FALLBACK_IMAGE_MODEL,
-  IMAGE_MODELS,
-} from "@/lib/image-models";
+import { IMAGE_MODELS } from "@/lib/image-models";
 import type { ProjectAsset } from "@/lib/types/redesign";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
 });
 
-const MODEL_KEY = DEFAULT_IMAGE_MODEL;
-const MODEL_CONFIG =
-  IMAGE_MODELS[MODEL_KEY] || IMAGE_MODELS[FALLBACK_IMAGE_MODEL];
-
-if (!MODEL_CONFIG) {
-  throw new Error("No valid image model configuration found");
-}
+const MODEL_KEY = "nano-banana";
+const MODEL_CONFIG = IMAGE_MODELS[MODEL_KEY];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -78,18 +69,12 @@ const runPrediction = async (
   prompt: string,
   imageInputs: string[] = [],
 ): Promise<{ predictionId: string; urls: string[] }> => {
-  const limitedImageInputs = (imageInputs || []).filter(Boolean).slice(0, 14);
-
   const input: Record<string, any> = {
     prompt,
-    resolution: "2K",
-    output_format: "jpg",
-    safety_filter_level: "block_only_high",
   };
 
-  if (limitedImageInputs.length > 0) {
-    input.image_input = limitedImageInputs;
-    input.aspect_ratio = "match_input_image";
+  if (imageInputs.length > 0) {
+    input.image_input = imageInputs;
   }
 
   const prediction = await replicate.predictions.create({
@@ -290,18 +275,14 @@ export async function POST(req: Request) {
       referencedAssetsWithImages,
     );
 
-    const assetReferenceUrls = referencedAssetsWithImages
-      .map((asset) => asset.imageUrl)
-      .filter((url): url is string => !!url);
-
-    const referenceImages = parentImage?.imageUrl
-      ? Array.from(
-          new Set([
-            parentImage.imageUrl,
-            ...assetReferenceUrls.filter((url) => url !== parentImage.imageUrl),
-          ]),
-        )
-      : Array.from(new Set(assetReferenceUrls));
+    const referenceImages = Array.from(
+      new Set([
+        ...referencedAssetsWithImages
+          .map((asset) => asset.imageUrl)
+          .filter((url): url is string => !!url),
+        ...(parentImage?.imageUrl ? [parentImage.imageUrl] : []),
+      ]),
+    );
 
     const fullPromptForGeneration = buildIterationPrompt(
       shotData.scene.description,
