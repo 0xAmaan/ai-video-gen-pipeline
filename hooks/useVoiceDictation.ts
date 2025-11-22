@@ -65,13 +65,6 @@ export const useVoiceDictation = (
         window.SpeechRecognition || window.webkitSpeechRecognition;
       setIsSupported(!!SpeechRecognition);
 
-      // Log browser info for debugging
-      if (isBrave()) {
-        console.log(
-          "[VoiceDictation] Brave browser detected - speech recognition may require Shields to be disabled",
-        );
-      }
-
       if (SpeechRecognition && !recognitionRef.current) {
         const recognition = new SpeechRecognition();
         recognition.continuous = continuous;
@@ -81,28 +74,24 @@ export const useVoiceDictation = (
 
         recognition.onstart = () => {
           startTimeRef.current = Date.now();
-          console.log("[VoiceDictation] Recognition started");
           setIsListening(true);
           setError(null);
         };
 
         recognition.onaudiostart = () => {
-          console.log("[VoiceDictation] Audio capture started");
+          // Audio capture started
         };
 
         recognition.onaudioend = () => {
-          const duration = Date.now() - startTimeRef.current;
-          console.log(
-            `[VoiceDictation] Audio capture ended (duration: ${duration}ms)`,
-          );
+          // Audio capture ended
         };
 
         recognition.onspeechstart = () => {
-          console.log("[VoiceDictation] Speech detected");
+          // Speech detected
         };
 
         recognition.onspeechend = () => {
-          console.log("[VoiceDictation] Speech ended");
+          // Speech ended
         };
 
         recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -134,12 +123,6 @@ export const useVoiceDictation = (
         };
 
         recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-          const duration = Date.now() - startTimeRef.current;
-          console.error(
-            `[VoiceDictation] Error: ${event.error} (duration: ${duration}ms)`,
-            event,
-          );
-
           let errorMessage = "Voice recognition error occurred";
 
           switch (event.error) {
@@ -160,9 +143,6 @@ export const useVoiceDictation = (
               errorMessage = isBrave()
                 ? "⚠️ Brave Shields is blocking speech recognition. Click the shield icon in your address bar and turn Shields OFF for this site, then try again."
                 : "Network error occurred.";
-              console.warn(
-                "[VoiceDictation] Network error - if using Brave, disable Shields by clicking the shield icon in the address bar",
-              );
               break;
             case "aborted":
               errorMessage = isBrave()
@@ -186,9 +166,6 @@ export const useVoiceDictation = (
 
         recognition.onend = () => {
           const duration = Date.now() - startTimeRef.current;
-          console.log(
-            `[VoiceDictation] Recognition ended (duration: ${duration}ms, retries: ${retryCountRef.current})`,
-          );
 
           // Auto-restart if ended prematurely (within 3 seconds) and we haven't tried too many times
           // This helps with Brave's tendency to immediately close recognition
@@ -197,9 +174,6 @@ export const useVoiceDictation = (
             duration < 3000 &&
             retryCountRef.current < 3
           ) {
-            console.log(
-              `[VoiceDictation] Premature end detected (${duration}ms), auto-restarting...`,
-            );
             retryCountRef.current++;
 
             setTimeout(() => {

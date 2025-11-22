@@ -75,8 +75,6 @@ export const useModelStore = create<ModelStore>()(
 
       // Actions
       setTextToTextModel: (modelId: string) => {
-        console.log("🔧 Setting text-to-text model to:", modelId);
-        console.log("🔧 Previous state:", get());
         set({ textToTextModel: modelId });
       },
 
@@ -149,26 +147,20 @@ export const useModelStore = create<ModelStore>()(
         modelPreset: state.modelPreset,
       }),
       onRehydrateStorage: () => (state) => {
-        console.log("🔄 Store rehydrated with state:", state);
+        // Store rehydrated
       },
     },
   ),
 );
 
 // Selector hooks for specific state slices
-export const useTextToTextModel = () => {
-  const model = useModelStore((state) => state.textToTextModel);
-  console.log("🔍 Current text-to-text model from store:", model);
-  return model;
-};
+export const useTextToTextModel = () =>
+  useModelStore((state) => state.textToTextModel);
 export const useTextToImageModel = () =>
   useModelStore((state) => state.textToImageModel);
 export const useImageToVideoModel = () =>
   useModelStore((state) => state.imageToVideoModel);
 export const useSceneRegenerationModel = () =>
   useModelStore((state) => state.sceneRegenerationModel);
-export const useModelSelectionEnabled = () => {
-  const enabled = useModelStore((state) => state.modelSelectionEnabled);
-  console.log("🔍 Model selection enabled:", enabled);
-  return enabled;
-};
+export const useModelSelectionEnabled = () =>
+  useModelStore((state) => state.modelSelectionEnabled);

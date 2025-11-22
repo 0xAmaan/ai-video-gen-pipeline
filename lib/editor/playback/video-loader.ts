@@ -1,9 +1,4 @@
-import {
-  ALL_FORMATS,
-  EncodedPacketSink,
-  Input,
-  UrlSource,
-} from "mediabunny";
+import { ALL_FORMATS, EncodedPacketSink, Input, UrlSource } from "mediabunny";
 import { playbackUrlForAsset } from "../io/asset-url";
 import { FrameCache } from "./frame-cache";
 import type { MediaAssetMeta } from "../types";
@@ -25,6 +20,7 @@ export class VideoLoader {
   private readonly lookahead: number;
   private readonly requestInit?: RequestInit;
   private lastAnchor = 0;
+  private disableTrimming = false; // For export mode - keep all frames
 
   private async buildInput(url: string) {
     return new Input({
@@ -36,7 +32,10 @@ export class VideoLoader {
     });
   }
 
-  constructor(private readonly asset: MediaAssetMeta, options?: VideoLoaderOptions) {
+  constructor(
+    private readonly asset: MediaAssetMeta,
+    options?: VideoLoaderOptions,
+  ) {
     this.lookahead = options?.lookaheadSeconds ?? 0.75;
     this.cache = new FrameCache<VideoFrame>(options?.cacheSize ?? 48);
     this.requestInit = options?.requestInit;
@@ -45,18 +44,16 @@ export class VideoLoader {
   async init() {
     if (this.decoder && this.sink && this.input) return;
     if (typeof VideoDecoder === "undefined") {
-      throw new Error("WebCodecs VideoDecoder not available in this environment");
+      throw new Error(
+        "WebCodecs VideoDecoder not available in this environment",
+      );
     }
 
     // Prefer proxy URLs, then fall back to original/source URLs if proxy is broken/expired.
     const preferredUrl = playbackUrlForAsset(this.asset);
     const fallbackUrls = Array.from(
       new Set(
-        [
-          preferredUrl,
-          this.asset.sourceUrl,
-          this.asset.url,
-        ].filter(Boolean),
+        [preferredUrl, this.asset.sourceUrl, this.asset.url].filter(Boolean),
       ),
     ) as string[];
 
@@ -94,9 +91,57 @@ export class VideoLoader {
       return cached.clone();
     }
 
+    // If trimming disabled (export mode), try to find nearest frame instead of seeking
+    if (this.disableTrimming) {
+      const nearestFrame = this.cache.findNearest(timeSeconds);
+      if (nearestFrame) {
+        console.log(
+          `[VideoLoader] Using nearest frame for ${timeSeconds.toFixed(3)}s`,
+        );
+        return nearestFrame.clone();
+      }
+    }
+
     await this.decodeAround(timeSeconds);
     const decoded = this.cache.get(cacheKey);
     return decoded ? decoded.clone() : null;
+  }
+
+  async decodeSequential(
+    startSeconds: number,
+    endSeconds: number,
+  ): Promise<void> {
+    if (!this.decoder || !this.sink) return;
+
+    // Disable cache trimming for sequential decode
+    this.disableTrimming = true;
+    console.log(
+      `[VideoLoader] decodeSequential ${startSeconds}s to ${endSeconds}s - trimming DISABLED`,
+    );
+
+    await this.decoder.flush().catch(() => undefined);
+
+    // Find the keyframe at or before start
+    const keyPacket = await this.sink.getKeyPacket(startSeconds, {
+      verifyKeyPackets: true,
+    });
+    if (!keyPacket) return;
+
+    // Decode ALL packets from keyframe to end
+    let packet: any | null = keyPacket;
+    const endTimestamp = endSeconds;
+
+    while (packet && packet.timestamp <= endTimestamp) {
+      if (!packet.isMetadataOnly && packet.byteLength > 0) {
+        this.decoder.decode(packet.toEncodedVideoChunk());
+      }
+      packet = await this.sink.getNextPacket(packet);
+    }
+
+    await this.decoder.flush();
+    console.log(
+      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size()}`,
+    );
   }
 
   async seek(timeSeconds: number) {
@@ -120,7 +165,9 @@ export class VideoLoader {
     this.lastAnchor = timeSeconds;
 
     await this.decoder.flush().catch(() => undefined);
-    const keyPacket = await this.sink.getKeyPacket(timeSeconds, { verifyKeyPackets: true });
+    const keyPacket = await this.sink.getKeyPacket(timeSeconds, {
+      verifyKeyPackets: true,
+    });
     if (!keyPacket) return;
 
     let packet: any | null = keyPacket;
@@ -140,9 +187,25 @@ export class VideoLoader {
   private handleDecodedFrame(frame: VideoFrame) {
     const seconds = (frame.timestamp ?? 0) / MICROSECONDS;
     const key = this.keyFor(seconds);
+    console.log(
+      `[VideoLoader] Decoded frame at ${seconds.toFixed(3)}s, cacheKey=${key}`,
+    );
     // Close any existing frame at the same timestamp before replacing.
     void this.cache.put(key, frame);
+
+    // Skip trimming if disabled (export mode)
+    if (this.disableTrimming) {
+      console.log(
+        `[VideoLoader] Trimming disabled, cache size: ${this.cache.size()}`,
+      );
+      return;
+    }
+
+    console.log(`[VideoLoader] Cache size before trim: ${this.cache.size()}`);
     this.trimCache(this.lastAnchor);
+    console.log(
+      `[VideoLoader] Cache size after trim: ${this.cache.size()}, lastAnchor=${this.lastAnchor.toFixed(3)}s, lookahead=${this.lookahead.toFixed(3)}s`,
+    );
   }
 
   private trimCache(anchorSeconds: number) {

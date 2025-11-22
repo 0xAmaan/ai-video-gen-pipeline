@@ -35,11 +35,17 @@ ctx.onmessage = async (event: MessageEvent<EncodeWorkerMessage>) => {
   }
   if (message.type !== "ENCODE_REQUEST") return;
 
-  const { requestId, project, sequenceId, settings } = message as EncodeRequestMessage;
+  const { requestId, project, sequenceId, settings } =
+    message as EncodeRequestMessage;
   activeRequests.set(requestId, true);
 
   try {
-    const blob = await renderComposition(requestId, project, sequenceId, settings);
+    const blob = await renderComposition(
+      requestId,
+      project,
+      sequenceId,
+      settings,
+    );
     if (!activeRequests.get(requestId)) return;
     ctx.postMessage({ type: "ENCODE_RESULT", requestId, blob });
   } catch (error) {
@@ -64,7 +70,12 @@ async function renderComposition(
     return new Blob(
       [
         JSON.stringify(
-          { projectId: project.id, sequenceId, settings, note: "OffscreenCanvas unavailable" },
+          {
+            projectId: project.id,
+            sequenceId,
+            settings,
+            note: "OffscreenCanvas unavailable",
+          },
           null,
           2,
         ),
@@ -75,10 +86,20 @@ async function renderComposition(
 
   const [targetWidth, targetHeight] = parseResolution(settings.resolution);
   const sequence =
-    project.sequences.find((seq) => seq.id === sequenceId) ?? project.sequences[0];
+    project.sequences.find((seq) => seq.id === sequenceId) ??
+    project.sequences[0];
   const fps = sequence?.fps ?? 30;
   const frameDuration = 1 / fps;
   const totalFrames = Math.max(1, Math.ceil((sequence?.duration ?? 0) * fps));
+
+  console.log("[Export] Starting render:", {
+    resolution: `${targetWidth}x${targetHeight}`,
+    fps,
+    duration: sequence?.duration,
+    totalFrames,
+    quality: settings.quality,
+    hasAudio: hasAudio(sequence),
+  });
 
   const canvas = new OffscreenCanvas(targetWidth, targetHeight);
   const context = canvas.getContext("2d");
@@ -96,7 +117,9 @@ async function renderComposition(
     latencyMode: "quality",
   });
 
-  const audioSource = hasAudio(sequence) ? createAudioSource(settings.quality) : null;
+  const audioSource = hasAudio(sequence)
+    ? createAudioSource(settings.quality)
+    : null;
   output.addVideoTrack(videoTrack, { frameRate: fps });
   if (audioSource) {
     output.addAudioTrack(audioSource, { languageCode: "und" });
@@ -135,7 +158,13 @@ async function renderComposition(
 
   if (audioSource && sequence) {
     reportProgress(requestId, 92, "Mixing audio");
-    await renderAudio(requestId, sequence.tracks, project.mediaAssets, audioSource, sequence.duration ?? 0);
+    await renderAudio(
+      requestId,
+      sequence.tracks,
+      project.mediaAssets,
+      audioSource,
+      sequence.duration ?? 0,
+    );
   }
 
   reportProgress(requestId, 95, "Finalizing file");
@@ -158,24 +187,33 @@ const parseResolution = (value: string) => {
 };
 
 const pickBitrate = (width: number, height: number, quality: string) => {
-  const base = width >= 3800 ? 48_000_000 : width >= 2500 ? 28_000_000 : 12_000_000;
+  const base =
+    width >= 3800 ? 48_000_000 : width >= 2500 ? 28_000_000 : 12_000_000;
   if (quality === "high") return base;
   if (quality === "medium") return Math.round(base * 0.7);
   return Math.round(base * 0.45);
 };
 
 const pickAudioBitrate = (quality: string) => {
-  if (quality === "high") return 256_000;
-  if (quality === "medium") return 192_000;
+  if (quality === "high") return 192_000;
+  if (quality === "medium") return 160_000;
   return 128_000;
 };
 
 const hasAudio = (sequence?: Project["sequences"][number]) => {
   if (!sequence) return false;
-  return sequence.tracks.some((track) => track.kind === "audio" || track.clips.some((clip) => clip.kind === "audio"));
+  return sequence.tracks.some(
+    (track) =>
+      track.kind === "audio" ||
+      track.clips.some((clip) => clip.kind === "audio"),
+  );
 };
 
-const reportProgress = (requestId: string, progress: number, status: string) => {
+const reportProgress = (
+  requestId: string,
+  progress: number,
+  status: string,
+) => {
   ctx.postMessage({
     type: "ENCODE_PROGRESS",
     requestId,
@@ -193,37 +231,59 @@ const createAudioSource = (quality: string) =>
 type RenderContext = {
   videos: Map<string, VideoLoader>;
   images: Map<string, ImageBitmap>;
+  lastVideoFrames: Map<string, VideoFrame>; // Hold last frame as fallback
   dispose: () => void;
 };
 
 const createRenderContext = (project: Project): RenderContext => {
   const videos = new Map<string, VideoLoader>();
   const images = new Map<string, ImageBitmap>();
+  const lastVideoFrames = new Map<string, VideoFrame>();
   return {
     videos,
     images,
+    lastVideoFrames,
     dispose: () => {
       videos.forEach((loader) => loader.dispose());
       images.forEach((bitmap) => bitmap.close?.());
+      lastVideoFrames.forEach((frame) => frame.close());
       videos.clear();
       images.clear();
+      lastVideoFrames.clear();
     },
   };
 };
 
 const resolveAssetUrl = (asset: Project["mediaAssets"][string]) => {
-  return exportUrlForAsset(asset);
+  const url = exportUrlForAsset(asset);
+  console.log("[Export] Asset URL:", {
+    assetId: asset?.id,
+    type: asset?.type,
+    url,
+    hasProxy: !!(asset as any)?.proxyUrl,
+    hasOriginal: !!asset?.r2Key,
+  });
+  return url;
 };
 
 const getVideoLoader = async (
   ctx: RenderContext,
   assetId: string,
   asset: Project["mediaAssets"][string],
+  clipDuration: number,
 ) => {
   let loader = ctx.videos.get(assetId);
   if (!loader) {
-    loader = new VideoLoader(asset, { cacheSize: 64, lookaheadSeconds: 0.35 });
+    console.log(`[Export] Initializing VideoLoader for ${assetId.slice(0, 8)}`);
+    // For export: massive cache to hold ALL frames
+    loader = new VideoLoader(asset, { cacheSize: 3000, lookaheadSeconds: 0 });
     await loader.init();
+    // Decode ALL frames for this clip sequentially (fixes keyframe-only bug)
+    console.log(
+      `[Export] Pre-decoding ALL frames for ${assetId.slice(0, 8)} (${clipDuration}s)`,
+    );
+    await loader.decodeSequential(0, clipDuration);
+    console.log(`[Export] VideoLoader ready with all frames cached`);
     ctx.videos.set(assetId, loader);
   }
   return loader;
@@ -259,15 +319,22 @@ const renderFrame = async (
 
   for (const track of tracks) {
     const clip = track.clips.find(
-      (candidate) => timelineTime >= candidate.start && timelineTime < candidate.start + candidate.duration,
+      (candidate) =>
+        timelineTime >= candidate.start &&
+        timelineTime < candidate.start + candidate.duration,
     );
     if (!clip) continue;
     if (clip.kind === "audio") continue;
     const asset = assets[clip.mediaId];
     if (!asset) continue;
 
-    const maxPlayable = Number.isFinite(asset.duration) ? Math.max(0, asset.duration - clip.trimEnd) : Infinity;
-    const localTime = Math.min(maxPlayable, clip.trimStart + Math.max(0, timelineTime - clip.start));
+    const maxPlayable = Number.isFinite(asset.duration)
+      ? Math.max(0, asset.duration - clip.trimEnd)
+      : Infinity;
+    const localTime = Math.min(
+      maxPlayable,
+      clip.trimStart + Math.max(0, timelineTime - clip.start),
+    );
 
     if (asset.type === "image") {
       const bitmap = await getImageBitmap(renderCtx, clip.mediaId, asset);
@@ -279,14 +346,32 @@ const renderFrame = async (
 
     if (asset.type === "video") {
       try {
-        const loader = await getVideoLoader(renderCtx, clip.mediaId, asset);
-        const frame = await loader.getFrameAt(localTime);
+        // Calculate actual video duration needed for this clip
+        const clipVideoDuration = clip.trimStart + clip.duration + clip.trimEnd;
+        const loader = await getVideoLoader(
+          renderCtx,
+          clip.mediaId,
+          asset,
+          clipVideoDuration,
+        );
+        let frame = await loader.getFrameAt(localTime);
+
         if (frame) {
+          console.log(
+            `[Export] Frame OK: time=${localTime.toFixed(3)}s, clip=${clip.mediaId.slice(0, 8)}`,
+          );
           drawVideoFrame(context, frame, width, height, clip.opacity);
           frame.close();
+        } else {
+          console.warn(
+            `[Export] Frame MISSING: time=${localTime.toFixed(3)}s, clip=${clip.mediaId.slice(0, 8)}`,
+          );
         }
       } catch (error) {
-        console.warn?.("Video decode failed", error);
+        console.error(
+          `[Export] Frame ERROR: time=${localTime.toFixed(3)}s, clip=${clip.mediaId.slice(0, 8)}`,
+          error,
+        );
       }
     }
   }
@@ -299,9 +384,20 @@ const drawVideoFrame = (
   targetHeight: number,
   opacity: number,
 ) => {
-  const sourceWidth = frame.displayWidth || frame.codedWidth || (frame as any).width || targetWidth;
-  const sourceHeight = frame.displayHeight || frame.codedHeight || (frame as any).height || targetHeight;
-  const scale = Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight);
+  const sourceWidth =
+    frame.displayWidth ||
+    frame.codedWidth ||
+    (frame as any).width ||
+    targetWidth;
+  const sourceHeight =
+    frame.displayHeight ||
+    frame.codedHeight ||
+    (frame as any).height ||
+    targetHeight;
+  const scale = Math.max(
+    targetWidth / sourceWidth,
+    targetHeight / sourceHeight,
+  );
   const drawWidth = sourceWidth * scale;
   const drawHeight = sourceHeight * scale;
   const offsetX = (targetWidth - drawWidth) / 2;
@@ -346,9 +442,17 @@ const renderAudio = async (
   audioSource: AudioSampleSource,
   durationSeconds: number,
 ) => {
-  const totalFrames = Math.max(1, Math.ceil(durationSeconds * TARGET_SAMPLE_RATE));
-  const mixBuffers = Array.from({ length: TARGET_CHANNELS }, () => new Float32Array(totalFrames));
-  const audioClips = tracks.flatMap((track) => track.clips.filter((clip) => clip.kind === "audio"));
+  const totalFrames = Math.max(
+    1,
+    Math.ceil(durationSeconds * TARGET_SAMPLE_RATE),
+  );
+  const mixBuffers = Array.from(
+    { length: TARGET_CHANNELS },
+    () => new Float32Array(totalFrames),
+  );
+  const audioClips = tracks.flatMap((track) =>
+    track.clips.filter((clip) => clip.kind === "audio"),
+  );
 
   for (const clip of audioClips) {
     if (!activeRequests.get(requestId)) throw new Error("cancelled");
@@ -363,7 +467,10 @@ const renderAudio = async (
   await writeAudioSamples(requestId, audioSource, mixBuffers);
 };
 
-const decodeAudioAsset = async (asset: Project["mediaAssets"][string], requestId: string): Promise<DecodedAudio | null> => {
+const decodeAudioAsset = async (
+  asset: Project["mediaAssets"][string],
+  requestId: string,
+): Promise<DecodedAudio | null> => {
   const url = resolveAssetUrl(asset);
   if (!url) return null;
   const input = new Input({ source: new UrlSource(url), formats: ALL_FORMATS });
@@ -372,7 +479,10 @@ const decodeAudioAsset = async (asset: Project["mediaAssets"][string], requestId
     if (!track) return null;
     const sink = new AudioSampleSink(track);
     const channelCount = track.numberOfChannels || 1;
-    const channelChunks: Float32Array[][] = Array.from({ length: channelCount }, () => []);
+    const channelChunks: Float32Array[][] = Array.from(
+      { length: channelCount },
+      () => [],
+    );
 
     for await (const sample of sink.samples()) {
       if (!activeRequests.get(requestId)) {
@@ -442,22 +552,46 @@ const mixClipIntoBuffers = (
   const trimEndFrames = Math.max(0, Math.floor(clip.trimEnd * sampleRate));
   const maxFrames = data[0]?.length ?? 0;
   const usableEnd = Math.max(0, maxFrames - trimEndFrames);
-  const clipFrames = Math.max(0, Math.min(maxFrames - trimStartFrames, Math.floor(clip.duration * sampleRate)));
+  const clipFrames = Math.max(
+    0,
+    Math.min(
+      maxFrames - trimStartFrames,
+      Math.floor(clip.duration * sampleRate),
+    ),
+  );
   const sourceStart = trimStartFrames;
   const sourceEnd = Math.min(usableEnd, sourceStart + clipFrames);
   const sliceLength = Math.max(0, sourceEnd - sourceStart);
   if (sliceLength === 0) return;
 
   const startFrameTarget = Math.floor(clip.start * TARGET_SAMPLE_RATE);
-  const remainingFrames = Math.max(0, Math.ceil((totalDuration - clip.start) * TARGET_SAMPLE_RATE));
+  const remainingFrames = Math.max(
+    0,
+    Math.ceil((totalDuration - clip.start) * TARGET_SAMPLE_RATE),
+  );
   if (startFrameTarget >= mixBuffers[0].length || remainingFrames === 0) return;
-  const maxTargetFrames = Math.min(remainingFrames, mixBuffers[0].length - startFrameTarget);
+  const maxTargetFrames = Math.min(
+    remainingFrames,
+    mixBuffers[0].length - startFrameTarget,
+  );
   if (maxTargetFrames <= 0) return;
 
-  for (let targetChannel = 0; targetChannel < TARGET_CHANNELS; targetChannel += 1) {
+  for (
+    let targetChannel = 0;
+    targetChannel < TARGET_CHANNELS;
+    targetChannel += 1
+  ) {
     const sourceChannelIndex = Math.min(targetChannel, channels - 1);
-    const sourceChannel = data[sourceChannelIndex].subarray(sourceStart, sourceEnd);
-    const resampled = resampleChannel(sourceChannel, sampleRate, TARGET_SAMPLE_RATE, maxTargetFrames);
+    const sourceChannel = data[sourceChannelIndex].subarray(
+      sourceStart,
+      sourceEnd,
+    );
+    const resampled = resampleChannel(
+      sourceChannel,
+      sampleRate,
+      TARGET_SAMPLE_RATE,
+      maxTargetFrames,
+    );
     const targetBuffer = mixBuffers[targetChannel];
     const writeLength = Math.min(resampled.length, maxTargetFrames);
 
@@ -479,7 +613,10 @@ const resampleChannel = (
     return source.length > maxFrames ? source.subarray(0, maxFrames) : source;
   }
   const scale = fromRate / toRate;
-  const targetLength = Math.min(maxFrames, Math.max(1, Math.floor(source.length / scale)));
+  const targetLength = Math.min(
+    maxFrames,
+    Math.max(1, Math.floor(source.length / scale)),
+  );
   const dest = new Float32Array(targetLength);
   for (let i = 0; i < targetLength; i += 1) {
     const sourcePos = i * scale;

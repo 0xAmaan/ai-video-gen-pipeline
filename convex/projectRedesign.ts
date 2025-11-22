@@ -650,13 +650,6 @@ export const syncShotToLegacyScene = mutation({
       throw new Error("Selected image not found or unauthorized");
     }
 
-    console.log("[syncShotToLegacyScene] SELECTED IMAGE DATA:", {
-      selectedImageId: args.selectedImageId,
-      imageUrl: selectedImage.imageUrl,
-      imageStorageId: selectedImage.imageStorageId,
-      replicateImageId: selectedImage.replicateImageId,
-    });
-
     const now = Date.now();
 
     const projectScenes = await ctx.db
@@ -716,14 +709,6 @@ export const syncShotToLegacyScene = mutation({
     const existingScene = scenesByShotId.get(args.shotId);
     let syncedSceneId: Id<"scenes">;
 
-    console.log("[syncShotToLegacyScene] SAVING TO LEGACY SCENE:", {
-      shotId: args.shotId,
-      targetSceneNumber,
-      imageUrl: selectedImage.imageUrl,
-      willUpdate: !!existingScene,
-      existingSceneId: existingScene?._id,
-    });
-
     if (existingScene) {
       await ctx.db.patch(existingScene._id, {
         sceneNumber: targetSceneNumber,
@@ -752,8 +737,6 @@ export const syncShotToLegacyScene = mutation({
         updatedAt: now,
       });
     }
-
-    console.log("[syncShotToLegacyScene] SYNCED SCENE ID:", syncedSceneId);
 
     const latestLegacyScenes = await ctx.db
       .query("scenes")
