@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import VideoEditor, { DEFAULT_TIMELINE_TICK_CONFIGS } from "@twick/video-editor";
-import { LivePlayerProvider } from "@twick/live-player";
+import VideoEditor, {
+  DEFAULT_TIMELINE_TICK_CONFIGS,
+  usePlayerControl,
+  useEditorManager,
+  useTimelineControl,
+} from "@twick/video-editor";
+import { LivePlayerProvider, useLivePlayerContext } from "@twick/live-player";
 import { TimelineProvider, useTimelineContext } from "@twick/timeline";
 import { projectToTimelineJSON, timelineToProject } from "@/lib/editor/twick-adapter";
 import { useProjectStore } from "@/lib/editor/core/project-store";
@@ -27,7 +32,13 @@ const EditorBridge = () => {
   const project = useProjectStore((state) => state.project);
   const actions = useProjectStore((state) => state.actions);
   const assets = project?.mediaAssets ?? {};
+  
+  // Twick hooks integration
   const { editor, present, changeLog, selectedItem } = useTimelineContext();
+  const { togglePlayback } = usePlayerControl();
+  const { addElement, updateElement } = useEditorManager();
+  const { splitElement, deleteItem, handleUndo, handleRedo } = useTimelineControl();
+  const livePlayerContext = useLivePlayerContext();
   // Track the last signatures we pushed in each direction to avoid feedback loops.
   const lastProjectSignature = useRef<string | null>(null);
   const lastTimelineSignature = useRef<string | null>(null);
@@ -47,6 +58,43 @@ const EditorBridge = () => {
       actions.setSelection({ clipIds: [], trackIds: [] });
     }
   }, [selectedItem, actions]);
+
+  // Sync playback state between LivePlayer and Project Store
+  useEffect(() => {
+    if (!livePlayerContext) return;
+    const { playerState } = livePlayerContext;
+    
+    // Sync play/pause state
+    const isPlaying = playerState?.playing ?? false;
+    const storeIsPlaying = useProjectStore.getState().isPlaying;
+    
+    if (isPlaying !== storeIsPlaying) {
+      actions.togglePlayback(isPlaying);
+    }
+  }, [livePlayerContext, actions]);
+
+  // Expose Twick editor methods to window for debugging and external access
+  useEffect(() => {
+    if (typeof window !== 'undefined' && editor) {
+      (window as any).__twickEditor = {
+        editor,
+        togglePlayback,
+        addElement,
+        updateElement,
+        splitElement,
+        deleteItem,
+        undo: handleUndo,
+        redo: handleRedo,
+        livePlayerContext,
+      };
+    }
+    
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__twickEditor;
+      }
+    };
+  }, [editor, togglePlayback, addElement, updateElement, splitElement, deleteItem, handleUndo, handleRedo, livePlayerContext]);
 
   useEffect(() => {
     if (!ready || !project) return;

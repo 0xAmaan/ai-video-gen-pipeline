@@ -55,10 +55,6 @@ export class FrameCache<
     }
   }
 
-  size() {
-    return this.cache.size;
-  }
-
   findNearest(targetSeconds: number): T | undefined {
     let nearest: { key: string; frame: T; diff: number } | null = null;
 

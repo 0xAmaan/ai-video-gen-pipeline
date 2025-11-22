@@ -174,7 +174,7 @@ export class VideoLoader {
 
     await this.decoder.flush();
     console.log(
-      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size()}`,
+      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size}`,
     );
   }
 
@@ -230,15 +230,15 @@ export class VideoLoader {
     // Skip trimming if disabled (export mode)
     if (this.disableTrimming) {
       console.log(
-        `[VideoLoader] Trimming disabled, cache size: ${this.cache.size()}`,
+        `[VideoLoader] Trimming disabled, cache size: ${this.cache.size}`,
       );
       return;
     }
 
-    console.log(`[VideoLoader] Cache size before trim: ${this.cache.size()}`);
+    console.log(`[VideoLoader] Cache size before trim: ${this.cache.size}`);
     this.trimCache(this.lastAnchor);
     console.log(
-      `[VideoLoader] Cache size after trim: ${this.cache.size()}, lastAnchor=${this.lastAnchor.toFixed(3)}s, lookahead=${this.lookahead.toFixed(3)}s`,
+      `[VideoLoader] Cache size after trim: ${this.cache.size}, lastAnchor=${this.lastAnchor.toFixed(3)}s, lookahead=${this.lookahead.toFixed(3)}s`,
     );
   }
 
