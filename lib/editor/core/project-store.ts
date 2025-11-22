@@ -374,9 +374,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       
       if (!targetClip || !targetTrack) return;
       
-      // Calculate the original duration and end time
+      // Calculate the original duration
       const originalDuration = targetClip.duration;
-      const clipEndTime = targetClip.start + originalDuration;
       
       // Apply trim to the clip
       targetClip.trimStart += trimStart;
@@ -387,9 +386,11 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const durationDelta = originalDuration - targetClip.duration;
       
       // Ripple: shift all subsequent clips on the same track
+      // Use clip.start (after trim) as the reference point, matching rippleDelete logic
       if (Math.abs(durationDelta) > 0.001) {
         targetTrack.clips.forEach((clip) => {
-          if (clip.start >= clipEndTime) {
+          // Skip the trimmed clip itself and only shift clips that start after it
+          if (clip.id !== clipId && clip.start > targetClip.start) {
             clip.start = Math.max(0, clip.start - durationDelta);
           }
         });

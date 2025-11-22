@@ -20,6 +20,7 @@ export const LegacyEditorController = () => {
   const actions = useProjectStore((state) => state.actions);
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
+  const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
   const [containerWidth, setContainerWidth] = useState(1200);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -70,7 +71,12 @@ export const LegacyEditorController = () => {
     const { clip } = located;
     const deltaStart = newTrimStart - clip.trimStart;
     const deltaEnd = newTrimEnd - clip.trimEnd;
-    actions.trimClip(clipId, deltaStart, deltaEnd);
+    
+    if (rippleEditEnabled) {
+      actions.rippleTrim(clipId, deltaStart, deltaEnd);
+    } else {
+      actions.trimClip(clipId, deltaStart, deltaEnd);
+    }
   };
 
   const handleReorder = (clips: Clip[]) => {

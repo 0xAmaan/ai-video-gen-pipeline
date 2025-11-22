@@ -45,13 +45,12 @@ export const BeatGridOverlay = ({
     return () => observer.disconnect();
   }, []);
 
-  // Calculate pixels per second based on Twick's timeline configuration
+  // Calculate pixels per second using Twick's exact formula
+  // Twick formula: timelineWidth = duration * zoom * 100
+  // Therefore: pixelsPerSecond = zoom * 100
   const pixelsPerSecond = useMemo(() => {
-    // Twick uses a base duration view (similar to KonvaTimeline's 300s default)
-    const baseDuration = Math.max(duration, 300); // Minimum 5 minutes view
-    const basePPS = containerWidth / baseDuration;
-    return basePPS * zoom;
-  }, [containerWidth, duration, zoom]);
+    return zoom * 100;
+  }, [zoom]);
 
   // Convert time to pixel position
   const timeToPixels = (time: number): number => {
