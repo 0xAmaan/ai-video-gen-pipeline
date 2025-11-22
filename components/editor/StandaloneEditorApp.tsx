@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { getMediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
+import { playbackUrlForAsset } from "@/lib/editor/io/asset-url";
 import { PreviewRenderer } from "@/lib/editor/playback/preview-renderer";
 import { WebGpuPreviewRenderer } from "@/lib/editor/playback/webgpu-preview-renderer";
 import { getExportPipeline } from "@/lib/editor/export/export-pipeline";
@@ -13,6 +14,7 @@ import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
 import { EditorController } from "@/components/editor/EditorController";
+import LegacyEditorApp from "@/components/editor/LegacyEditorApp";
 
 interface StandaloneEditorAppProps {
   autoHydrate?: boolean;
@@ -26,12 +28,38 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
   const [masterVolume, setMasterVolume] = useState(1);
   const [audioTrackMuted, setAudioTrackMuted] = useState(false);
+  const [timelineMode, setTimelineMode] = useState<"twick" | "legacy">("twick");
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
   const actions = useProjectStore((state) => state.actions);
+  const thumbnailInflight = useRef<Set<string>>(new Set());
+  const webGpuFailed = useRef(false);
+
+  // STABILITY FIX: Use WebGL in legacy mode; allow Twick mode to use WebGPU when available.
+  const forceWebGL = timelineMode === "legacy";
+
+  const swapToFallbackRenderer = () => {
+    const getSequence = () => {
+      const state = useProjectStore.getState();
+      if (!state.project) return null;
+      return (
+        state.project.sequences.find(
+          (sequence) => sequence.id === state.project?.settings.activeSequenceId,
+        ) ?? null
+      );
+    };
+    const getAsset = (id: string) => useProjectStore.getState().project?.mediaAssets[id];
+    rendererRef.current = new PreviewRenderer(getSequence, getAsset);
+    if (canvasRef.current) {
+      void rendererRef.current
+        .attach(canvasRef.current)
+        .then(() => rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time)))
+        .catch((error) => console.warn("preview fallback attach failed", error));
+    }
+  };
   const mediaManager = useMemo(() => {
     if (typeof window === "undefined") {
       return null;
@@ -88,6 +116,21 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   }, [actions, autoHydrate, project?.id, propsProjectId]);
 
   useEffect(() => {
+    // When switching modes, reset the renderer so it re-initializes with the chosen backend.
+    if (rendererRef.current) {
+      rendererRef.current.pause();
+      if ("detach" in rendererRef.current && typeof (rendererRef.current as any).detach === "function") {
+        try {
+          (rendererRef.current as any).detach();
+        } catch {
+          /* ignore detach errors */
+        }
+      }
+      rendererRef.current = null;
+    }
+  }, [timelineMode]);
+
+  useEffect(() => {
     if (!ready || !project || !canvasRef.current) return;
     if (!rendererRef.current) {
       const getSequence = () => {
@@ -100,24 +143,44 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         );
       };
       const getAsset = (id: string) => useProjectStore.getState().project?.mediaAssets[id];
-      try {
-        rendererRef.current = new WebGpuPreviewRenderer(getSequence, getAsset);
-      } catch (error) {
-        console.warn("WebGPU preview unavailable, falling back to 2D renderer", error);
+      const preferWebGPU =
+        !forceWebGL &&
+        timelineMode === "twick" &&
+        typeof navigator !== "undefined" &&
+        !webGpuFailed.current &&
+        Boolean((navigator as any).gpu);
+
+      if (preferWebGPU) {
+        try {
+          rendererRef.current = new WebGpuPreviewRenderer(getSequence, getAsset);
+        } catch (error) {
+          console.warn("WebGPU preview unavailable, falling back to 2D renderer", error);
+          webGpuFailed.current = true;
+          rendererRef.current = new PreviewRenderer(getSequence, getAsset);
+        }
+      } else {
         rendererRef.current = new PreviewRenderer(getSequence, getAsset);
       }
       rendererRef.current
         .attach(canvasRef.current)
         .then(() => rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time)))
-        .catch((error) => console.warn("preview attach failed", error));
+        .catch((error) => {
+          console.warn("preview attach failed", error);
+          swapToFallbackRenderer();
+        });
     }
-  }, [ready, project, actions]);
+  }, [ready, project, actions, timelineMode]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
     if (isPlaying) {
-      renderer.play().catch((error) => console.warn("playback failed", error));
+      renderer
+        .play()
+        .catch((error) => {
+          console.warn("playback failed", error);
+          swapToFallbackRenderer();
+        });
     } else {
       renderer.pause();
     }
@@ -168,6 +231,34 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
 
+  useEffect(() => {
+    if (!mediaManager) return;
+    assets.forEach((asset) => {
+      if (asset.type !== "video") return;
+      if (asset.thumbnails && asset.thumbnails.length > 0) return;
+      const url = playbackUrlForAsset(asset);
+      if (!url) return;
+      if (thumbnailInflight.current.has(asset.id)) return;
+      thumbnailInflight.current.add(asset.id);
+      void mediaManager
+        .generateThumbnails(asset.id, url, asset.duration, 12)
+        .then((thumbs) => {
+          if (!thumbs?.length) return;
+          actions.updateMediaAsset(asset.id, {
+            thumbnails: thumbs,
+            thumbnailCount: thumbs.length,
+          });
+        })
+        .catch((error) => console.warn("thumbnail generation failed", asset.id, error))
+        .finally(() => {
+          thumbnailInflight.current.delete(asset.id);
+        });
+    });
+    return () => {
+      thumbnailInflight.current.clear();
+    };
+  }, [assets, mediaManager, actions]);
+
   if (!ready || !project || !sequence) {
     return (
       <div className="flex h-screen items-center justify-center text-muted-foreground">
@@ -176,8 +267,18 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
     );
   }
 
+  if (timelineMode === "legacy") {
+    return (
+      <LegacyEditorApp
+        autoHydrate={autoHydrate}
+        projectId={propsProjectId}
+        onSwitchToModern={() => setTimelineMode("twick")}
+      />
+    );
+  }
+
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
       <TopBar
         title={project.title}
         isPlaying={isPlaying}
@@ -187,33 +288,68 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         onUndo={() => actions.undo()}
         onRedo={() => actions.redo()}
         onExport={() => setExportOpen(true)}
+        timelineMode={timelineMode}
+        onToggleTimelineMode={() =>
+          setTimelineMode((prev) => (prev === "twick" ? "legacy" : "twick"))
+        }
         masterVolume={masterVolume}
         onMasterVolumeChange={(value) => setMasterVolume(value)}
         audioTrackMuted={audioTrackMuted}
         onToggleAudioTrack={() => setAudioTrackMuted((prev) => !prev)}
       />
-      <div className="flex flex-1 overflow-hidden">
-        <MediaPanel
-          assets={assets}
-          onImport={handleImport}
-          onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
-        />
-        <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-          <div className="flex-none">
-            <PreviewPanel
-              canvasRef={canvasRef}
-              currentTime={currentTime}
-              duration={sequence.duration}
-              isPlaying={isPlaying}
-              onTogglePlayback={() => actions.togglePlayback()}
-              onSeek={(time) => actions.setCurrentTime(time)}
+      
+      <div className="flex flex-1 flex-col min-h-0">
+        {/* Top Section: Media, Preview, Properties */}
+        <div className="flex flex-1 min-h-0 border-b border-border">
+          
+          {/* Left: Media Panel */}
+          <div className="w-[320px] flex-none border-r border-border flex flex-col bg-card/30">
+            <MediaPanel
+              assets={assets}
+              onImport={handleImport}
+              onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
             />
           </div>
-          <div className="flex-1 min-h-[280px]">
-            <EditorController />
+
+          {/* Center: Preview Panel */}
+          <div className="flex-1 flex flex-col bg-black overflow-hidden">
+              <PreviewPanel
+                canvasRef={canvasRef}
+                currentTime={currentTime}
+                duration={sequence.duration}
+                isPlaying={isPlaying}
+                onTogglePlayback={() => actions.togglePlayback()}
+                onSeek={(time) => actions.setCurrentTime(time)}
+              />
+          </div>
+
+          {/* Right: Properties Panel (Placeholder) */}
+          <div className="w-[320px] flex-none border-l border-border bg-card/30 flex flex-col">
+             <div className="p-4 border-b border-border">
+                <h3 className="font-medium text-sm">Properties</h3>
+             </div>
+             <div className="p-4 text-sm text-muted-foreground flex-1">
+                {selection.clipIds.length > 0 ? (
+                  <div>
+                    <div className="mb-2">Selected: {selection.clipIds.length} clip(s)</div>
+                    {/* TODO: Add property editors here */}
+                    <div className="text-xs opacity-50">Transform, Speed, Audio settings will appear here.</div>
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center opacity-50">
+                    Select a clip to edit properties
+                  </div>
+                )}
+             </div>
           </div>
         </div>
+
+        {/* Bottom Section: Timeline */}
+        <div className="h-[400px] flex-none flex flex-col bg-background border-t border-border">
+          <EditorController />
+        </div>
       </div>
+
       <ExportModal
         open={exportOpen}
         onOpenChange={setExportOpen}

@@ -61,35 +61,32 @@ async function serveAsset(request: Request, env: Env, key: string): Promise<Resp
     return json({ error: "Missing key" }, { status: 400 });
   }
 
-  const rangeHeader = request.headers.get("range");
-  const range = rangeHeader ? parseRange(rangeHeader) : null;
+  // Keys arrive URL-encoded (e.g., videos%2Ffile.mp4); decode once for R2 lookup.
+  const objectKey = (() => {
+    try {
+      return decodeURIComponent(key);
+    } catch {
+      return key;
+    }
+  })();
 
   try {
-    const object = await env.R2_BUCKET.get(key, range ? { range } : undefined);
+    // Always serve the full object to avoid Cloudflare rewriting partial responses to 200.
+    const object = await env.R2_BUCKET.get(objectKey);
     if (!object || !object.body) {
       return json({ error: "Not found" }, { status: 404 });
     }
 
     const responseHeaders = new Headers();
     responseHeaders.set("accept-ranges", "bytes");
+    responseHeaders.set("x-proxy-version", "2025-11-22-02");
+    responseHeaders.set("cache-control", "private, no-store, no-cache, must-revalidate");
     const contentType =
       object.httpMetadata?.contentType ?? object.customMetadata?.contentType ?? "application/octet-stream";
     responseHeaders.set("content-type", contentType);
 
-    if (range && object.range) {
-      const start = object.range.offset;
-      const length = object.range.length ?? object.size - start;
-      const end = start + length - 1;
-      responseHeaders.set("content-range", `bytes ${start}-${end}/${object.size}`);
-      responseHeaders.set("content-length", length.toString());
-      // For HEAD, return headers only
-      if (request.method === "HEAD") {
-        return new Response(null, { status: 206, headers: responseHeaders });
-      }
-      return new Response(object.body, { status: 206, headers: responseHeaders });
-    }
-
     responseHeaders.set("content-length", object.size.toString());
+    console.log("serveAsset full", { key: objectKey, size: object.size, status: 200 });
     if (request.method === "HEAD") {
       return new Response(null, { status: 200, headers: responseHeaders });
     }
@@ -167,5 +164,7 @@ function withCors(response: Response, env: Env): Response {
   headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
   headers.set("access-control-allow-headers", "authorization,content-type,range");
   headers.set("access-control-expose-headers", "content-range,accept-ranges");
+  // Required when the client is using COEP/COOP; allows media to be fetched cross-origin.
+  headers.set("cross-origin-resource-policy", "cross-origin");
   return new Response(response.body, { ...response, headers });
 }

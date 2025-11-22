@@ -3,8 +3,14 @@ import type { MediaAssetMeta } from "../types";
 const proxyBase =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_R2_PROXY_BASE) || "";
 
-const normalizeProxyBase = () =>
-  proxyBase ? (proxyBase.endsWith("/") ? proxyBase.slice(0, -1) : proxyBase) : "";
+const normalizeProxyBase = () => {
+  if (!proxyBase) return "";
+  let base = proxyBase.trim();
+  if (!/^https?:\/\//i.test(base)) {
+    base = `https://${base}`;
+  }
+  return base.endsWith("/") ? base.slice(0, -1) : base;
+};
 
 export const buildAssetUrl = (r2Key?: string | null, fallback?: string) => {
   const base = normalizeProxyBase();

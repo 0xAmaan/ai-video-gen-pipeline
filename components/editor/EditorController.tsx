@@ -71,32 +71,42 @@ const EditorBridge = () => {
 };
 
 export const EditorController = () => {
+  // Performance optimization: Only subscribe to project ID for the initial data serialization
+  // Updates are handled by the inner EditorBridge component
   const project = useProjectStore((state) => state.project);
+  const projectId = project?.id;
+  
+  // Only re-calculate initialData when the project ID changes, NOT on every update.
+  // This prevents TimelineProvider from re-mounting/resetting during editing.
   const initialData = useMemo(
     () => (project ? projectToTimelineJSON(project) : undefined),
-    [project?.updatedAt],
+    [projectId], 
   );
 
+  if (!project) return null;
+
   return (
-    <LivePlayerProvider>
-      <TimelineProvider
-        contextId="twick-editor"
-        resolution={{
-          width: project?.sequences[0]?.width ?? 1920,
-          height: project?.sequences[0]?.height ?? 1080,
-        }}
-        initialData={
-          initialData ?? {
-            tracks: [],
-            version: 1,
+    <div className="h-full w-full bg-background">
+      <LivePlayerProvider>
+        <TimelineProvider
+          contextId="twick-editor"
+          resolution={{
+            width: project.sequences[0]?.width ?? 1920,
+            height: project.sequences[0]?.height ?? 1080,
+          }}
+          initialData={
+            initialData ?? {
+              tracks: [],
+              version: 1,
+            }
           }
-        }
-        undoRedoPersistenceKey="twick-editor-history"
-        maxHistorySize={150}
-      >
-        <EditorBridge />
-      </TimelineProvider>
-    </LivePlayerProvider>
+          undoRedoPersistenceKey={`twick-history-${projectId}`}
+          maxHistorySize={150}
+        >
+          <EditorBridge />
+        </TimelineProvider>
+      </LivePlayerProvider>
+    </div>
   );
 };
 

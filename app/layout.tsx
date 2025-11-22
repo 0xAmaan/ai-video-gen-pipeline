@@ -1,4 +1,5 @@
 import "@/app/globals.css";
+import "@twick/video-editor/dist/video-editor.css";
 
 import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "./ConvexClientProvider";

@@ -155,6 +155,7 @@ export interface ProjectStoreState {
     setCurrentTime: (time: number) => void;
     togglePlayback: (playing?: boolean) => void;
     addMediaAsset: (asset: MediaAssetMeta) => void;
+    updateMediaAsset: (assetId: string, updates: Partial<MediaAssetMeta>) => void;
     appendClipFromAsset: (assetId: string) => void;
     moveClip: (clipId: string, trackId: string, start: number) => void;
     trimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
@@ -225,6 +226,18 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         if (!state.project) return state;
         const next = deepClone(state.project);
         next.mediaAssets[asset.id] = asset;
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        persistLater(next, history);
+        return { ...state, project: next, history };
+      }),
+    updateMediaAsset: (assetId, updates) =>
+      set((state) => {
+        if (!state.project) return state;
+        const existing = state.project.mediaAssets[assetId];
+        if (!existing) return state;
+        const next = deepClone(state.project);
+        next.mediaAssets[assetId] = { ...existing, ...updates };
         next.updatedAt = Date.now();
         const history = historyAfterPush(state, state.project);
         persistLater(next, history);

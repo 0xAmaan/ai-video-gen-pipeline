@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useCallback, useState } from "react";
+import { memo } from "react";
 import { Play, Pause } from "lucide-react";
 import { Button } from "../ui/button";
 
@@ -11,7 +11,6 @@ interface PreviewPanelProps {
   isPlaying: boolean;
   onTogglePlayback: () => void;
   onSeek: (time: number) => void;
-  onCanvasResize?: (width: number, height: number) => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -30,111 +29,34 @@ const PreviewPanelComponent = ({
   isPlaying,
   onTogglePlayback,
   onSeek,
-  onCanvasResize,
 }: PreviewPanelProps) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const resizeTimeoutRef = useRef<number | null>(null);
-  const lastSizeRef = useRef({ width: 0, height: 0 });
-  const [displaySize, setDisplaySize] = useState({ width: 1280, height: 720 });
-
-  // Debounced resize handler
-  const handleResize = useCallback(
-    (entries: ResizeObserverEntry[]) => {
-      const entry = entries[0];
-      if (!entry || !onCanvasResize) return;
-
-      const { width, height } = entry.contentRect;
-      if (width <= 0 || height <= 0) return;
-
-      // Clear previous timeout
-      if (resizeTimeoutRef.current !== null) {
-        window.clearTimeout(resizeTimeoutRef.current);
-      }
-
-      // Debounce resize events (16ms ~= 60fps for smooth resizing)
-      resizeTimeoutRef.current = window.setTimeout(() => {
-        const aspectRatio = 16 / 9;
-        const containerAspect = width / height;
-
-        let canvasWidth: number;
-        let canvasHeight: number;
-
-        if (containerAspect > aspectRatio) {
-          // Container wider than 16:9 – fit height
-          canvasHeight = Math.floor(height);
-          canvasWidth = Math.floor(height * aspectRatio);
-        } else {
-          // Container taller – fit width
-          canvasWidth = Math.floor(width);
-          canvasHeight = Math.floor(width / aspectRatio);
-        }
-
-        canvasWidth = Math.max(1, canvasWidth);
-        canvasHeight = Math.max(1, canvasHeight);
-
-        // Only resize if dimensions actually changed
-        if (
-          lastSizeRef.current.width !== canvasWidth ||
-          lastSizeRef.current.height !== canvasHeight
-        ) {
-          lastSizeRef.current = { width: canvasWidth, height: canvasHeight };
-          setDisplaySize({ width: canvasWidth, height: canvasHeight });
-          onCanvasResize(canvasWidth, canvasHeight);
-        }
-      }, 16);
-    },
-    [onCanvasResize],
-  );
-
-  // Setup ResizeObserver
-  useEffect(() => {
-    if (!containerRef.current || !onCanvasResize) return;
-
-    const resizeObserver = new ResizeObserver(handleResize);
-    resizeObserver.observe(containerRef.current);
-
-    return () => {
-      resizeObserver.disconnect();
-      if (resizeTimeoutRef.current !== null) {
-        window.clearTimeout(resizeTimeoutRef.current);
-      }
-    };
-  }, [handleResize, onCanvasResize]);
-
   return (
-    <div className="flex h-full flex-col gap-3 border-r border-border bg-card/50 p-4">
-      {/* Canvas container - maintain centered 16:9 viewport similar to CapCut */}
-      <div
-        ref={containerRef}
-        className="flex flex-1 items-center justify-center overflow-hidden bg-black"
-      >
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Canvas Container: Flexbox centers the canvas, object-contain preserves aspect ratio */}
+      <div className="flex-1 flex items-center justify-center bg-black min-h-0 overflow-hidden relative">
         <canvas
           ref={canvasRef}
-          className="rounded-md"
-          width={1280}
-          height={720}
-          style={{
-            width: `${displaySize.width}px`,
-            height: `${displaySize.height}px`,
-            maxWidth: "100%",
-            maxHeight: "100%",
-            display: "block",
-          }}
-          // TODO: tweak scaling offsets to better match CapCut cropping behavior
+          className="max-w-full max-h-full object-contain"
+          // Set initial resolution; PreviewRenderer will update this if needed, 
+          // but CSS controls the display size.
+          width={1920}
+          height={1080}
         />
       </div>
-      <div className="flex items-center gap-3">
+      
+      {/* Controls Bar */}
+      <div className="flex-none h-12 flex items-center gap-3 px-4 border-t border-border bg-card/50">
         <Button
-          variant="secondary"
+          variant="ghost"
           size="icon"
           onClick={onTogglePlayback}
           aria-label="Toggle playback"
-          className="shrink-0"
+          className="shrink-0 h-8 w-8 hover:bg-primary/10"
         >
           {isPlaying ? (
-            <Pause className="h-4 w-4" />
+            <Pause className="h-4 w-4 fill-current" />
           ) : (
-            <Play className="h-4 w-4 ml-0.5" />
+            <Play className="h-4 w-4 ml-0.5 fill-current" />
           )}
         </Button>
         <input
@@ -143,10 +65,10 @@ const PreviewPanelComponent = ({
           max={duration || 1}
           step={0.01}
           value={Math.min(currentTime, duration || 1)}
-          className="flex-1"
+          className="flex-1 h-1 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
           onChange={(event) => onSeek(parseFloat(event.target.value))}
         />
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs font-mono text-muted-foreground w-24 text-right">
           {formatTime(currentTime)} / {formatTime(duration)}
         </div>
       </div>
@@ -154,20 +76,4 @@ const PreviewPanelComponent = ({
   );
 };
 
-// Memoize to prevent re-renders when only currentTime changes
-// Canvas updates independently via PreviewRenderer
-export const PreviewPanel = memo(
-  PreviewPanelComponent,
-  (prevProps, nextProps) => {
-    // Only re-render if these props change (ignore currentTime for now)
-    return (
-      prevProps.canvasRef === nextProps.canvasRef &&
-      prevProps.duration === nextProps.duration &&
-      prevProps.isPlaying === nextProps.isPlaying &&
-      prevProps.onTogglePlayback === nextProps.onTogglePlayback &&
-      prevProps.onSeek === nextProps.onSeek
-      // Note: currentTime is intentionally excluded to reduce re-renders
-      // The time display will update less frequently, but canvas rendering is smooth
-    );
-  },
-);
+export const PreviewPanel = memo(PreviewPanelComponent);
