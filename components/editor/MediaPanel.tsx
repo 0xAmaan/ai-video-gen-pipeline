@@ -25,7 +25,7 @@ export const MediaPanel = ({
   onAddToTimeline,
 }: MediaPanelProps) => {
   return (
-    <div className="flex h-full flex-col bg-muted/20">
+    <div className="flex h-full flex-col">
       <div className="border-b border-border px-3 py-2 flex items-center justify-between">
         <span className="text-sm font-medium">Media Library ({assets.length})</span>
         <label className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors">

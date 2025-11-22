@@ -151,17 +151,21 @@ const StoryboardPage = () => {
         }
 
         if (result.status === "failed") {
+          const errorMessage = result.errorMessage || "Video generation failed";
           await updateVideoClip({
             clipId,
             status: "failed",
-            errorMessage: result.errorMessage || "Video generation failed",
+            errorMessage,
           });
           activeVideoPolls.current.delete(clipId);
           console.error("[StoryboardPage] Clip failed while polling", {
             clipId,
             predictionId,
-            error: result.errorMessage,
+            error: errorMessage,
+            fullResult: result, // Log full result to see what Replicate returned
           });
+          // Show user-friendly alert with the error
+          alert(`Video generation failed: ${errorMessage}\n\nPrediction ID: ${predictionId}`);
           return;
         }
 
@@ -265,9 +269,9 @@ const StoryboardPage = () => {
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
         console.error("[StoryboardPage] generate-all-clips failed", errorBody);
-        throw new Error(
-          errorBody?.error || "Failed to generate video clips",
-        );
+        const errorMsg = errorBody?.error || errorBody?.details || `Failed to generate video clips (${response.status})`;
+        alert(`Failed to start video generation:\n${errorMsg}`);
+        throw new Error(errorMsg);
       }
 
       const result = await response.json();

@@ -23,6 +23,9 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
     pathname?.startsWith("/input") ||
     pathname?.match(/^\/[^/]+\/(scene-planner|scene-iterator|loading|storyboard)/);
 
+  // Editor3 pages: completely clean - no dev tools
+  const isEditor3Page = pathname?.match(/^\/[^/]+\/editor3/);
+
   // Archive pages: old flow with sidebar
   const isArchivePage = pathname?.startsWith("/archive");
 
@@ -31,6 +34,16 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
 
   // Show sidebar only for archive pages
   const showSidebar = isSignedIn && isArchivePage;
+
+  // Editor3 pages: completely clean - no dev tools, no sidebar
+  if (isEditor3Page) {
+    return (
+      <main className="h-screen overflow-hidden">
+        {children}
+        <Toaster position="top-center" richColors />
+      </main>
+    );
+  }
 
   // Main flow pages: clean layout with dev tools
   if (isMainFlowPage || isLegacyRedesignPage) {

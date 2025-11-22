@@ -686,8 +686,21 @@ const KonvaTimelineComponent = ({
             };
 
             const interval = getMarkerInterval();
-            const markers = [];
 
+            // Calculate sub-interval for dashed tick marks
+            const getSubInterval = (majorInterval: number) => {
+              if (majorInterval === 1) return 0.2; // 5 divisions
+              if (majorInterval === 5) return 1; // 5 divisions
+              if (majorInterval === 10) return 2; // 5 divisions
+              if (majorInterval === 30) return 5; // 6 divisions
+              return 10; // 6 divisions for 60s
+            };
+
+            const subInterval = getSubInterval(interval);
+            const markers = [];
+            const tickMarks = [];
+
+            // Render major timestamp labels
             for (let time = 0; time <= effectiveDuration; time += interval) {
               const x = timeToPixels(time) + X_OFFSET;
               markers.push(
@@ -701,7 +714,26 @@ const KonvaTimelineComponent = ({
               );
             }
 
-            return markers;
+            // Render sub-interval tick marks
+            for (let time = subInterval; time <= effectiveDuration; time += subInterval) {
+              // Skip if this is a major interval (already has timestamp label)
+              if (time % interval === 0) continue;
+
+              const x = timeToPixels(time) + X_OFFSET;
+              tickMarks.push(
+                <div
+                  key={`tick-${time}`}
+                  className="absolute top-0"
+                  style={{
+                    left: `${x}px`,
+                    height: "50%",
+                    borderLeft: "1px solid rgba(255, 255, 255, 0.2)",
+                  }}
+                />,
+              );
+            }
+
+            return [...markers, ...tickMarks];
           })()}
 
           {/* Playhead chevron indicator */}

@@ -91,20 +91,39 @@ export class VideoLoader {
       return cached.clone();
     }
 
-    // If trimming disabled (export mode), try to find nearest frame instead of seeking
-    if (this.disableTrimming) {
-      const nearestFrame = this.cache.findNearest(timeSeconds);
-      if (nearestFrame) {
-        console.log(
-          `[VideoLoader] Using nearest frame for ${timeSeconds.toFixed(3)}s`,
-        );
-        return nearestFrame.clone();
-      }
+    // If we don't have an exact match, try to use the nearest decoded frame.
+    // WebCodecs frame timestamps rarely line up exactly with arbitrary
+    // playback times, so relying only on exact millisecond-aligned keys will
+    // frequently miss and cause black frames.
+    const nearestBeforeDecode = this.cache.findNearest(timeSeconds);
+    if (nearestBeforeDecode) {
+      console.log(
+        `[VideoLoader] Using nearest cached frame for ${timeSeconds.toFixed(
+          3,
+        )}s (pre-decode)`,
+      );
+      return nearestBeforeDecode.clone();
     }
 
     await this.decodeAround(timeSeconds);
-    const decoded = this.cache.get(cacheKey);
-    return decoded ? decoded.clone() : null;
+    // After decoding around the target time, prefer an exact key if present,
+    // otherwise fall back to the nearest available frame.
+    const decodedExact = this.cache.get(cacheKey);
+    if (decodedExact) {
+      return decodedExact.clone();
+    }
+
+    const nearestAfterDecode = this.cache.findNearest(timeSeconds);
+    if (nearestAfterDecode) {
+      console.log(
+        `[VideoLoader] Using nearest decoded frame for ${timeSeconds.toFixed(
+          3,
+        )}s (post-decode)`,
+      );
+      return nearestAfterDecode.clone();
+    }
+
+    return null;
   }
 
   async decodeSequential(
@@ -152,6 +171,13 @@ export class VideoLoader {
     this.reconfigureDecoder();
     this.cache.clear();
     await this.decodeAround(timeSeconds);
+  }
+
+  setPlaybackMode(isPlaying: boolean): void {
+    this.disableTrimming = isPlaying;
+    console.log(
+      `[VideoLoader] Playback mode: ${isPlaying}, trimming: ${!isPlaying}`,
+    );
   }
 
   dispose() {
