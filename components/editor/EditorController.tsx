@@ -25,7 +25,7 @@ const EditorBridge = () => {
       // We assume it's a clip/element if it has an ID. 
       // Twick types distinguish Track vs TrackElement, but both have IDs.
       // For now, we just select it. The properties panel will decide if it's valid.
-      actions.setSelection({ clipIds: [selectedItem.id], trackIds: [] });
+      actions.setSelection({ clipIds: [(selectedItem as any).id], trackIds: [] });
     } else {
       actions.setSelection({ clipIds: [], trackIds: [] });
     }
