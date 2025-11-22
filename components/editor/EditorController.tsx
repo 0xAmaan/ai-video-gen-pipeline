@@ -12,9 +12,11 @@ import { TimelineProvider, useTimelineContext } from "@twick/timeline";
 import { projectToTimelineJSON, timelineToProject } from "@/lib/editor/twick-adapter";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { useSnapManager } from "@/lib/editor/hooks/useSnapManager";
+import { useSlipSlideMode, calculatePixelsPerSecond, getCursorForMode } from "@/lib/editor/hooks/useSlipSlideMode";
 import { isItemWithId } from "@/lib/editor/types/twick-integration";
 import { BeatGridOverlay } from "./BeatGridOverlay";
 import { ThumbnailInjector } from "./ThumbnailInjector";
+import { EditingModeIndicator } from "./EditingModeIndicator";
 
 /**
  * EditorBridge Component
@@ -93,6 +95,22 @@ const EditorBridge = () => {
   const [scrollLeft, setScrollLeft] = useState(0);
   const [detectedZoom, setDetectedZoom] = useState(1.5); // Twick's default zoom
   const containerRef = useRef<HTMLDivElement>(null);
+  const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
+
+  // Slip/slide editing mode support
+  const {
+    mode: editingMode,
+    isSlipMode,
+    isSlideMode,
+    previewClip,
+    startSlipEdit,
+    startSlideEdit,
+    updateDrag,
+    endEdit,
+    cancelEdit,
+    detectModeFromModifiers,
+    getSlipBounds,
+  } = useSlipSlideMode();
 
   // Twick hooks integration
   const { editor, present, changeLog, selectedItem } = useTimelineContext();
@@ -176,6 +194,35 @@ const EditorBridge = () => {
     }
   }, [livePlayerContext, actions]);
 
+  // Track modifier keys for slip/slide mode detection
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Update cursor if modifier keys change during drag
+      const mode = detectModeFromModifiers(event);
+      if (mode !== editingMode) {
+        // Modifier keys changed - update cursor
+        const cursor = getCursorForMode(mode);
+        document.body.style.cursor = cursor;
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      // Reset cursor when modifiers are released
+      if (!event.altKey && !event.metaKey && !event.ctrlKey) {
+        document.body.style.cursor = 'default';
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      document.body.style.cursor = 'default';
+    };
+  }, [editingMode, detectModeFromModifiers]);
+
   // Global keyboard shortcuts for editor operations
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -218,6 +265,15 @@ const EditorBridge = () => {
         event.preventDefault();
         console.log('[EditorController] Toggling ripple edit mode');
         actions.toggleRippleEdit();
+      }
+
+      // Escape key: Cancel slip/slide editing
+      if (event.key === 'Escape') {
+        if (isSlipMode || isSlideMode) {
+          event.preventDefault();
+          console.log('[EditorController] Canceling slip/slide edit');
+          cancelEdit();
+        }
       }
     };
 
@@ -516,6 +572,18 @@ const EditorBridge = () => {
   const sequence = project?.sequences[0];
   const duration = sequence?.duration ?? 300; // Default 5 minutes
 
+  // Track cursor position for editing mode indicator
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isSlipMode || isSlideMode) {
+        setCursorPosition({ x: e.clientX, y: e.clientY });
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [isSlipMode, isSlideMode]);
+
   return (
     <div ref={containerRef} id="twick-timeline-only" className="relative h-full w-full">
       {/* Timeline thumbnail injector - adds thumbnails to timeline elements via direct styling */}
@@ -541,6 +609,14 @@ const EditorBridge = () => {
           zoom={detectedZoom}
         />
       )}
+
+      {/* Editing Mode Indicator */}
+      <EditingModeIndicator
+        mode={editingMode}
+        clipId={selection.clipIds[0] ?? null}
+        visible={isSlipMode || isSlideMode}
+        position={cursorPosition ?? undefined}
+      />
     </div>
   );
 };

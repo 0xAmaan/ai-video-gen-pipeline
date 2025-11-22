@@ -167,6 +167,9 @@ export interface ProjectStoreState {
     appendClipFromAsset: (assetId: string) => void;
     moveClip: (clipId: string, trackId: string, start: number) => void;
     trimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
+    rippleTrim: (clipId: string, trimStart: number, trimEnd: number) => void;
+    slipEdit: (clipId: string, offset: number) => void;
+    slideEdit: (clipId: string, newStart: number) => void;
     splitClip: (clipId: string, offset: number) => void;
     splitAtPlayhead: (clipId: string) => void;
     deleteClip: (clipId: string) => void;
@@ -350,6 +353,137 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const history = historyAfterPush(state, project);
       set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
       void timelineService.trimClip(clipId, trimStart, trimEnd);
+    },
+    rippleTrim: (clipId, trimStart, trimEnd) => {
+      const project = get().project;
+      if (!project) return;
+      const snapshot = deepClone(project);
+      const sequence = getSequence(snapshot);
+      
+      // Find the clip and its track
+      let targetTrack = null;
+      let targetClip = null;
+      for (const track of sequence.tracks) {
+        const clip = track.clips.find((c) => c.id === clipId);
+        if (clip) {
+          targetTrack = track;
+          targetClip = clip;
+          break;
+        }
+      }
+      
+      if (!targetClip || !targetTrack) return;
+      
+      // Calculate the original duration and end time
+      const originalDuration = targetClip.duration;
+      const clipEndTime = targetClip.start + originalDuration;
+      
+      // Apply trim to the clip
+      targetClip.trimStart += trimStart;
+      targetClip.trimEnd += trimEnd;
+      targetClip.duration = Math.max(0.1, targetClip.duration - trimStart - trimEnd);
+      
+      // Calculate the change in duration (positive = clip got shorter, negative = clip got longer)
+      const durationDelta = originalDuration - targetClip.duration;
+      
+      // Ripple: shift all subsequent clips on the same track
+      if (Math.abs(durationDelta) > 0.001) {
+        targetTrack.clips.forEach((clip) => {
+          if (clip.start >= clipEndTime) {
+            clip.start = Math.max(0, clip.start - durationDelta);
+          }
+        });
+        sortTrackClips(targetTrack);
+      }
+      
+      const duration = recalculateSequenceDuration(sequence);
+      snapshot.updatedAt = Date.now();
+      const state = get();
+      const history = historyAfterPush(state, project);
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
+      void timelineService.trimClip(clipId, trimStart, trimEnd);
+    },
+    slipEdit: (clipId, offset) => {
+      const project = get().project;
+      if (!project) return;
+      const snapshot = deepClone(project);
+      const sequence = getSequence(snapshot);
+      const clip = findClip(sequence, clipId);
+      if (!clip) return;
+
+      // Slip editing: adjust trim start/end while keeping timeline position fixed
+      // The content "slips" under the fixed timeline position
+      const newTrimStart = clip.trimStart + offset;
+      
+      // Get source media to validate bounds
+      const asset = project.mediaAssets[clip.mediaId];
+      if (!asset) {
+        console.warn('[ProjectStore] slipEdit: asset not found:', clip.mediaId);
+        return;
+      }
+
+      // Ensure we don't slip beyond source media bounds
+      const maxTrimStart = asset.duration - clip.duration;
+      const clampedTrimStart = Math.max(0, Math.min(maxTrimStart, newTrimStart));
+      
+      // Calculate the actual offset applied after clamping
+      const actualOffset = clampedTrimStart - clip.trimStart;
+      
+      // Update trim values
+      clip.trimStart = clampedTrimStart;
+      clip.trimEnd = clip.trimEnd - actualOffset; // Adjust trim end to maintain duration
+      
+      // Timeline position (start) and duration remain unchanged
+      
+      const duration = recalculateSequenceDuration(sequence);
+      snapshot.updatedAt = Date.now();
+      const state = get();
+      const history = historyAfterPush(state, project);
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
+      void timelineService.trimClip(clipId, actualOffset, -actualOffset);
+    },
+    slideEdit: (clipId, newStart) => {
+      const project = get().project;
+      if (!project) return;
+      const snapshot = deepClone(project);
+      const sequence = getSequence(snapshot);
+      
+      // Find the clip and its track
+      const result = findTrackAndClip(sequence, clipId);
+      if (!result) return;
+      
+      const { track, clip } = result;
+      const oldStart = clip.start;
+      const delta = newStart - oldStart;
+      
+      // Clamp to non-negative time
+      const clampedStart = Math.max(0, newStart);
+      clip.start = clampedStart;
+      
+      // Slide editing: adjust adjacent clips to preserve gaps
+      // Find clips immediately before and after
+      const sortedClips = [...track.clips].sort((a, b) => a.start - b.start);
+      const clipIndex = sortedClips.findIndex(c => c.id === clipId);
+      
+      if (clipIndex > 0 && delta < 0) {
+        // Moving left: shift previous clip to maintain gap
+        const prevClip = sortedClips[clipIndex - 1];
+        const gap = oldStart - (prevClip.start + prevClip.duration);
+        prevClip.start = Math.max(0, clampedStart - prevClip.duration - gap);
+      } else if (clipIndex < sortedClips.length - 1 && delta > 0) {
+        // Moving right: shift next clip to maintain gap
+        const nextClip = sortedClips[clipIndex + 1];
+        const gap = nextClip.start - (oldStart + clip.duration);
+        nextClip.start = clampedStart + clip.duration + gap;
+      }
+      
+      sortTrackClips(track);
+      const duration = recalculateSequenceDuration(sequence);
+      snapshot.updatedAt = Date.now();
+      const state = get();
+      const history = historyAfterPush(state, project);
+      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
+      void timelineService.moveClip(clipId, track.id, clampedStart);
     },
     splitClip: (clipId, offset) => {
       const project = get().project;
