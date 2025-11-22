@@ -65,9 +65,10 @@ const buildMediaAsset = (
     clip.originalVideoUrl ??
     "";
 
-  // Prefer proxies for interactive playback, but keep originals for export/conform.
-  const originalUrl = buildAssetUrl(clip.r2Key, clip.sourceUrl ?? clip.videoUrl ?? videoUrl);
-  const proxyUrl = clip.proxyUrl ? buildAssetUrl(clip.r2Key, clip.proxyUrl) : undefined;
+  // Prefer proxies for interactive playback, but keep the raw source for fallback/export.
+  // `sourceUrl` should point to the original (Replicate/R2) URL; `proxyUrl` is already a full URL.
+  const originalUrl = clip.sourceUrl ?? clip.videoUrl ?? videoUrl;
+  const proxyUrl = clip.proxyUrl ?? undefined;
   const playbackUrl = proxyUrl ?? originalUrl;
 
   return {

@@ -18,6 +18,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Cross-Origin-Embedder-Policy",
+            // Use credentialless so third-party media (e.g., Replicate/R2) can load without CORP.
             value: "credentialless",
           },
         ],

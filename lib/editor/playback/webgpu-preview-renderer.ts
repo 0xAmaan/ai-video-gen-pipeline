@@ -1,15 +1,15 @@
 import {
   Mesh,
+  MeshBasicMaterial,
   OrthographicCamera,
   PlaneGeometry,
   Scene,
-  VideoTexture,
+  Texture,
   type ColorSpace,
 } from "three";
 import { WebGPURenderer } from "three/webgpu";
 import type { Clip, MediaAssetMeta, Sequence } from "../types";
 import { VideoLoader } from "./video-loader";
-import { ShaderManager } from "./shader-manager";
 
 type GetSequence = () => Sequence | null;
 type GetAsset = (id: string) => MediaAssetMeta | undefined;
@@ -17,14 +17,22 @@ type TimeUpdateHandler = (time: number) => void;
 
 const DISPLAY_P3: ColorSpace | "display-p3" = "display-p3";
 
+/**
+ * WebGPU preview renderer for the editor. Uses two stacked planes with basic
+ * materials so it stays compatible with WebGPURenderer (which rejects raw
+ * ShaderMaterials). Plane B fades in for simple crossfades between clips.
+ */
 export class WebGpuPreviewRenderer {
   private renderer?: WebGPURenderer;
   private scene = new Scene();
   private camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-  private mesh?: Mesh;
-  private textureA = new VideoTexture(document.createElement("video"));
-  private textureB = new VideoTexture(document.createElement("video"));
-  private shader = new ShaderManager();
+  private geometry = new PlaneGeometry(2, 2);
+  private meshA?: Mesh;
+  private meshB?: Mesh;
+  private textureA = new Texture();
+  private textureB = new Texture();
+  private bitmapA?: ImageBitmap;
+  private bitmapB?: ImageBitmap;
   private loaders = new Map<string, VideoLoader>();
   private currentFrame?: VideoFrame;
   private nextFrame?: VideoFrame;
@@ -93,12 +101,18 @@ export class WebGpuPreviewRenderer {
     this.pause();
     this.currentFrame?.close();
     this.nextFrame?.close();
+    this.bitmapA?.close();
+    this.bitmapB?.close();
     this.textureA.dispose();
     this.textureB.dispose();
-    this.mesh?.geometry.dispose();
-    const material = this.mesh?.material;
-    if (material && !Array.isArray(material)) {
-      material.dispose();
+    this.geometry.dispose();
+    const materialA = this.meshA?.material;
+    if (materialA && !Array.isArray(materialA)) {
+      materialA.dispose();
+    }
+    const materialB = this.meshB?.material;
+    if (materialB && !Array.isArray(materialB)) {
+      materialB.dispose();
     }
     this.renderer?.dispose();
     this.loaders.forEach((loader) => loader.dispose());
@@ -123,12 +137,34 @@ export class WebGpuPreviewRenderer {
       antialias: true,
       alpha: false,
       canvas,
+      powerPreference: "high-performance",
     });
     this.renderer.outputColorSpace = DISPLAY_P3;
     this.textureA.colorSpace = DISPLAY_P3;
     this.textureB.colorSpace = DISPLAY_P3;
-    this.mesh = new Mesh(new PlaneGeometry(2, 2), this.shader.material);
-    this.scene.add(this.mesh);
+
+    const materialA = new MeshBasicMaterial({
+      map: this.textureA,
+      transparent: false,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    const materialB = new MeshBasicMaterial({
+      map: this.textureB,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    this.meshA = new Mesh(this.geometry, materialA);
+    this.meshB = new Mesh(this.geometry, materialB);
+    this.meshB.visible = false;
+
+    this.scene.add(this.meshA);
+    this.scene.add(this.meshB);
+    await this.renderer.init();
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
   }
 
@@ -167,9 +203,16 @@ export class WebGpuPreviewRenderer {
       if (this.currentFrame) {
         this.currentFrame.close();
       }
+      if (this.bitmapA) {
+        this.bitmapA.close();
+      }
       this.currentFrame = frame;
-      this.textureA.source.data = frame;
+      this.bitmapA = await createImageBitmap(frame);
+      this.textureA.image = this.bitmapA;
       this.textureA.needsUpdate = true;
+      // Frame no longer needed after bitmap upload.
+      this.currentFrame.close();
+      this.currentFrame = undefined;
 
       let mixValue = 0;
       const nextClip = this.findNextClip(sequence, this.currentTime);
@@ -181,9 +224,13 @@ export class WebGpuPreviewRenderer {
           const nextFrame = await nextLoader.getFrameAt(nextClip.trimStart + offset);
           if (nextFrame) {
             if (this.nextFrame) this.nextFrame.close();
+            if (this.bitmapB) this.bitmapB.close();
             this.nextFrame = nextFrame;
-            this.textureB.source.data = nextFrame;
+            this.bitmapB = await createImageBitmap(nextFrame);
+            this.textureB.image = this.bitmapB;
             this.textureB.needsUpdate = true;
+            this.nextFrame.close();
+            this.nextFrame = undefined;
             const delta = Math.max(0, this.transitionWindow - (nextClip.start - this.currentTime));
             mixValue = Math.min(1, delta / this.transitionWindow);
           }
@@ -191,11 +238,19 @@ export class WebGpuPreviewRenderer {
       } else if (this.nextFrame) {
         this.nextFrame.close();
         this.nextFrame = undefined;
+        if (this.bitmapB) {
+          this.bitmapB.close();
+          this.bitmapB = undefined;
+        }
       }
 
-      this.shader.updateTextures(this.textureA, mixValue > 0 ? this.textureB : this.textureA, mixValue);
+      if (this.meshB?.material instanceof MeshBasicMaterial) {
+        this.meshB.material.opacity = mixValue;
+        this.meshB.visible = mixValue > 0;
+        this.meshB.material.needsUpdate = true;
+      }
 
-      this.renderer.render(this.scene, this.camera);
+      await this.renderer.renderAsync(this.scene, this.camera);
     } finally {
       this.renderInFlight = false;
     }

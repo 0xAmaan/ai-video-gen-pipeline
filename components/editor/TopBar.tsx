@@ -25,6 +25,8 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   onExport: () => void;
+  timelineMode?: "twick" | "legacy";
+  onToggleTimelineMode?: () => void;
   masterVolume: number;
   onMasterVolumeChange: (value: number) => void;
   audioTrackMuted: boolean;
@@ -52,6 +54,8 @@ const TopBarComponent = ({
   onUndo,
   onRedo,
   onExport,
+  timelineMode,
+  onToggleTimelineMode,
   masterVolume,
   onMasterVolumeChange,
   audioTrackMuted,
@@ -172,6 +176,11 @@ const TopBarComponent = ({
               <Play className="h-4 w-4" />
             )}
           </Button>
+          {onToggleTimelineMode && timelineMode && (
+            <Button variant="outline" size="sm" onClick={onToggleTimelineMode}>
+              Timeline: {timelineMode === "twick" ? "Twick" : "Legacy"}
+            </Button>
+          )}
           <Button onClick={onExport} className="gap-2">
             <Download className="h-4 w-4" /> Export
           </Button>
@@ -242,6 +251,8 @@ export const TopBar = memo(TopBarComponent, (prevProps, nextProps) => {
     prevProps.masterVolume === nextProps.masterVolume &&
     prevProps.audioTrackMuted === nextProps.audioTrackMuted &&
     prevProps.selectedAudioClipVolume === nextProps.selectedAudioClipVolume &&
+    prevProps.timelineMode === nextProps.timelineMode &&
+    prevProps.onToggleTimelineMode === nextProps.onToggleTimelineMode &&
     prevProps.onTitleChange === nextProps.onTitleChange
     // Note: currentTime intentionally excluded to reduce re-renders
   );

@@ -6,7 +6,7 @@ This worker implements the storage pieces called out in `docs/PRDs/VideoEditorPR
 - `workers/r2-proxy.ts`
 
 ## Routes
-- `GET /asset/:key` — Streams objects from `R2_BUCKET` with `Range` support. Returns `206` with `Content-Range` when a `Range` header is present. `Accept-Ranges: bytes` and `Content-Length` are always set.
+- `GET /asset/:key` — Streams objects from `R2_BUCKET`. **Current behavior:** Range support is disabled and the full object is returned with `200` to avoid Cloudflare rewriting `206` responses to `200 + Content-Range`, which was breaking WebCodecs/MediaBunny demuxing. `Accept-Ranges: bytes` remains, but no partial is served. If we re-enable ranges later, verify the edge actually sends `206` before turning it back on.
 - `POST /ingest` — Body: `{ "sourceUrl": "https://...", "key": "path/in/r2.mp4" }`. Streams the upstream response into R2 using `objectSize` to avoid buffering. Rejects if `Content-Length` is missing. Requires auth when `AUTH_TOKEN` is configured.
 - `OPTIONS` — CORS preflight.
 
@@ -30,7 +30,7 @@ binding = "R2_BUCKET"
 bucket_name = "video-editor"
 ```
 
-Deploy with `wrangler publish`. The Next.js app should fetch media through this worker URL so MediaBunny/WebCodecs can issue HTTP range requests while editing and exporting.
+Deploy with `wrangler publish`. The Next.js app should fetch media through this worker URL. (If you need range requests again, re-enable in the worker and confirm Cloudflare returns `206` rather than rewriting to `200` with `Content-Range`.)
 
 ## Frontend wiring
 - Set `NEXT_PUBLIC_R2_PROXY_BASE` to the worker origin (no trailing slash, e.g., `https://video-editor-proxy.example.workers.dev`). `lib/editor/io/asset-url.ts` uses this to build `/asset/:key` URLs.

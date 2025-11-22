@@ -26,6 +26,16 @@ export class VideoLoader {
   private readonly requestInit?: RequestInit;
   private lastAnchor = 0;
 
+  private async buildInput(url: string) {
+    return new Input({
+      source: new UrlSource(url, {
+        requestInit: this.requestInit,
+        maxCacheSize: 64 * 1024 * 1024, // allow range seeks without thrashing
+      }),
+      formats: ALL_FORMATS,
+    });
+  }
+
   constructor(private readonly asset: MediaAssetMeta, options?: VideoLoaderOptions) {
     this.lookahead = options?.lookaheadSeconds ?? 0.75;
     this.cache = new FrameCache<VideoFrame>(options?.cacheSize ?? 48);
@@ -38,20 +48,31 @@ export class VideoLoader {
       throw new Error("WebCodecs VideoDecoder not available in this environment");
     }
 
-    const url = playbackUrlForAsset(this.asset);
-    if (!url) {
-      throw new Error("VideoLoader requires a resolvable asset URL");
+    // Prefer proxy URLs, then fall back to original/source URLs if proxy is broken/expired.
+    const preferredUrl = playbackUrlForAsset(this.asset);
+    const fallbackUrls = Array.from(
+      new Set(
+        [
+          preferredUrl,
+          this.asset.sourceUrl,
+          this.asset.url,
+        ].filter(Boolean),
+      ),
+    ) as string[];
+
+    let track: Awaited<ReturnType<Input["getPrimaryVideoTrack"]>> | null = null;
+    for (const candidate of fallbackUrls) {
+      try {
+        this.input?.dispose();
+        this.input = await this.buildInput(candidate);
+        track = await this.input.getPrimaryVideoTrack();
+        if (track) break;
+      } catch (error) {
+        console.warn("VideoLoader fallback failed for URL", candidate, error);
+        continue;
+      }
     }
 
-    this.input = new Input({
-      source: new UrlSource(url, {
-        requestInit: this.requestInit,
-        maxCacheSize: 64 * 1024 * 1024, // allow range seeks without thrashing
-      }),
-      formats: ALL_FORMATS,
-    });
-
-    const track = await this.input.getPrimaryVideoTrack();
     if (!track) {
       throw new Error("No video track found in asset");
     }
