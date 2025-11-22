@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ShotPreviewImage } from "@/lib/types/redesign";
 import type { Id } from "@/convex/_generated/dataModel";
-import { ImageIcon, Loader2, RefreshCw } from "lucide-react";
+import { ImageIcon, Loader2, Sparkles } from "lucide-react";
 import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 interface ShotImageGridProps {
@@ -36,15 +36,15 @@ export const ShotImageGrid = ({
 
   if (!images || images.length === 0) {
     return (
-      <div className="mt-3 border border-dashed border-white/10 rounded-xl p-3 text-center text-xs text-gray-500">
-        <p>No preview frames yet.</p>
+      <div className="mt-3 text-center pb-4">
         <Button
-          size="sm"
-          className="mt-2 bg-white text-black hover:bg-gray-200"
+          size="default"
+          variant="outline"
+          className="mt-2 inline-flex items-center gap-2 border-white/15 bg-white/5 px-4 py-2.5 text-md font-medium text-white hover:bg-white/10 hover:text-white"
           onClick={onIterate}
         >
-          <RefreshCw className="w-3 h-3 mr-2" />
-          Generate previews
+          <Sparkles className="w-4 h-4" />
+          Generate Previews
         </Button>
       </div>
     );
@@ -71,9 +71,6 @@ export const ShotImageGrid = ({
               <ImageIcon className="w-6 h-6" />
             </div>
           )}
-          <div className="absolute bottom-2 left-2 px-2 py-1 rounded-full bg-black/60 text-[10px] uppercase tracking-wide text-gray-200">
-            Master Shot
-          </div>
         </div>
       </div>
       {footer && <div>{footer}</div>}

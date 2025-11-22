@@ -9,6 +9,7 @@ import { getDemoModeFromHeaders } from "@/lib/demo-mode";
 import { apiError, apiResponse } from "@/lib/api-response";
 import { mockDelay } from "@/lib/demo-mocks";
 import { IMAGE_MODELS } from "@/lib/image-models";
+import type { ProjectAsset } from "@/lib/types/redesign";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_KEY,
@@ -30,7 +31,7 @@ interface GenerateRequestBody {
 }
 
 const SYSTEM_PROMPT =
-  "Generate a high-quality cinematic image based on the following scene and shot descriptions.";
+  "Generate a high-quality cinematic image based on the following scene and shot descriptions. If reference images are provided, you must place every one of them in the final frame while keeping their key details intact.";
 
 const normalizeOutput = (output: any): string[] => {
   if (!output) return [];
@@ -66,14 +67,14 @@ const normalizeOutput = (output: any): string[] => {
 
 const runPrediction = async (
   prompt: string,
-  imageInput?: string,
+  imageInputs: string[] = [],
 ): Promise<{ predictionId: string; urls: string[] }> => {
   const input: Record<string, any> = {
     prompt,
   };
 
-  if (imageInput) {
-    input.image = imageInput;
+  if (imageInputs.length > 0) {
+    input.image_input = imageInputs;
   }
 
   const prediction = await replicate.predictions.create({
@@ -105,6 +106,7 @@ const runPrediction = async (
 const buildIterationPrompt = (
   sceneDescription: string,
   shotPrompt: string,
+  brandAssetsPrompt?: string,
   fixPrompt?: string,
 ) => {
   let prompt = `${SYSTEM_PROMPT}
@@ -112,11 +114,46 @@ Scene prompt: ${sceneDescription || "N/A"}
 Shot prompt: ${shotPrompt || "N/A"}
 `;
 
+  if (brandAssetsPrompt) {
+    prompt += `\n${brandAssetsPrompt}`;
+  }
+
   if (fixPrompt) {
     prompt += `Additional direction: ${fixPrompt}`;
   }
 
+  if (brandAssetsPrompt) {
+    prompt += `\nUse every provided reference image in the frame; they are mandatory. Maintain brand fidelity (logos readable, shapes intact).`;
+  }
+
   return prompt.trim();
+};
+
+const buildBrandAssetsPrompt = (assets: ProjectAsset[]) => {
+  if (!assets.length) return "";
+
+  const assetLines = assets.map((asset, index) => {
+    const details: string[] = [];
+    details.push(
+      `${index + 1}. "${asset.name}" (${asset.assetType}${
+        asset.prominence ? `, ${asset.prominence} emphasis` : ""
+      })`,
+    );
+
+    if (asset.description) {
+      details.push(`Description: ${asset.description}`);
+    }
+    if (asset.usageNotes) {
+      details.push(`Usage notes: ${asset.usageNotes}`);
+    }
+    if (asset.referenceColors?.length) {
+      details.push(`Brand colors: ${asset.referenceColors.join(", ")}`);
+    }
+
+    return details.join(". ");
+  });
+
+  return `Brand assets (attached as reference images — include every one of them clearly in the final shot):\n${assetLines.join("\n")}\nDo not omit, replace, or stylize away these assets; integrate them naturally based on the shot context.`;
 };
 
 const createMockImages = (count: number) => {
@@ -216,9 +253,41 @@ export async function POST(req: Request) {
       return apiError("Parent image not found for iteration", 400);
     }
 
+    const referencedAssetIds = shotData.shot.referencedAssets ?? [];
+    const projectAssets =
+      referencedAssetIds.length > 0
+        ? ((await convex.query(api.projectAssets.getProjectAssets, {
+            projectId,
+            includeInactive: true,
+          })) as ProjectAsset[])
+        : [];
+
+    const referencedAssets =
+      projectAssets?.filter((asset) =>
+        referencedAssetIds.some((id) => id === asset._id),
+      ) ?? [];
+
+    const referencedAssetsWithImages = referencedAssets
+      .filter((asset) => !!asset.imageUrl)
+      .slice(0, 3);
+
+    const brandAssetPrompt = buildBrandAssetsPrompt(
+      referencedAssetsWithImages,
+    );
+
+    const referenceImages = Array.from(
+      new Set([
+        ...referencedAssetsWithImages
+          .map((asset) => asset.imageUrl)
+          .filter((url): url is string => !!url),
+        ...(parentImage?.imageUrl ? [parentImage.imageUrl] : []),
+      ]),
+    );
+
     const fullPromptForGeneration = buildIterationPrompt(
       shotData.scene.description,
       shotData.shot.initialPrompt ?? "",
+      brandAssetPrompt,
       fixPrompt,
     );
 
@@ -234,6 +303,7 @@ export async function POST(req: Request) {
       imageUrl: string;
       replicateImageId?: string;
       status: "complete" | "processing" | "failed";
+      usedAssets?: Id<"projectAssets">[];
     }> = [];
 
     if (shouldMock) {
@@ -243,6 +313,7 @@ export async function POST(req: Request) {
         ...variant,
         variantNumber: index,
         replicateImageId: undefined,
+        usedAssets: referencedAssetsWithImages.map((asset) => asset._id),
       }));
       flowTracker.trackDecision(
         "Demo mode",
@@ -267,7 +338,7 @@ export async function POST(req: Request) {
         try {
           const result = await runPrediction(
             fullPromptForGeneration,
-            parentImage?.imageUrl,
+            referenceImages,
           );
           predictionResults.push(result);
         } catch (runError) {
@@ -311,6 +382,7 @@ export async function POST(req: Request) {
           imageUrl: url,
           replicateImageId: result.predictionId,
           status: "complete" as const,
+          usedAssets: referencedAssetsWithImages.map((asset) => asset._id),
         })),
       );
 
@@ -351,6 +423,7 @@ export async function POST(req: Request) {
           imageUrl: variant.imageUrl,
           replicateImageId: variant.replicateImageId,
           status: variant.status,
+          usedAssets: variant.usedAssets,
         })),
       },
     );

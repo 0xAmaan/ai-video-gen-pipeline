@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import {
   DndContext,
   DragEndEvent,
@@ -51,6 +50,7 @@ import {
   useClearShotImage,
 } from "@/lib/hooks/useProjectRedesign";
 import { requestPreviewSeed } from "@/lib/client/requestPreviewSeed";
+import { toast } from "sonner";
 import {
   ProjectScene,
   SceneShot,
@@ -124,8 +124,8 @@ const PromptPlannerPage = () => {
   const [highlightedShotId, setHighlightedShotId] = useState<
     Id<"sceneShots"> | null
   >(null);
-  const [resettingShotId, setResettingShotId] = useState<Id<"sceneShots"> | null>(null);
   const [iteratorShotId, setIteratorShotId] = useState<Id<"sceneShots"> | null>(null);
+  const [clearingShotIds, setClearingShotIds] = useState<Id<"sceneShots">[]>([]);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [lastBulkSummary, setLastBulkSummary] = useState<{
     requested: number;
@@ -182,7 +182,6 @@ const PromptPlannerPage = () => {
     // If we were generating and now have scenes, generation is complete
     if (isGeneratingScenes && projectScenes.length > 0) {
       setIsGeneratingScenes(false);
-      toast.success(`Generated ${projectScenes.length} scenes with AI!`);
     }
 
     setPlannerScenes((prev) => {
@@ -462,8 +461,6 @@ const PromptPlannerPage = () => {
       //   - Pros: Description stays updated with changes, single source of truth
       //   - Cons: Requires extra AI call to rewrite description first, more complex flow
 
-      toast.success("Regenerating shot...");
-
       const response = await fetch("/api/generate-shot-images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -486,9 +483,6 @@ const PromptPlannerPage = () => {
       setChatInputValue("");
     } catch (error) {
       console.error("Failed to regenerate shot", error);
-      toast.error(
-        error instanceof Error ? error.message : "Unable to regenerate shot",
-      );
     }
   };
 
@@ -613,8 +607,6 @@ const PromptPlannerPage = () => {
             })),
           }),
         ]);
-
-        toast.success(`Moved shot to ${targetScene.title}`);
       }
     }
   };
@@ -635,11 +627,9 @@ const PromptPlannerPage = () => {
         shotId: shot._id,
         selectedImageId: image._id,
       });
-      toast.success("Shot image selected");
       setHighlightedShotId(shot._id);
     } catch (error) {
       console.error("Failed to select shot image", error);
-      toast.error("Could not select this image");
     }
   };
 
@@ -660,37 +650,35 @@ const PromptPlannerPage = () => {
         const body = await response.json().catch(() => null);
         throw new Error(body?.error ?? "Generation failed");
       }
-      toast.success("Generating preview...");
     } catch (error) {
       console.error("Failed to generate preview", error);
-      toast.error(
-        error instanceof Error ? error.message : "Unable to generate preview",
-      );
     }
   };
 
   const handleResetShot = async (shot: SceneShot) => {
-    if (resettingShotId) return;
-    setResettingShotId(shot._id);
+    if (clearingShotIds.includes(shot._id)) return;
+
+    setClearingShotIds((prev) => [...prev, shot._id]);
+    setPlannerScenes((prev) =>
+      prev.map((scene) => ({
+        ...scene,
+        shots: scene.shots.map((existingShot) =>
+          existingShot._id === shot._id
+            ? {
+                ...existingShot,
+                description: "",
+                initialPrompt: "",
+                selectedImageId: undefined,
+                lastImageStatus: undefined,
+                lastImageGenerationAt: undefined,
+              }
+            : existingShot,
+        ),
+      })),
+    );
+
     try {
       await clearShotImage({ shotId: shot._id });
-      setPlannerScenes((prev) =>
-        prev.map((scene) => ({
-          ...scene,
-          shots: scene.shots.map((existingShot) =>
-            existingShot._id === shot._id
-              ? {
-                  ...existingShot,
-                  description: "",
-                  initialPrompt: "",
-                  selectedImageId: undefined,
-                  lastImageStatus: undefined,
-                  lastImageGenerationAt: undefined,
-                }
-              : existingShot,
-          ),
-        })),
-      );
       toast.success("Shot cleared. Add a new prompt to regenerate.");
     } catch (error) {
       console.error("Failed to clear shot", error);
@@ -698,7 +686,7 @@ const PromptPlannerPage = () => {
         error instanceof Error ? error.message : "Unable to clear shot",
       );
     } finally {
-      setResettingShotId(null);
+      setClearingShotIds((prev) => prev.filter((id) => id !== shot._id));
     }
   };
 
@@ -910,11 +898,11 @@ const PromptPlannerPage = () => {
                                 shotPreviewMap.get(shotId) ?? []
                               }
                               onSelectShotImage={handleSelectShotImage}
-                              onRegenerateShot={handleResetShot}
                               onGeneratePreview={handleGeneratePreview}
                               onUpdateShotAssets={handleUpdateShotAssets}
                               assets={projectAssets}
-                              resettingShotId={resettingShotId}
+                              onResetShot={handleResetShot}
+                              resettingShotIds={clearingShotIds}
                             />
                           </SortableContext>
 
