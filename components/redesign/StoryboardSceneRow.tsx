@@ -29,9 +29,15 @@ interface StoryboardSceneRowProps {
   convexScenes?: Array<{
     _id: Id<"scenes">;
     redesignShotId?: Id<"sceneShots">;
+    imageUrl?: string;
+    description?: string;
+    visualPrompt?: string;
+    sceneNumber?: number;
+    duration?: number;
   }>;
   isGenerating?: boolean;
   isLocked?: boolean;
+  onRetryClip?: (clipId: Id<"videoClips">, sceneId: Id<"scenes">) => void;
 }
 
 export const StoryboardSceneRow = ({
@@ -42,6 +48,7 @@ export const StoryboardSceneRow = ({
   convexScenes = [],
   isGenerating = false,
   isLocked = false,
+  onRetryClip,
 }: StoryboardSceneRowProps) => {
   const router = useRouter();
 
@@ -151,10 +158,12 @@ export const StoryboardSceneRow = ({
                         {clip.errorMessage || "Video generation failed"}
                       </p>
                       <button
-                        className="text-xs text-white bg-red-800 hover:bg-red-700 px-3 py-1 rounded-full transition"
+                        className="text-xs text-white bg-red-800 hover:bg-red-700 px-3 py-1 rounded-full transition cursor-pointer"
                         onClick={() => {
-                          // TODO: Add retry logic
-                          console.log("Retry clicked for shot", shotWrapper.shot._id);
+                          if (onRetryClip && clip) {
+                            console.log("Retry clicked for shot", shotWrapper.shot._id, "clip", clip._id);
+                            onRetryClip(clip._id, clip.sceneId);
+                          }
                         }}
                       >
                         Retry

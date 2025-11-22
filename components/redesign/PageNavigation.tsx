@@ -3,14 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Sparkles, Layout, Scissors, Film } from "lucide-react";
+import { Sparkles, Layout, Scissors } from "lucide-react";
 
 interface PageNavigationProps {
   projectId?: string;
   storyboardLocked?: boolean;
   storyboardLockMessage?: string;
-  videoLocked?: boolean;
-  videoLockMessage?: string;
   editorLocked?: boolean;
   editorLockMessage?: string;
 }
@@ -39,22 +37,10 @@ export const PageNavigation = ({
   projectId,
   storyboardLocked,
   storyboardLockMessage,
-  videoLocked,
-  videoLockMessage,
   editorLocked,
   editorLockMessage,
 }: PageNavigationProps) => {
   const pathname = usePathname();
-
-  if (typeof window !== "undefined") {
-    console.log("[PageNavigation] props", {
-      projectId,
-      storyboardLocked,
-      videoLocked,
-      editorLocked,
-      pathname,
-    });
-  }
 
   const navItems: Array<NavItem | false> = [
     {
@@ -79,16 +65,6 @@ export const PageNavigation = ({
           match: "/storyboard",
           disabled: storyboardLocked,
           disabledMessage: storyboardLockMessage,
-        }
-      : false,
-    projectId
-      ? {
-          name: "Video",
-          icon: Film,
-          href: `/${projectId}/video`,
-          match: "/video",
-          disabled: videoLocked,
-          disabledMessage: videoLockMessage,
         }
       : false,
     projectId

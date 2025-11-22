@@ -445,8 +445,23 @@ export const getScenes = query({
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
 
+    // Get permanent storage URLs for scenes with imageStorageId
+    const scenesWithUrls = await Promise.all(
+      scenes.map(async (scene) => {
+        let imageUrl = scene.imageUrl;
+        // If we have a storage ID, get the permanent URL
+        if (scene.imageStorageId) {
+          const storageUrl = await ctx.storage.getUrl(scene.imageStorageId);
+          if (storageUrl) {
+            imageUrl = storageUrl;
+          }
+        }
+        return { ...scene, imageUrl };
+      }),
+    );
+
     // Sort by scene number
-    return scenes.sort((a, b) => a.sceneNumber - b.sceneNumber);
+    return scenesWithUrls.sort((a, b) => a.sceneNumber - b.sceneNumber);
   },
 });
 
@@ -788,6 +803,7 @@ export const updateVideoClip = mutation({
     r2Key: v.optional(v.string()),
     sourceUrl: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
+    replicateVideoId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -815,6 +831,8 @@ export const updateVideoClip = mutation({
     if (args.sourceUrl !== undefined) updates.sourceUrl = args.sourceUrl;
     if (args.errorMessage !== undefined)
       updates.errorMessage = args.errorMessage;
+    if (args.replicateVideoId !== undefined)
+      updates.replicateVideoId = args.replicateVideoId;
 
     await ctx.db.patch(args.clipId, updates);
 

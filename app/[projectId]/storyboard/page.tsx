@@ -48,13 +48,63 @@ const StoryboardPage = () => {
 
   const canGenerateVideo = Boolean(projectId) && selectionsComplete && !isSyncing && !isGenerating;
 
-  if (typeof window !== "undefined") {
-    console.log("[StoryboardPage] projectId", projectId);
-    console.log("[StoryboardPage] projectProgress", projectProgress);
-    console.log("[StoryboardPage] storyboardRows", storyboardRows);
-    console.log("[StoryboardPage] selectionsComplete", selectionsComplete);
-    console.log("[StoryboardPage] isSyncing", isSyncing);
-  }
+  // Retry handler for individual clips
+  const retryVideoClip = async (clipId: Id<"videoClips">, sceneId: Id<"scenes">) => {
+    try {
+      // Find the scene data
+      const scene = convexScenes.find((s) => s._id === sceneId);
+      if (!scene) {
+        console.error("[StoryboardPage] Scene not found for retry", sceneId);
+        return;
+      }
+
+      // Validate required fields
+      if (!scene.imageUrl) {
+        console.error("[StoryboardPage] Scene missing imageUrl - cannot retry");
+        alert("Scene is missing image URL. Cannot retry video generation.");
+        return;
+      }
+
+      // Call retry API
+      const response = await apiFetch("/api/retry-video-clip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sceneId: scene._id,
+          imageUrl: scene.imageUrl,
+          description: scene.description,
+          visualPrompt: scene.visualPrompt,
+          sceneNumber: scene.sceneNumber,
+          duration: scene.duration,
+          videoModel: selectedVideoModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        console.error("[StoryboardPage] retry-video-clip failed", errorBody);
+        throw new Error(errorBody?.error || "Failed to retry video clip");
+      }
+
+      const result = await response.json();
+
+      // Update the clip with new prediction ID
+      await updateVideoClip({
+        clipId,
+        status: "pending",
+        replicateVideoId: result.predictionId,
+        errorMessage: undefined,
+        videoUrl: undefined,
+      });
+
+      // Start polling the new prediction
+      if (result.predictionId) {
+        startPolling(clipId, result.predictionId, sceneId);
+      }
+    } catch (error) {
+      console.error("[StoryboardPage] Error retrying clip:", error);
+    }
+  };
 
   const [selectedShotId, setSelectedShotId] = useState<Id<"sceneShots"> | null>(
     null,
@@ -67,11 +117,6 @@ const StoryboardPage = () => {
     sceneId: Id<"scenes">,
   ) => {
     if (!predictionId || activeVideoPolls.current.has(clipId)) {
-      console.warn("[StoryboardPage] Skipping poll", {
-        clipId,
-        predictionId,
-        alreadyPolling: activeVideoPolls.current.has(clipId),
-      });
       return;
     }
 
@@ -93,12 +138,6 @@ const StoryboardPage = () => {
         });
 
         const result = await response.json();
-        console.log("[StoryboardPage] Poll tick", {
-          clipId,
-          predictionId,
-          status: result.status,
-          attempts,
-        });
 
         if (result.status === "complete") {
           await updateVideoClip({
@@ -107,11 +146,6 @@ const StoryboardPage = () => {
             videoUrl: result.videoUrl,
           });
           activeVideoPolls.current.delete(clipId);
-          console.log("[StoryboardPage] Clip complete", {
-            clipId,
-            predictionId,
-            videoUrl: result.videoUrl,
-          });
           // Skip lipsync - just mark as complete
           return;
         }
@@ -143,6 +177,12 @@ const StoryboardPage = () => {
           if (attempts < maxAttempts) {
             setTimeout(poll, pollInterval);
           } else {
+            // Timeout after max attempts - mark as failed
+            await updateVideoClip({
+              clipId,
+              status: "failed",
+              errorMessage: "Video generation timed out after 15 minutes. Please try again.",
+            });
             activeVideoPolls.current.delete(clipId);
           }
         }
@@ -155,11 +195,15 @@ const StoryboardPage = () => {
         if (attempts < maxAttempts) {
           setTimeout(poll, pollInterval);
         } else {
-          activeVideoPolls.current.delete(clipId);
-          console.error("[StoryboardPage] Poll aborted after max attempts", {
+          // Network error exceeded max attempts - mark as failed
+          await updateVideoClip({
             clipId,
-            predictionId,
+            status: "failed",
+            errorMessage: error instanceof Error
+              ? `Polling failed: ${error.message}`
+              : "Network error while checking video status. Please retry.",
           });
+          activeVideoPolls.current.delete(clipId);
         }
       }
     };
@@ -170,11 +214,6 @@ const StoryboardPage = () => {
   // Video generation function
   const generateVideoClips = async () => {
     try {
-      console.log("[StoryboardPage] Starting video generation", {
-        sceneCount: convexScenes.length,
-        selectedVideoModel,
-      });
-
       if (modelSelectionEnabled && selectedVideoModel) {
         try {
           await updateProjectModelSelection({
@@ -187,16 +226,31 @@ const StoryboardPage = () => {
         }
       }
 
+      // Filter out scenes that already have complete clips
+      const completedSceneIds = new Set(
+        clips
+          .filter((clip) => clip.status === "complete")
+          .map((clip) => clip.sceneId)
+      );
+
+      // Only generate for scenes without complete clips
+      const scenesToGenerate = convexScenes.filter(
+        (scene) => !completedSceneIds.has(scene._id)
+      );
+
+      if (scenesToGenerate.length === 0) {
+        setIsGenerating(false);
+        return;
+      }
+
       // Prepare scenes data for API
-      const scenesData = convexScenes.map((scene) => ({
+      const scenesData = scenesToGenerate.map((scene) => ({
         id: scene._id,
         sceneNumber: scene.sceneNumber,
         imageUrl: scene.imageUrl || "",
         description: scene.description,
         duration: scene.duration,
       }));
-
-      console.log("[StoryboardPage] Prepared scenes for generation:", scenesData.length);
 
       // Call API to create Replicate predictions
       const response = await apiFetch("/api/generate-all-clips", {
@@ -217,7 +271,6 @@ const StoryboardPage = () => {
       }
 
       const result = await response.json();
-      console.log("[StoryboardPage] generate-all-clips response", result);
 
       // Create video clip records in Convex with prediction IDs
       const clipRecords = await Promise.all(
@@ -229,11 +282,6 @@ const StoryboardPage = () => {
             duration: prediction.duration,
             resolution: "720p",
             replicateVideoId: prediction.predictionId,
-          });
-          console.log("[StoryboardPage] Created clip record", {
-            clipId,
-            predictionId: prediction.predictionId,
-            sceneId,
           });
           return { clipId, predictionId: prediction.predictionId, sceneId };
         }),
@@ -247,7 +295,6 @@ const StoryboardPage = () => {
       });
 
       setIsGenerating(false);
-      console.log("[StoryboardPage] Clip predictions queued, polling started");
 
       // Update project status when all videos complete
       const checkAllComplete = () => {
@@ -281,32 +328,14 @@ const StoryboardPage = () => {
       }> = [];
 
       // Collect all shots that need syncing
-      console.log("[TRACE] Starting shot collection for sync", {
-        rowCount: storyboardRows.length,
-      });
-
-      storyboardRows.forEach((row, rowIndex) => {
-        console.log(`[TRACE] Row ${rowIndex}: scene ${row.scene.sceneNumber}`, {
-          shotCount: row.shots.length,
-        });
-
-        row.shots.forEach((shotWrapper, shotIndex) => {
-          console.log(`[TRACE] Row ${rowIndex}, Shot ${shotIndex}:`, {
-            shotId: shotWrapper.shot._id,
-            shotNumber: shotWrapper.shot.shotNumber,
-            hasSelectedImage: !!shotWrapper.selectedImage,
-            selectedImageId: shotWrapper.selectedImage?._id,
-            imageUrl: shotWrapper.selectedImage?.imageUrl,
-          });
-
+      storyboardRows.forEach((row) => {
+        row.shots.forEach((shotWrapper) => {
           if (!shotWrapper.selectedImage) {
-            console.warn(`[TRACE] Shot ${shotWrapper.shot._id} has NO selectedImage - SKIPPING SYNC`);
             return;
           }
 
           const shotId = shotWrapper.shot._id;
           if (syncedShotIds.current.has(shotId)) {
-            console.log(`[TRACE] Shot ${shotId} already synced - SKIPPING`);
             return;
           }
 
@@ -317,49 +346,32 @@ const StoryboardPage = () => {
             selectedImageId: shotWrapper.selectedImage._id,
           };
 
-          console.log(`[TRACE] Adding shot to sync queue:`, {
-            ...syncItem,
-            imageUrl: shotWrapper.selectedImage.imageUrl,
-            imageStorageId: shotWrapper.selectedImage.imageStorageId,
-            FULL_IMAGE_OBJECT: shotWrapper.selectedImage,
-          });
-
           shotsToSync.push(syncItem);
         });
       });
 
-      console.log("[TRACE] Shot collection complete", {
-        totalToSync: shotsToSync.length,
-        shotsData: shotsToSync,
-      });
-
       if (shotsToSync.length === 0) {
-        console.log("[TRACE] No shots to sync - exiting");
         return;
       }
 
       setIsSyncing(true);
-      console.log("[StoryboardPage] Starting sync of", shotsToSync.length, "shots");
 
       try {
         // Sync all shots in parallel and wait for all to complete
         await Promise.all(
-          shotsToSync.map(async (syncData, index) => {
+          shotsToSync.map(async (syncData) => {
             try {
               syncedShotIds.current.add(syncData.shotId);
-              console.log(`[TRACE] Syncing shot ${index + 1}/${shotsToSync.length}:`, syncData);
               await syncShotToLegacyScene(syncData);
-              console.log(`[TRACE] ✓ Shot ${index + 1} synced successfully`);
             } catch (error) {
-              console.error(`[TRACE] ✗ Shot ${index + 1} sync FAILED:`, error);
+              console.error("[StoryboardPage] Shot sync failed:", error);
               syncedShotIds.current.delete(syncData.shotId);
               throw error;
             }
           })
         );
-        console.log("[TRACE] ✓✓✓ ALL SHOTS SYNCED SUCCESSFULLY ✓✓✓");
       } catch (error) {
-        console.error("[TRACE] ✗✗✗ SHOT SYNC ERROR ✗✗✗", error);
+        console.error("[StoryboardPage] Shot sync error:", error);
       } finally {
         setIsSyncing(false);
       }
@@ -377,10 +389,8 @@ const StoryboardPage = () => {
     );
 
     if (processingClips.length > 0) {
-      console.log("[StoryboardPage] Resuming polling for", processingClips.length, "clips");
       processingClips.forEach((clip) => {
         if (clip.replicateVideoId && !activeVideoPolls.current.has(clip._id)) {
-          console.log("[StoryboardPage] Starting poll for clip", clip._id);
           startPolling(clip._id, clip.replicateVideoId, clip.sceneId);
         }
       });
@@ -421,12 +431,6 @@ const StoryboardPage = () => {
             projectId={projectId}
             storyboardLocked={false}
             storyboardLockMessage={lockMessage}
-            videoLocked={!selectionsComplete || isSyncing}
-            videoLockMessage={
-              isSyncing
-                ? "Preparing scenes for video generation..."
-                : "Select master shots for every scene to unlock video generation"
-            }
             editorLocked={projectProgress?.projectStatus !== "video_generated"}
             editorLockMessage="Generate video clips before editing"
           />
@@ -444,37 +448,20 @@ const StoryboardPage = () => {
               className="bg-white text-black hover:bg-gray-200"
               disabled={!canGenerateVideo}
               onClick={async () => {
-                console.log("[StoryboardPage] Generate Videos clicked", {
-                  projectId,
-                  canGenerateVideo,
-                  selectionsComplete,
-                  isSyncing,
-                  isGenerating,
-                });
-
                 // Wait for any ongoing sync to complete
                 if (isSyncing) {
-                  console.log("[StoryboardPage] Waiting for sync to complete...");
                   return;
                 }
 
                 // Don't start if already generating
                 if (isGenerating) {
-                  console.log("[StoryboardPage] Already generating...");
                   return;
                 }
 
-                // Clear old video clips before generating
-                if (projectId) {
-                  console.log("[StoryboardPage] Clearing old video clips...");
-                  try {
-                    const clearedCount = await clearVideoClips({ projectId });
-                    console.log(`[StoryboardPage] Cleared ${clearedCount} old clips`);
-                  } catch (error) {
-                    console.error("[StoryboardPage] Failed to clear clips:", error);
-                    return;
-                  }
-                }
+                // Only clear failed/incomplete clips, keep complete ones
+                // Note: clearVideoClips clears all clips. For a more selective approach,
+                // we'd need a new Convex mutation. For now, we'll just skip clearing
+                // and let generateVideoClips filter out complete scenes.
 
                 // Start video generation inline
                 hasStartedGeneration.current = true;
@@ -482,7 +469,17 @@ const StoryboardPage = () => {
                 await generateVideoClips();
               }}
             >
-              {isSyncing ? "Preparing..." : isGenerating ? "Generating..." : "Generate Videos"}
+              {isSyncing ? "Preparing..." : isGenerating ? "Generating..." : (() => {
+                const completedCount = clips.filter(c => c.status === "complete").length;
+                const totalCount = convexScenes.length;
+                if (completedCount === 0) {
+                  return "Generate Videos";
+                } else if (completedCount === totalCount) {
+                  return "All Videos Complete";
+                } else {
+                  return `Generate ${totalCount - completedCount} Video${totalCount - completedCount === 1 ? "" : "s"}`;
+                }
+              })()}
             </Button>
           </div>
         </div>
@@ -509,6 +506,7 @@ const StoryboardPage = () => {
               convexScenes={convexScenes}
               isGenerating={isGenerating}
               isLocked={isGenerating}
+              onRetryClip={retryVideoClip}
             />
           ))
         )}
