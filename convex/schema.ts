@@ -4,6 +4,7 @@ import { v } from "convex/values";
 const beatMarkerValidator = v.object({
   time: v.number(),
   strength: v.optional(v.number()),
+  isDownbeat: v.optional(v.boolean()),
 });
 
 export default defineSchema({
@@ -242,6 +243,24 @@ export default defineSchema({
     timelineStart: v.optional(v.number()),
     timelineEnd: v.optional(v.number()),
     beatMarkers: v.optional(v.array(beatMarkerValidator)),
+    bpm: v.optional(v.number()),
+    beatAnalysisStatus: v.optional(
+      v.union(
+        v.literal("not_analyzed"),
+        v.literal("analyzing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("rate_limited"),
+      ),
+    ),
+    analysisError: v.optional(v.string()),
+    analysisMethod: v.optional(
+      v.union(
+        v.literal("replicate"),
+        v.literal("client"),
+        v.literal("manual"),
+      ),
+    ),
     metadata: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),

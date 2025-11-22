@@ -5,9 +5,19 @@ export type AudioAssetSource =
   | "uploaded"
   | "external";
 
+export type BeatAnalysisStatus =
+  | "not_analyzed"
+  | "analyzing"
+  | "completed"
+  | "failed"
+  | "rate_limited";
+
+export type BeatAnalysisMethod = "replicate" | "client" | "manual";
+
 export type BeatMarker = {
   time: number;
   strength?: number;
+  isDownbeat?: boolean;
 };
 
 export interface AudioAsset {
@@ -25,6 +35,10 @@ export interface AudioAsset {
   timelineStart?: number;
   timelineEnd?: number;
   beatMarkers?: BeatMarker[];
+  bpm?: number;
+  beatAnalysisStatus?: BeatAnalysisStatus;
+  analysisError?: string;
+  analysisMethod?: BeatAnalysisMethod;
   metadata?: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;

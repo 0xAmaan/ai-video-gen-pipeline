@@ -1502,7 +1502,31 @@ export const createAudioAsset = mutation({
     timelineStart: v.optional(v.number()),
     timelineEnd: v.optional(v.number()),
     beatMarkers: v.optional(
-      v.array(v.object({ time: v.number(), strength: v.optional(v.number()) })),
+      v.array(
+        v.object({
+          time: v.number(),
+          strength: v.optional(v.number()),
+          isDownbeat: v.optional(v.boolean()),
+        }),
+      ),
+    ),
+    bpm: v.optional(v.number()),
+    beatAnalysisStatus: v.optional(
+      v.union(
+        v.literal("not_analyzed"),
+        v.literal("analyzing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("rate_limited"),
+      ),
+    ),
+    analysisError: v.optional(v.string()),
+    analysisMethod: v.optional(
+      v.union(
+        v.literal("replicate"),
+        v.literal("client"),
+        v.literal("manual"),
+      ),
     ),
     metadata: v.optional(v.any()),
   },
@@ -1530,6 +1554,10 @@ export const createAudioAsset = mutation({
       timelineStart: args.timelineStart,
       timelineEnd: args.timelineEnd,
       beatMarkers: args.beatMarkers,
+      bpm: args.bpm,
+      beatAnalysisStatus: args.beatAnalysisStatus ?? "not_analyzed",
+      analysisError: args.analysisError,
+      analysisMethod: args.analysisMethod,
       metadata: args.metadata,
       createdAt: now,
       updatedAt: now,
@@ -1567,7 +1595,31 @@ export const updateAudioAsset = mutation({
     timelineEnd: v.optional(v.number()),
     metadata: v.optional(v.any()),
     beatMarkers: v.optional(
-      v.array(v.object({ time: v.number(), strength: v.optional(v.number()) })),
+      v.array(
+        v.object({
+          time: v.number(),
+          strength: v.optional(v.number()),
+          isDownbeat: v.optional(v.boolean()),
+        }),
+      ),
+    ),
+    bpm: v.optional(v.number()),
+    beatAnalysisStatus: v.optional(
+      v.union(
+        v.literal("not_analyzed"),
+        v.literal("analyzing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("rate_limited"),
+      ),
+    ),
+    analysisError: v.optional(v.string()),
+    analysisMethod: v.optional(
+      v.union(
+        v.literal("replicate"),
+        v.literal("client"),
+        v.literal("manual"),
+      ),
     ),
   },
   handler: async (ctx, args) => {
@@ -1596,6 +1648,10 @@ export const updateAudioAsset = mutation({
       timelineStart: args.timelineStart ?? asset.timelineStart,
       timelineEnd: args.timelineEnd ?? asset.timelineEnd,
       beatMarkers: args.beatMarkers ?? asset.beatMarkers,
+      bpm: args.bpm ?? asset.bpm,
+      beatAnalysisStatus: args.beatAnalysisStatus ?? asset.beatAnalysisStatus,
+      analysisError: args.analysisError ?? asset.analysisError,
+      analysisMethod: args.analysisMethod ?? asset.analysisMethod,
       metadata: args.metadata ?? asset.metadata,
       updatedAt: Date.now(),
     });
