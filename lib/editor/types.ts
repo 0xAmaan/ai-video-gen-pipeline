@@ -134,6 +134,8 @@ export interface MediaAssetMeta {
   predictionId?: string;
   thumbnails?: string[]; // Data URLs for timeline thumbnails
   thumbnailCount?: number;
+  beatMarkers?: Array<{ time: number; strength?: number }>; // Audio beat analysis data
+  bpm?: number; // Beats per minute (for audio assets)
 }
 
 export interface ProjectSettings {

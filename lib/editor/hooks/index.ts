@@ -4,3 +4,4 @@
 
 export * from "./useTwickEditor";
 export * from "./useConvexProjectSync";
+export * from "./useSnapManager";
