@@ -51,7 +51,7 @@ export const VerticalMediaGallery = ({
   });
 
   return (
-    <aside className="sticky top-32 rounded-3xl bg-[#0c0c0c]/90 border border-white/5 shadow-xl shadow-black/40 p-4 space-y-3 max-h-[70vh] overflow-auto">
+    <aside className="sticky top-32 rounded-3xl bg-[#0c0c0c]/90 border border-white/5 shadow-xl shadow-black/40 p-4 space-y-3 max-h-[70vh] overflow-auto scrollbar-hide">
       <div className="px-1">
         <p className="text-xs uppercase tracking-wider text-gray-500 mb-2 text-center">
           Master Shots

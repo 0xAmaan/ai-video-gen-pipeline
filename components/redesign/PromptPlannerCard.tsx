@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
-import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +17,6 @@ import {
   ArrowUpRight,
   CheckCircle2,
   RefreshCw,
-  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,6 +24,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ProjectAsset, ProjectScene, SceneShot, ShotPreviewImage } from "@/lib/types/redesign";
 import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
@@ -54,11 +58,11 @@ interface PromptPlannerCardProps {
   registerShotRef?: (shotId: Id<"sceneShots">, node: HTMLDivElement | null) => void;
   getShotPreviewImages?: (shotId: Id<"sceneShots">) => ShotPreviewImage[] | undefined;
   onSelectShotImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
-  onRegenerateShot?: (shot: SceneShot) => void;
+  onResetShot?: (shot: SceneShot) => void;
   onGeneratePreview?: (shot: SceneShot) => void;
   onUpdateShotAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
   assets?: ProjectAsset[];
-  resettingShotId?: Id<"sceneShots"> | null;
+  resettingShotIds?: Id<"sceneShots">[];
 }
 
 interface ShotCardProps {
@@ -74,7 +78,7 @@ interface ShotCardProps {
   registerShotRef?: (shotId: Id<"sceneShots">, node: HTMLDivElement | null) => void;
   previewImages?: ShotPreviewImage[];
   onSelectImage?: (shot: SceneShot, image: ShotPreviewImage) => void;
-  onRegenerateShot?: (shot: SceneShot) => void;
+  onResetShot?: (shot: SceneShot) => void;
   onGeneratePreview?: (shot: SceneShot) => void;
   onUpdateAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
   assets?: ProjectAsset[];
@@ -94,18 +98,44 @@ const ShotCard = ({
   registerShotRef,
   previewImages,
   onSelectImage,
-  onRegenerateShot,
+  onResetShot,
   onGeneratePreview,
   onUpdateAssets,
   assets,
   isResetting = false,
 }: ShotCardProps) => {
   const [localDescription, setLocalDescription] = useState(shot.description);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [previewCleared, setPreviewCleared] = useState(false);
 
   // Sync local state with prop changes
   useEffect(() => {
     setLocalDescription(shot.description);
-  }, [shot.description]);
+    setDeleteConfirm(false);
+    setResetConfirm(false);
+    setPreviewCleared(false);
+  }, [shot.description, shot._id]);
+
+  useEffect(() => {
+    if (deleteConfirm) {
+      const timer = setTimeout(() => setDeleteConfirm(false), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [deleteConfirm]);
+
+  useEffect(() => {
+    if (resetConfirm) {
+      const timer = setTimeout(() => setResetConfirm(false), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [resetConfirm]);
+
+  useEffect(() => {
+    if ((previewImages?.length ?? 0) > 0 && !isResetting) {
+      setPreviewCleared(false);
+    }
+  }, [previewImages?.length, isResetting]);
 
   const {
     attributes,
@@ -143,6 +173,37 @@ const ShotCard = ({
   const handleDescriptionChange = (value: string) => {
     setLocalDescription(value);
     onUpdateShotText(shot._id, value);
+  };
+
+  const handleDeleteClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    if (!deleteConfirm) {
+      setDeleteConfirm(true);
+      setResetConfirm(false);
+      return;
+    }
+    setDeleteConfirm(false);
+    onDeleteShot(shot._id);
+  };
+
+  const handleResetClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    if (isResetting) return;
+
+    if (!resetConfirm) {
+      setResetConfirm(true);
+      setDeleteConfirm(false);
+      return;
+    }
+
+    setPreviewCleared(true);
+    setResetConfirm(false);
+    onResetShot?.(shot);
+  };
+
+  const triggerGenerate = () => {
+    setPreviewCleared(false);
+    onGeneratePreview?.(shot);
   };
 
   return (
@@ -210,58 +271,101 @@ const ShotCard = ({
           )}
         </div>
 
-        <div className="flex flex-row gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteShot(shot._id);
-            }}
-            className="h-8 w-8 text-gray-500 hover:text-red-400"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-          {previewImages && previewImages.length > 0 && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRegenerateShot?.(shot);
-                }}
-                disabled={isResetting}
-                className="h-8 w-8 text-gray-400 hover:text-gray-100 disabled:text-gray-600"
-                aria-label="Clear shot"
-                title="Clear shot"
-              >
-                {isResetting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-              </Button>
-              <Button
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEnterIterator(shot);
-                }}
-                className="h-8 w-8 rounded-full bg-blue-500/20 text-blue-300 hover:bg-blue-500/40"
-              >
-                <ArrowUpRight className="w-4 h-4" />
-              </Button>
-            </>
-          )}
+        <TooltipProvider delayDuration={120}>
+          <div className="flex flex-row gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleDeleteClick}
+                  className={cn(
+                    "h-8 w-8 text-gray-500 hover:text-red-400",
+                    deleteConfirm &&
+                      "bg-red-500/10 text-red-200 border border-red-500/30",
+                  )}
+                >
+                  <Trash2
+                    className={cn(
+                      "w-4 h-4",
+                      deleteConfirm && "drop-shadow-[0_0_12px_rgba(248,113,113,0.5)]",
+                    )}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="bg-[#0f1115] border border-white/10 text-gray-100 shadow-lg shadow-black/30">
+                {deleteConfirm ? "Click again to delete" : "Delete shot"}
+              </TooltipContent>
+            </Tooltip>
+
+            {previewImages && previewImages.length > 0 && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={isResetting}
+                      onClick={handleResetClick}
+                      className={cn(
+                        "h-8 w-8 text-gray-400 hover:text-gray-100",
+                        resetConfirm &&
+                          "bg-amber-500/10 text-amber-100 border border-amber-400/40",
+                        isResetting && "opacity-60 cursor-not-allowed",
+                      )}
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "w-4 h-4",
+                          resetConfirm && "text-amber-200 drop-shadow-[0_0_12px_rgba(251,191,36,0.5)]",
+                          isResetting && "animate-spin",
+                        )}
+                      />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-[#0f1115] border border-white/10 text-gray-100 shadow-lg shadow-black/30">
+                    {resetConfirm ? "Click again to reset" : "Reset image & edit prompt"}
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEnterIterator(shot);
+                      }}
+                      className="h-8 w-8 rounded-full bg-blue-500/20 text-blue-300 hover:bg-blue-500/40"
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-[#0f1115] border border-white/10 text-gray-100 shadow-lg shadow-black/30">
+                    Adjust image
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
+          </div>
+        </TooltipProvider>
+      </div>
+      {previewCleared && (
+        <div className="mt-3 max-w-xs mx-auto rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          Preview cleared. Update the prompt and generate a fresh frame.
         </div>
-       </div>
+      )}
+
       <ShotImageGrid
-        images={previewImages}
-        isLoading={shot.lastImageStatus === "processing" || shot.lastImageStatus === "pending"}
+        images={previewCleared ? [] : previewImages}
+        isLoading={
+          isResetting ||
+          shot.lastImageStatus === "processing" ||
+          shot.lastImageStatus === "pending"
+        }
         selectedImageId={shot.selectedImageId}
         onSelect={(image) => onSelectImage?.(shot, image)}
-        onIterate={() => onGeneratePreview?.(shot)}
+        onIterate={triggerGenerate}
         footer={
           shot.lastImageStatus === "failed" ? (
             <p className="text-xs text-red-400">
@@ -293,11 +397,11 @@ export const PromptPlannerCard = ({
   registerShotRef,
   getShotPreviewImages,
   onSelectShotImage,
-  onRegenerateShot,
+  onResetShot,
   onGeneratePreview,
   onUpdateShotAssets,
   assets,
-  resettingShotId,
+  resettingShotIds,
 }: PromptPlannerCardProps) => {
   const {
     attributes: sceneAttributes,
@@ -413,11 +517,11 @@ export const PromptPlannerCard = ({
               registerShotRef={registerShotRef}
               previewImages={getShotPreviewImages?.(shot._id)}
               onSelectImage={onSelectShotImage}
-              onRegenerateShot={onRegenerateShot}
+              onResetShot={onResetShot}
               onGeneratePreview={onGeneratePreview}
               onUpdateAssets={onUpdateShotAssets}
               assets={assets}
-              isResetting={resettingShotId === shot._id}
+              isResetting={resettingShotIds?.includes(shot._id)}
             />
           ))}
 

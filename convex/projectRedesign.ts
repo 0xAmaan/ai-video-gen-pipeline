@@ -341,17 +341,11 @@ export const clearShotImage = mutation({
         .collect(),
     ]);
 
-    for (const image of images) {
-      await ctx.db.delete(image._id);
-    }
-
-    for (const selection of selections) {
-      await ctx.db.delete(selection._id);
-    }
-
-    for (const legacyScene of legacyScenes) {
-      await ctx.db.delete(legacyScene._id);
-    }
+    await Promise.all([
+      ...images.map((image) => ctx.db.delete(image._id)),
+      ...selections.map((selection) => ctx.db.delete(selection._id)),
+      ...legacyScenes.map((legacyScene) => ctx.db.delete(legacyScene._id)),
+    ]);
 
     await ctx.db.patch(args.shotId, {
       description: "",

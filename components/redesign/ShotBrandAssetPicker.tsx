@@ -9,6 +9,7 @@ import type { ProjectAsset } from "@/lib/types/redesign";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Check, Plus, X } from "lucide-react";
 import { toast } from "sonner";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 const MAX_ASSETS_PER_SHOT = 3;
 const EMPTY_ASSET_IDS: Id<"projectAssets">[] = [];
@@ -88,7 +89,7 @@ export const ShotBrandAssetPicker = ({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={asset.imageUrl}
+              src={proxiedImageUrl(asset.imageUrl) || asset.imageUrl}
               alt={asset.name}
               className="h-full w-full object-cover"
             />
@@ -125,7 +126,7 @@ export const ShotBrandAssetPicker = ({
                 No uploads yet. Add images on the input step, then attach up to three per shot.
               </p>
             )}
-            <div className="max-w-full overflow-x-hidden pb-1">
+            <div className="max-w-full overflow-x-hidden pb-1 pt-1">
               <div className="grid grid-cols-5 gap-3 w-full">
                 {gridItems.map((asset, index) =>
                   asset ? (
@@ -134,22 +135,25 @@ export const ShotBrandAssetPicker = ({
                       type="button"
                       onClick={() => handleToggleAsset(asset._id)}
                       className={cn(
-                        "relative h-28 w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40 transition",
+                        "group relative h-28 w-full rounded-2xl border border-white/10 bg-black/40 transition",
                         tempSelection.includes(asset._id)
-                          ? "ring-2 ring-white/80 border-white"
+                          ? "border-transparent ring-2 ring-white/90 ring-offset-[3px] ring-offset-[#0e0e0e]"
                           : "hover:border-white/40",
-                        shakeId === asset._id && "ring-2 ring-red-500/70 animate-shot-wiggle",
+                        shakeId === asset._id &&
+                          "ring-2 ring-red-500/70 ring-offset-2 ring-offset-[#0e0e0e] animate-shot-wiggle",
                       )}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={asset.imageUrl}
-                        alt={asset.name}
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-black/0" />
+                      <div className="absolute inset-0 rounded-2xl overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={proxiedImageUrl(asset.imageUrl) || asset.imageUrl}
+                          alt={asset.name}
+                          className="h-full w-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-black/0" />
+                      </div>
                       {tempSelection.includes(asset._id) && (
-                        <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="relative z-10 flex h-full w-full items-center justify-center">
                           <div className="h-9 w-9 rounded-full bg-black/70 flex items-center justify-center">
                             <Check className="h-5 w-5 text-white" />
                           </div>

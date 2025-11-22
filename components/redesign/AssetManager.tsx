@@ -16,6 +16,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { ProjectAsset } from "@/lib/types/redesign";
 import { cn } from "@/lib/utils";
 import { Loader2, Plus, Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
 
 interface AssetManagerProps {
   projectId?: Id<"videoProjects">;
@@ -124,7 +125,7 @@ export const AssetManager = ({ projectId }: AssetManagerProps) => {
           {asset.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={asset.imageUrl}
+              src={proxiedImageUrl(asset.imageUrl) || asset.imageUrl}
               alt={asset.name}
               className="h-full w-full object-cover"
             />
