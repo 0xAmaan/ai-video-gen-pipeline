@@ -12,6 +12,7 @@ import {
   Pencil,
   Check,
   X,
+  Scissors,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Slider } from "../ui/slider";
@@ -34,6 +35,8 @@ interface TopBarProps {
   selectedAudioClipVolume?: number;
   onAudioClipVolumeChange?: (value: number) => void;
   onTitleChange?: (newTitle: string) => void;
+  rippleEditEnabled?: boolean;
+  onToggleRippleEdit?: () => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -63,6 +66,8 @@ const TopBarComponent = ({
   selectedAudioClipVolume,
   onAudioClipVolumeChange,
   onTitleChange,
+  rippleEditEnabled,
+  onToggleRippleEdit,
 }: TopBarProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(title);
@@ -164,6 +169,23 @@ const TopBarComponent = ({
           >
             <Redo2 className="h-4 w-4" />
           </Button>
+          {onToggleRippleEdit && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant={rippleEditEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={onToggleRippleEdit}
+                aria-label="Toggle ripple edit mode"
+                className="gap-2"
+                title="Toggle Ripple Mode (R)"
+              >
+                <Scissors className="h-4 w-4" />
+                {rippleEditEnabled && (
+                  <span className="hidden sm:inline text-xs">RIPPLE</span>
+                )}
+              </Button>
+            </div>
+          )}
           {onToggleTimelineMode && timelineMode && (
             <Button variant="outline" size="sm" onClick={onToggleTimelineMode}>
               Timeline: {timelineMode === "twick" ? "Twick" : "Legacy"}
@@ -241,7 +263,9 @@ export const TopBar = memo(TopBarComponent, (prevProps, nextProps) => {
     prevProps.selectedAudioClipVolume === nextProps.selectedAudioClipVolume &&
     prevProps.timelineMode === nextProps.timelineMode &&
     prevProps.onToggleTimelineMode === nextProps.onToggleTimelineMode &&
-    prevProps.onTitleChange === nextProps.onTitleChange
+    prevProps.onTitleChange === nextProps.onTitleChange &&
+    prevProps.rippleEditEnabled === nextProps.rippleEditEnabled &&
+    prevProps.onToggleRippleEdit === nextProps.onToggleRippleEdit
     // Note: currentTime intentionally excluded to reduce re-renders
   );
 });

@@ -34,6 +34,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const selection = useProjectStore((state) => state.selection);
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
+  const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
   const actions = useProjectStore((state) => state.actions);
   const thumbnailInflight = useRef<Set<string>>(new Set());
   const webGpuFailed = useRef(false);
@@ -336,6 +337,8 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         onMasterVolumeChange={(value) => setMasterVolume(value)}
         audioTrackMuted={audioTrackMuted}
         onToggleAudioTrack={() => setAudioTrackMuted((prev) => !prev)}
+        rippleEditEnabled={rippleEditEnabled}
+        onToggleRippleEdit={() => actions.toggleRippleEdit()}
       />
       
       <div className="flex flex-1 flex-col min-h-0">
