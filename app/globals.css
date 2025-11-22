@@ -123,3 +123,21 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Twick Timeline Only Mode (Hides the built-in video player) */
+#twick-timeline-only .twick-editor-view-section {
+  display: none !important;
+}
+
+#twick-timeline-only .twick-editor-timeline-section {
+  height: 100% !important;
+  flex: 1 !important;
+  border-top: none !important;
+}
+
+/* Force the timeline container to fill height */
+#twick-timeline-only .twick-editor-main-container {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { DEFAULT_TIMELINE_TICK_CONFIGS } from "@twick/video-editor";
+import VideoEditor, { DEFAULT_TIMELINE_TICK_CONFIGS } from "@twick/video-editor";
 import { LivePlayerProvider } from "@twick/live-player";
-import { TimelineProvider, useTimelineContext, TimelineEditor } from "@twick/timeline";
+import { TimelineProvider, useTimelineContext } from "@twick/timeline";
 import { projectToTimelineJSON, timelineToProject } from "@/lib/editor/twick-adapter";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 
@@ -69,10 +69,17 @@ const EditorBridge = () => {
   }, [actions, assets, changeLog, present, project, ready]);
 
   return (
-    // @ts-expect-error -- Library type definition mismatch
-    <TimelineEditor 
-      tickConfigs={DEFAULT_TIMELINE_TICK_CONFIGS}
-    />
+    <div id="twick-timeline-only" className="h-full w-full">
+      <VideoEditor
+        editorConfig={{
+          videoProps: {
+            width: project?.sequences[0]?.width ?? 1920,
+            height: project?.sequences[0]?.height ?? 1080,
+          },
+          timelineTickConfigs: DEFAULT_TIMELINE_TICK_CONFIGS,
+        }}
+      />
+    </div>
   );
 };
 
