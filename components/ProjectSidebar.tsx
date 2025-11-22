@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { UserButton } from "@clerk/nextjs";
-import { PanelLeftClose, PanelLeftOpen, FolderOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, FolderOpen, FolderPlus } from "lucide-react";
 import { NewProjectButton } from "./NewProjectButton";
 import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -77,6 +77,13 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
     router.push("/projects");
   };
 
+  const handleAssetsClick = () => {
+    if (isGenerating) {
+      return;
+    }
+    router.push("/assets");
+  };
+
   return (
     <div
       className={`h-screen bg-card border-r border-border flex flex-col transition-all duration-300 ${
@@ -119,7 +126,7 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
         <button
           onClick={handleProjectsClick}
           disabled={isGenerating}
-          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors mb-6 ${
+          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors mb-4 ${
             isGenerating
               ? "opacity-50 cursor-not-allowed"
               : "cursor-pointer " +
@@ -132,6 +139,26 @@ export const ProjectSidebar = ({ activeProjectId }: ProjectSidebarProps) => {
           <FolderOpen className="w-5 h-5 shrink-0" />
           {!isCollapsed && (
             <span className="text-sm font-medium">Projects</span>
+          )}
+        </button>
+
+        {/* Assets Button */}
+        <button
+          onClick={handleAssetsClick}
+          disabled={isGenerating}
+          className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors mb-6 ${
+            isGenerating
+              ? "opacity-50 cursor-not-allowed"
+              : "cursor-pointer " +
+                (pathname === "/assets"
+                  ? "bg-accent text-foreground"
+                  : "text-foreground hover:bg-accent")
+          }`}
+          title={isCollapsed ? "Brand Assets" : undefined}
+        >
+          <FolderPlus className="w-5 h-5 shrink-0" />
+          {!isCollapsed && (
+            <span className="text-sm font-medium">Assets</span>
           )}
         </button>
 

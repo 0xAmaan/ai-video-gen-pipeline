@@ -9,6 +9,7 @@
  */
 
 import type * as assets from "../assets.js";
+import type * as brandAssets from "../brandAssets.js";
 import type * as editor from "../editor.js";
 import type * as projectAssets from "../projectAssets.js";
 import type * as projectRedesign from "../projectRedesign.js";
@@ -22,6 +23,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   assets: typeof assets;
+  brandAssets: typeof brandAssets;
   editor: typeof editor;
   projectAssets: typeof projectAssets;
   projectRedesign: typeof projectRedesign;

@@ -6,6 +6,22 @@ const beatMarkerValidator = v.object({
   strength: v.optional(v.number()),
 });
 
+const assetTypeValidator = v.union(
+  v.literal("logo"),
+  v.literal("product"),
+  v.literal("character"),
+  v.literal("background"),
+  v.literal("prop"),
+  v.literal("reference"),
+  v.literal("other"),
+);
+
+const assetProminenceValidator = v.union(
+  v.literal("primary"),
+  v.literal("secondary"),
+  v.literal("subtle"),
+);
+
 export default defineSchema({
   videoProjects: defineTable({
     userId: v.string(),
@@ -260,36 +276,44 @@ export default defineSchema({
 
   projectAssets: defineTable({
     projectId: v.id("videoProjects"),
-    assetType: v.union(
-      v.literal("logo"),
-      v.literal("product"),
-      v.literal("character"),
-      v.literal("background"),
-      v.literal("prop"),
-      v.literal("reference"),
-      v.literal("other"),
-    ),
+    assetType: assetTypeValidator,
     name: v.string(),
     description: v.optional(v.string()),
     usageNotes: v.optional(v.string()),
-    prominence: v.optional(
-      v.union(
-        v.literal("primary"),
-        v.literal("secondary"),
-        v.literal("subtle"),
-      ),
-    ),
+    prominence: v.optional(assetProminenceValidator),
     referenceColors: v.optional(v.array(v.string())),
     img2imgStrength: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
     isActive: v.optional(v.boolean()),
     imageUrl: v.optional(v.string()),
     storageId: v.optional(v.string()),
+    brandAssetId: v.optional(v.id("brandAssets")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
-    .index("by_project_active", ["projectId", "isActive"]),
+    .index("by_project_active", ["projectId", "isActive"])
+    .index("by_brandAsset", ["brandAssetId"]),
+
+  brandAssets: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    folder: v.optional(v.string()),
+    assetType: assetTypeValidator,
+    description: v.optional(v.string()),
+    usageNotes: v.optional(v.string()),
+    prominence: v.optional(assetProminenceValidator),
+    referenceColors: v.optional(v.array(v.string())),
+    img2imgStrength: v.optional(v.number()),
+    tags: v.optional(v.array(v.string())),
+    imageUrl: v.optional(v.string()),
+    storageId: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_folder", ["userId", "folder"]),
 
   projectScenesAssets: defineTable({
     projectId: v.id("videoProjects"),

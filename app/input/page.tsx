@@ -10,15 +10,23 @@ import {
   useCreateProjectAsset,
   useCreateRedesignProject,
 } from "@/lib/hooks/useProjectRedesign";
+import {
+  useBrandAssets,
+  useImportBrandAssets,
+} from "@/lib/hooks/useBrandAssets";
+import type { BrandAssetDoc } from "@/lib/hooks/useBrandAssets";
 import { toast } from "sonner";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import type { ProjectAssetType } from "@/lib/types/redesign";
 
 type DraftAsset = {
   id: string;
   imageUrl: string;
   name: string;
-  assetType: "logo";
+  assetType: ProjectAssetType;
+  brandAssetId?: Id<"brandAssets">;
 };
 
 const MAX_ASSETS = 20;
@@ -42,6 +50,8 @@ const RawInputPage = () => {
   const createProject = useCreateRedesignProject();
   const createAsset = useCreateProjectAsset();
   const generateUploadUrl = useMutation(api.projectAssets.generateUploadUrl);
+  const brandAssets = useBrandAssets(isSignedIn);
+  const importBrandAssets = useImportBrandAssets();
 
   // Voice dictation
   const {
@@ -84,16 +94,16 @@ const RawInputPage = () => {
           const imageUrl = reader.result;
           setAssetDrafts((prev) => {
             if (prev.length >= MAX_ASSETS) return prev;
-            return [
-              ...prev,
-              {
-                id: createDraftId(),
-                imageUrl,
-                name: `Brand asset ${prev.length + 1}`,
-                assetType: "logo" as const,
-              },
-            ];
-          });
+              return [
+                ...prev,
+                {
+                  id: createDraftId(),
+                  imageUrl,
+                  name: `Brand asset ${prev.length + 1}`,
+                  assetType: "logo" as ProjectAssetType,
+                },
+              ];
+            });
         };
         reader.readAsDataURL(file);
       });
@@ -104,6 +114,27 @@ const RawInputPage = () => {
     },
     [assetDrafts.length],
   );
+
+  const handleAddBrandAsset = (asset: BrandAssetDoc) => {
+    if (!asset.imageUrl) {
+      toast.error("This asset doesn't have an image yet.");
+      return;
+    }
+    if (assetDrafts.length >= MAX_ASSETS) {
+      toast.info(`You can only attach up to ${MAX_ASSETS} assets for now.`);
+      return;
+    }
+    setAssetDrafts((prev) => [
+      ...prev,
+      {
+        id: `${asset._id}-${Date.now()}`,
+        imageUrl: asset.imageUrl!,
+        name: asset.name,
+        assetType: asset.assetType,
+        brandAssetId: asset._id,
+      },
+    ]);
+  };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -159,41 +190,59 @@ const RawInputPage = () => {
         promptPlannerData: input.trim(),
       });
 
-      if (assetDrafts.length) {
+      const customAssetDrafts = assetDrafts.filter(
+        (asset) => !asset.brandAssetId,
+      );
+      const brandAssetIds = Array.from(
+        new Set(
+          assetDrafts
+            .filter((asset) => asset.brandAssetId)
+            .map((asset) => asset.brandAssetId as Id<"brandAssets">),
+        ),
+      );
+
+      if (customAssetDrafts.length) {
         await Promise.all(
-           assetDrafts.map(async (asset) => {
-             let storageId: string | undefined;
-             let imageUrl: string | undefined;
+          customAssetDrafts.map(async (asset) => {
+            let storageId: string | undefined;
+            let imageUrl: string | undefined;
 
-             if (asset.imageUrl.startsWith("data:")) {
-               try {
-                 const uploadUrl = await generateUploadUrl();
-                 const response = await fetch(asset.imageUrl);
-                 const blob = await response.blob();
-                 const result = await fetch(uploadUrl, {
-                   method: "POST",
-                   headers: { "Content-Type": blob.type },
-                   body: blob,
-                 });
-                 const { storageId: id } = await result.json();
-                 storageId = id;
-               } catch (error) {
-                 console.error("Failed to upload asset:", error);
-                 imageUrl = asset.imageUrl.slice(0, 200);
-               }
-             } else {
-               imageUrl = asset.imageUrl;
-             }
+            if (asset.imageUrl.startsWith("data:")) {
+              try {
+                const uploadUrl = await generateUploadUrl();
+                const response = await fetch(asset.imageUrl);
+                const blob = await response.blob();
+                const result = await fetch(uploadUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": blob.type },
+                  body: blob,
+                });
+                const { storageId: id } = await result.json();
+                storageId = id;
+              } catch (error) {
+                console.error("Failed to upload asset:", error);
+                imageUrl = asset.imageUrl.slice(0, 200);
+              }
+            } else {
+              imageUrl = asset.imageUrl;
+            }
 
-             return createAsset({
-               projectId,
-               assetType: asset.assetType,
-               name: asset.name,
-               storageId,
-               imageUrl,
-             });
-           }),
+            return createAsset({
+              projectId,
+              assetType: asset.assetType,
+              name: asset.name,
+              storageId,
+              imageUrl,
+            });
+          }),
         );
+      }
+
+      if (brandAssetIds.length) {
+        await importBrandAssets({
+          projectId,
+          brandAssetIds,
+        });
       }
 
       setAssetDrafts([]);
@@ -280,7 +329,10 @@ const RawInputPage = () => {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm text-gray-500">
-                  Brand Assets
+                  Project assets
+                </p>
+                <p className="text-xs text-gray-500">
+                  Upload references unique to this brief (max {MAX_ASSETS} total).
                 </p>
               </div>
               <button
@@ -319,6 +371,11 @@ const RawInputPage = () => {
                     key={draft.id}
                     className="relative group h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40"
                   >
+                    {draft.brandAssetId && (
+                      <span className="absolute left-1.5 top-1.5 z-10 rounded-full bg-emerald-400/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-black">
+                        Library
+                      </span>
+                    )}
                     {draft.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -340,6 +397,78 @@ const RawInputPage = () => {
                       <Trash2 className="h-4 w-4 text-gray-300" />
                     </button>
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 bg-white/[0.03] border rounded-2xl border-white/10 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-gray-500">
+                  Brand asset library
+                </p>
+                <p className="text-sm text-gray-400">
+                  Tap any saved asset to attach it to this project.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push("/assets")}
+                className="rounded-xl border border-white/20 px-3 py-2 text-sm text-white hover:bg-white/10"
+              >
+                Manage library
+              </button>
+            </div>
+            {brandAssets === undefined ? (
+              <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                Loading your library...
+              </div>
+            ) : brandAssets.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/40 p-4 text-sm text-gray-500">
+                No shared assets yet. Use the Assets page to upload logos,
+                products, or characters that should be available to every
+                project.
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {brandAssets.map((asset) => (
+                  <button
+                    type="button"
+                    key={asset._id}
+                    onClick={() => handleAddBrandAsset(asset)}
+                    className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left transition hover:border-white/30"
+                  >
+                    <div className="relative h-28 w-full bg-black/30">
+                      {asset.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={asset.imageUrl}
+                          alt={asset.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs text-gray-500">
+                          No preview
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                      <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between gap-2 text-white">
+                        <div>
+                          <p className="text-sm font-semibold line-clamp-1">
+                            {asset.name}
+                          </p>
+                          <p className="text-[11px] uppercase tracking-[0.3em] text-gray-300">
+                            {asset.folder || "GENERAL"}
+                          </p>
+                        </div>
+                        <div className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                          {asset.assetType}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
