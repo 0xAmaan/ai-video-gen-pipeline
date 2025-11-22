@@ -21,7 +21,6 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
   const isMainFlowPage =
     pathname?.startsWith("/home") ||
     pathname?.startsWith("/input") ||
-    pathname?.startsWith("/assets") ||
     pathname?.match(/^\/[^/]+\/(scene-planner|scene-iterator|loading|storyboard)/);
 
   // Archive pages: old flow with sidebar
