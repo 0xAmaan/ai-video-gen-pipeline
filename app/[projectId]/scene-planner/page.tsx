@@ -23,10 +23,19 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, GripVertical, Sparkles, Loader2 } from "lucide-react";
+import { Plus, GripVertical, Sparkles, Loader2, Link2, Check } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { PromptPlannerCard } from "@/components/redesign/PromptPlannerCard";
 import { ChatInput } from "@/components/redesign/ChatInput";
+import type { GenerationSettings } from "@/components/redesign/ChatSettings";
 import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery";
 import { SceneIteratorModal } from "@/components/redesign/SceneIteratorModal";
 import {
@@ -80,6 +89,8 @@ const SceneShotsSynchronizer = ({
       shots.map((shot) => ({
         ...shot,
         initialPrompt: shot.initialPrompt ?? "",
+        linkedShotId: shot.linkedShotId ?? null,
+        linkedImageId: shot.linkedImageId ?? null,
         lastImageStatus: shot.lastImageStatus as ImageGenerationStatus | undefined,
       })),
     );
@@ -118,6 +129,14 @@ const PromptPlannerPage = () => {
   const [selectedShot, setSelectedShot] = useState<{
     shotId: Id<"sceneShots">;
     sceneId: Id<"projectScenes">;
+  } | null>(null);
+  const [linkModalState, setLinkModalState] = useState<{
+    shot: SceneShot;
+    scene: PlannerSceneState;
+  } | null>(null);
+  const [linkSelection, setLinkSelection] = useState<{
+    shotId: Id<"sceneShots">;
+    imageId: Id<"shotImages">;
   } | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [activeDragType, setActiveDragType] = useState<"scene" | "shot" | null>(null);
@@ -160,6 +179,26 @@ const PromptPlannerPage = () => {
     });
     return map;
   }, [shotPreviewGroups]);
+
+  const linkableShots = useMemo(() => {
+    if (!linkModalState) return [];
+    const targetShotId = linkModalState.shot._id;
+
+    return plannerScenes
+      .flatMap((scene) =>
+        scene.shots.map((shot) => ({
+          scene,
+          shot,
+          previews: (shotPreviewMap.get(shot._id) ?? []).filter(
+            (image) => image.status === "complete",
+          ),
+        })),
+      )
+      .filter(
+        (entry) =>
+          entry.shot._id !== targetShotId && entry.previews.length > 0,
+      );
+  }, [linkModalState, plannerScenes, shotPreviewMap]);
 
   const missingPreviewCount = useMemo(() => {
     return plannerScenes.reduce(
@@ -435,7 +474,74 @@ const PromptPlannerPage = () => {
     console.log('[Scene-Planner] selectedShot updated, shouldFocus should be true');
   };
 
-  const handleChatSubmit = async (message: string) => {
+  const handleOpenLinkModal = (shot: SceneShot, scene: PlannerSceneState) => {
+    setLinkModalState({ shot, scene });
+    if (shot.linkedShotId && shot.linkedImageId) {
+      setLinkSelection({
+        shotId: shot.linkedShotId,
+        imageId: shot.linkedImageId,
+      });
+    } else {
+      setLinkSelection(null);
+    }
+  };
+
+  const closeLinkModal = () => {
+    setLinkModalState(null);
+    setLinkSelection(null);
+  };
+
+  const persistLinkSelection = async (
+    selection: { shotId: Id<"sceneShots">; imageId: Id<"shotImages"> } | null,
+  ) => {
+    if (!linkModalState) return;
+    const targetShotId = linkModalState.shot._id;
+
+    setPlannerScenes((prev) =>
+      prev.map((scene) => ({
+        ...scene,
+        shots: scene.shots.map((shot) =>
+          shot._id === targetShotId
+            ? {
+                ...shot,
+                linkedShotId: selection?.shotId ?? null,
+                linkedImageId: selection?.imageId ?? null,
+              }
+            : shot,
+        ),
+      })),
+    );
+
+    try {
+      await updateShot({
+        shotId: targetShotId,
+        linkedShotId: selection?.shotId ?? null,
+        linkedImageId: selection?.imageId ?? null,
+      });
+      toast.success(
+        selection
+          ? "Linked this shot to a reference frame."
+          : "Removed linked shot reference.",
+      );
+    } catch (error) {
+      console.error("Failed to update linked shot", error);
+      toast.error("Unable to update linked shot");
+    } finally {
+      closeLinkModal();
+    }
+  };
+
+  const handleSelectReference = (
+    shotId: Id<"sceneShots">,
+    imageId: Id<"shotImages">,
+  ) => {
+    setLinkSelection({ shotId, imageId });
+  };
+
+  const handleChatSubmit = async (
+    message: string,
+    settings: GenerationSettings,
+  ) => {
     if (!selectedShot || !projectId) return;
 
     const shot = plannerScenes
@@ -471,6 +577,7 @@ const PromptPlannerPage = () => {
           fixPrompt: message.trim(),
           parentImageId: shot.selectedImageId, // Use current selected image for image-to-image
           mode: "preview",
+          modelKey: settings.model,
         }),
       });
 
@@ -733,6 +840,7 @@ const PromptPlannerPage = () => {
 
   const hasScenes = plannerScenes.length > 0;
   const selectionComplete = (projectProgress?.selectionProgress ?? 0) >= 100;
+  const isLinkModalOpen = !!linkModalState;
 
   const getActiveDragItem = () => {
     if (!activeDragId || !activeDragType) return null;
@@ -903,6 +1011,9 @@ const PromptPlannerPage = () => {
                               assets={projectAssets}
                               onResetShot={handleResetShot}
                               resettingShotIds={clearingShotIds}
+                              onOpenLinkModal={(shot) =>
+                                handleOpenLinkModal(shot, scene)
+                              }
                             />
                           </SortableContext>
 
@@ -974,12 +1085,136 @@ const PromptPlannerPage = () => {
         </DragOverlay>
       </DndContext>
 
+      <Dialog open={isLinkModalOpen} onOpenChange={(open) => !open && closeLinkModal()}>
+        <DialogContent className="max-w-4xl bg-[#0b0c0f] border border-gray-800">
+          <DialogHeader>
+            <DialogTitle className="text-lg text-white flex items-center gap-2">
+              <Link2 className="w-4 h-4" />
+              Link this shot to a reference frame
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Reuse a previous frame to lock character identity when generating this shot.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border border-gray-800 bg-black/30 p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-200">
+                {linkModalState
+                  ? `Target: Shot ${linkModalState.scene.sceneNumber}.${linkModalState.shot.shotNumber}`
+                  : "No shot selected"}
+              </div>
+              {(linkModalState?.shot.linkedShotId || linkSelection) && (
+                <Badge className="bg-emerald-500/20 text-emerald-100 border-emerald-500/40">
+                  Character consistency active
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Pick any generated shot below. Its image will be sent as a reference input alongside your prompt.
+            </p>
+          </div>
+
+          <div className="max-h-[55vh] overflow-y-auto space-y-3 pr-1">
+            {linkableShots.length === 0 && (
+              <Card className="p-6 border border-gray-800 bg-[#0f1014] text-gray-300 text-sm">
+                No other shots have previews yet. Generate a preview first, then link for character consistency.
+              </Card>
+            )}
+
+            {linkableShots.map(({ scene, shot, previews }) => {
+              const isSelectedShot = linkSelection?.shotId === shot._id;
+              return (
+                <Card
+                  key={shot._id}
+                  className={cn(
+                    "p-4 bg-[#111216] border border-gray-800",
+                    isSelectedShot && "border-emerald-500/40 shadow-lg shadow-emerald-500/10",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-white">
+                        Shot {scene.sceneNumber}.{shot.shotNumber}
+                      </div>
+                      <p className="text-xs text-gray-400 line-clamp-2">
+                        {shot.description}
+                      </p>
+                    </div>
+                    {isSelectedShot && (
+                      <Badge className="bg-emerald-600/20 text-emerald-100 border-emerald-500/40">
+                        Selected
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {previews.slice(0, 6).map((image) => {
+                      const isActive =
+                        isSelectedShot && linkSelection?.imageId === image._id;
+                      return (
+                        <button
+                          key={image._id}
+                          onClick={() => handleSelectReference(shot._id, image._id)}
+                          className={cn(
+                            "relative aspect-video rounded-lg overflow-hidden border border-gray-800 hover:border-blue-400 transition",
+                            isActive && "border-emerald-400 ring-2 ring-emerald-500/50",
+                          )}
+                        >
+                          <img
+                            src={image.imageUrl}
+                            alt={`Shot ${scene.sceneNumber}.${shot.shotNumber} preview`}
+                            className="object-cover w-full h-full"
+                          />
+                          {isActive && (
+                            <div className="absolute inset-0 bg-emerald-500/10 flex items-start justify-end p-2">
+                              <Check className="w-4 h-4 text-emerald-300" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => persistLinkSelection(null)}
+              disabled={
+                !linkModalState?.shot.linkedShotId &&
+                !linkModalState?.shot.linkedImageId &&
+                !linkSelection
+              }
+              className="border-gray-700 text-gray-200 hover:text-white"
+            >
+              Remove link
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={closeLinkModal} className="text-gray-300">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => persistLinkSelection(linkSelection)}
+                disabled={!linkSelection}
+                className="bg-emerald-500 text-black hover:bg-emerald-400 disabled:bg-gray-800 disabled:text-gray-500"
+              >
+                Save link
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex-shrink-0">
         <ChatInput
-          onSubmit={(message) => {
+          onSubmit={(message, settings) => {
             const trimmed = message.trim();
             if (trimmed.length) {
-              handleChatSubmit(trimmed);
+              handleChatSubmit(trimmed, settings);
             }
           }}
           placeholder={

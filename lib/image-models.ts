@@ -256,6 +256,20 @@ export const IMAGE_MODELS: Record<string, ImageModel> = {
   },
 
   // Legacy/fallback
+  "nano-banana-pro": {
+    id: "google/nano-banana-pro",
+    name: "Nano Banana Pro",
+    speed: "medium",
+    quality: "great",
+    cost: "moderate",
+    bestFor: ["brand-fidelity", "prompt-adherence", "image-reference"],
+    features: ["reference-image-support", "upgraded-quality", "fast-iterations"],
+    supportsImageInput: true,
+    estimatedCost: 0.01,
+    notes:
+      "Upgraded Nano Banana variant with better prompt adherence and reference image handling. Uses Replicate google/nano-banana-pro.",
+  },
+
   "nano-banana": {
     id: "google/nano-banana",
     name: "Nano Banana",

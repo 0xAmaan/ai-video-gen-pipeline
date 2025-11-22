@@ -120,6 +120,7 @@ export const SceneIteratorModal = ({
   const triggerGeneration = async (options?: {
     parentImageId?: Id<"shotImages">;
     fixPrompt?: string;
+    modelKey?: string;
   }) => {
     if (!projectId || !shotData) return;
     try {
@@ -137,6 +138,7 @@ export const SceneIteratorModal = ({
           parentImageId: options?.parentImageId,
           fixPrompt: options?.fixPrompt,
           mode: "iteration",
+          ...(options?.modelKey ? { modelKey: options.modelKey } : {}),
         }),
       });
       if (!response.ok) {
@@ -394,12 +396,13 @@ export const SceneIteratorModal = ({
           {/* Chat Input Container */}
           <div ref={chatInputRef} className="px-6 pb-4 pt-4">
             <ChatInput
-              onSubmit={(message) => {
+              onSubmit={(message, settings) => {
                 const trimmed = message.trim();
                 if (!trimmed || !selectedImageId) return;
                 void triggerGeneration({
                   parentImageId: selectedImageId,
                   fixPrompt: trimmed,
+                  modelKey: settings.model,
                 });
                 setIterationPrompt("");
               }}

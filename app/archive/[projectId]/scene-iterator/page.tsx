@@ -83,6 +83,7 @@ const SceneIteratorPage = () => {
   const triggerGeneration = async (options?: {
     parentImageId?: Id<"shotImages">;
     fixPrompt?: string;
+    modelKey?: string;
   }) => {
     if (!projectId || !shotData) return;
     try {
@@ -99,6 +100,7 @@ const SceneIteratorPage = () => {
           shotId: shotData.shot._id,
           parentImageId: options?.parentImageId,
           fixPrompt: options?.fixPrompt,
+          ...(options?.modelKey ? { modelKey: options.modelKey } : {}),
         }),
       });
       if (!response.ok) {
@@ -306,12 +308,13 @@ const SceneIteratorPage = () => {
           <div className="text-sm text-gray-400">Generating images...</div>
         )}
         <ChatInput
-          onSubmit={(message) => {
+          onSubmit={(message, settings) => {
             const trimmed = message.trim();
             if (!trimmed || !selectedImageId) return;
             void triggerGeneration({
               parentImageId: selectedImageId,
               fixPrompt: trimmed,
+              modelKey: settings.model,
             });
             setIterationPrompt("");
           }}

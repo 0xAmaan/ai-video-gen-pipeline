@@ -226,6 +226,17 @@ export const TEXT_TO_IMAGE_MODELS: TextToImageModel[] = [
     isAvailable: true,
   },
   {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro",
+    provider: "replicate",
+    speed: "medium",
+    cost: "medium",
+    description: "Upgraded Nano Banana with better prompt adherence and reference image support",
+    supportsImageInput: true,
+    supportsVideoGeneration: false,
+    isAvailable: true,
+  },
+  {
     id: "nano-banana",
     name: "Nano Banana",
     provider: "replicate",

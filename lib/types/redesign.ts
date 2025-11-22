@@ -107,6 +107,8 @@ export interface SceneShot {
   initialPrompt: string;
   selectedImageId?: Id<"shotImages">;
   referencedAssets?: Id<"projectAssets">[];
+  linkedShotId?: Id<"sceneShots"> | null;
+  linkedImageId?: Id<"shotImages"> | null;
   lastImageGenerationAt?: number;
   lastImageStatus?: ImageGenerationStatus;
   createdAt: number;
@@ -238,6 +240,8 @@ export interface CreateShotInput {
   shotNumber: number;
   description: string;
   initialPrompt: string;
+  linkedShotId?: Id<"sceneShots"> | null;
+  linkedImageId?: Id<"shotImages"> | null;
 }
 
 export interface CreateImageInput {
@@ -294,6 +298,8 @@ export interface UpdateShotInput {
   description?: string;
   initialPrompt?: string;
   selectedImageId?: Id<"shotImages">;
+  linkedShotId?: Id<"sceneShots"> | null;
+  linkedImageId?: Id<"shotImages"> | null;
 }
 
 export interface UpdateImageInput {
