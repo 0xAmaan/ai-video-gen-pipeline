@@ -15,9 +15,17 @@ export const projectToTimelineJSON = (project: Project): ProjectJSON => {
     project.sequences[0];
   const assets = project.mediaAssets;
 
+  const friendlyName = (track: Track) => {
+    if (track.id === "video-1") return "Video";
+    if (track.id === "audio-narration") return "Narration";
+    if (track.id === "audio-bgm") return "Music";
+    if (track.id === "audio-sfx") return "SFX";
+    return track.kind === "audio" ? "Audio" : "Video";
+  };
+
   const tracks: TrackJSON[] = activeSequence.tracks.map((track) => ({
     id: track.id,
-    name: track.id,
+    name: friendlyName(track),
     type: track.kind,
     elements: track.clips.map((clip) => clipToElement(clip, assets[clip.mediaId])),
   }));

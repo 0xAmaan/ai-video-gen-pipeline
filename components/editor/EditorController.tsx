@@ -12,12 +12,24 @@ const EditorBridge = () => {
   const project = useProjectStore((state) => state.project);
   const actions = useProjectStore((state) => state.actions);
   const assets = project?.mediaAssets ?? {};
-  const { editor, present, changeLog } = useTimelineContext();
+  const { editor, present, changeLog, selectedItem } = useTimelineContext();
   // Track the last signatures we pushed in each direction to avoid feedback loops.
   const lastProjectSignature = useRef<string | null>(null);
   const lastTimelineSignature = useRef<string | null>(null);
   const pushingProjectToTimeline = useRef(false);
   const pushingTimelineToProject = useRef(false);
+
+  // Sync Twick selection to Project Store
+  useEffect(() => {
+    if (selectedItem && 'id' in selectedItem) {
+      // We assume it's a clip/element if it has an ID. 
+      // Twick types distinguish Track vs TrackElement, but both have IDs.
+      // For now, we just select it. The properties panel will decide if it's valid.
+      actions.setSelection({ clipIds: [selectedItem.id], trackIds: [] });
+    } else {
+      actions.setSelection({ clipIds: [], trackIds: [] });
+    }
+  }, [selectedItem, actions]);
 
   useEffect(() => {
     if (!ready || !project) return;
