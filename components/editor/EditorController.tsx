@@ -13,23 +13,24 @@ const EditorBridge = () => {
   const actions = useProjectStore((state) => state.actions);
   const assets = project?.mediaAssets ?? {};
   const { editor, present, changeLog } = useTimelineContext();
-  const lastApplied = useRef<string | null>(null);
+  const lastProjectSignature = useRef<string | null>(null);
+  const lastTimelineSignature = useRef<string | null>(null);
 
   useEffect(() => {
     if (!ready || !project) return;
     const timeline = projectToTimelineJSON(project);
     const signature = JSON.stringify(timeline);
-    if (lastApplied.current === signature) return;
+    if (lastProjectSignature.current === signature) return;
     editor.loadProject(timeline);
-    lastApplied.current = signature;
+    lastProjectSignature.current = signature;
   }, [assets, editor, project, ready]);
 
   useEffect(() => {
     if (!ready || !project || !present) return;
     const signature = JSON.stringify(present);
-    if (lastApplied.current === signature) return;
+    if (lastTimelineSignature.current === signature) return;
     const nextProject = timelineToProject(project, present, assets);
-    lastApplied.current = signature;
+    lastTimelineSignature.current = signature;
     void actions.loadProject(nextProject, { persist: true });
   }, [actions, assets, changeLog, present, project, ready]);
 

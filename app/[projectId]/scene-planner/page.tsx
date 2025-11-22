@@ -24,7 +24,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, GripVertical } from "lucide-react";
+import { Plus, GripVertical, Sparkles, Loader2 } from "lucide-react";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { PromptPlannerCard } from "@/components/redesign/PromptPlannerCard";
 import { ChatInput } from "@/components/redesign/ChatInput";
@@ -59,6 +59,7 @@ import {
   useAssetsForShot,
   useClearShotImage,
 } from "@/lib/hooks/useProjectRedesign";
+import { requestPreviewSeed } from "@/lib/client/requestPreviewSeed";
 import {
   ProjectScene,
   SceneShot,
@@ -136,6 +137,12 @@ const PromptPlannerPage = () => {
   const [regeneratePrompt, setRegeneratePrompt] = useState("");
   const [regenerateBusy, setRegenerateBusy] = useState(false);
   const [iteratorShotId, setIteratorShotId] = useState<Id<"sceneShots"> | null>(null);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [lastBulkSummary, setLastBulkSummary] = useState<{
+    requested: number;
+    completed: number;
+    failures: number;
+  } | null>(null);
 
   const shotRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -164,6 +171,10 @@ const PromptPlannerPage = () => {
       0,
     );
   }, [plannerScenes, shotPreviewMap]);
+
+  const totalShots = useMemo(() => {
+    return plannerScenes.reduce((sum, scene) => sum + scene.shots.length, 0);
+  }, [plannerScenes]);
 
   useEffect(() => {
     if (!projectScenes) return;
@@ -684,6 +695,38 @@ const PromptPlannerPage = () => {
     }
   };
 
+  const handleGenerateAllPreviews = useCallback(async () => {
+    if (!projectId || missingPreviewCount === 0 || isBulkGenerating) {
+      return;
+    }
+    setIsBulkGenerating(true);
+    try {
+      const result = await requestPreviewSeed(projectId, { concurrency: 3 });
+      setLastBulkSummary({
+        requested: result.requested,
+        completed: result.completed,
+        failures: result.failures.length,
+      });
+
+      if (result.alreadyComplete || result.requested === 0) {
+        toast.info("All shots already have preview images.");
+      } else if (result.failures.length > 0) {
+        toast.warning(
+          `Generated ${result.completed}/${result.requested} shots. ${result.failures.length} need attention.`,
+        );
+      } else {
+        toast.success(`Generated ${result.completed} shot previews.`);
+      }
+    } catch (error) {
+      console.error("Failed to generate all previews", error);
+      toast.error(
+        error instanceof Error ? error.message : "Unable to generate all previews",
+      );
+    } finally {
+      setIsBulkGenerating(false);
+    }
+  }, [projectId, missingPreviewCount, isBulkGenerating]);
+
   const hasScenes = plannerScenes.length > 0;
   const selectionComplete = (projectProgress?.selectionProgress ?? 0) >= 100;
 
@@ -739,7 +782,45 @@ const PromptPlannerPage = () => {
             />
           </div>
 
-          <div className="flex-1"></div>
+          <div className="flex-1 flex justify-end">
+            <div className="text-right space-y-1.5">
+              <div className="flex items-center justify-end gap-2 text-xs text-gray-400">
+                <span>
+                  {totalShots === 0
+                    ? "No shots yet"
+                    : `${totalShots - missingPreviewCount}/${totalShots} shots have previews`}
+                </span>
+                {missingPreviewCount > 0 && (
+                  <span className="inline-flex items-center rounded-full border border-amber-500/40 px-2 py-0.5 text-amber-300">
+                    {missingPreviewCount} waiting
+                  </span>
+                )}
+              </div>
+              <Button
+                onClick={handleGenerateAllPreviews}
+                disabled={
+                  !projectId || missingPreviewCount === 0 || isBulkGenerating
+                }
+                className="bg-white text-black hover:bg-gray-200 disabled:bg-gray-800 disabled:text-gray-500"
+              >
+                {isBulkGenerating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 mr-2" />
+                )}
+                Generate all previews
+              </Button>
+              {lastBulkSummary && (
+                <p className="text-[11px] text-gray-500">
+                  Last run: {lastBulkSummary.completed}/{lastBulkSummary.requested}{" "}
+                  shots
+                  {lastBulkSummary.failures > 0
+                    ? ` (${lastBulkSummary.failures} failed)`
+                    : ""}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
