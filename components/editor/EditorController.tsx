@@ -12,25 +12,73 @@ import { TimelineProvider, useTimelineContext } from "@twick/timeline";
 import { projectToTimelineJSON, timelineToProject } from "@/lib/editor/twick-adapter";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { useSnapManager } from "@/lib/editor/hooks/useSnapManager";
+import { isItemWithId } from "@/lib/editor/types/twick-integration";
 import { BeatGridOverlay } from "./BeatGridOverlay";
 import { ThumbnailInjector } from "./ThumbnailInjector";
-import { ElementIdInjector } from "./ElementIdInjector";
 
-// Type guard for Twick selected items with IDs
-interface TwickItemWithId {
-  id: string;
-  [key: string]: unknown;
-}
-
-function isItemWithId(item: unknown): item is TwickItemWithId {
-  return (
-    typeof item === 'object' &&
-    item !== null &&
-    'id' in item &&
-    typeof (item as TwickItemWithId).id === 'string'
-  );
-}
-
+/**
+ * EditorBridge Component
+ * ======================
+ *
+ * Manages bidirectional synchronization between Twick's timeline and Zustand project store.
+ * This component serves as the integration layer ensuring both systems stay in sync while
+ * preventing infinite update loops.
+ *
+ * ## Architecture Overview
+ *
+ * ### Data Flow Patterns:
+ *
+ * **1. Twick → Project Store** (User edits in UI):
+ * ```
+ * User Action (drag/trim/split)
+ *   ↓
+ * Twick updates internal state (present: ProjectJSON)
+ *   ↓
+ * useEffect detects present change via changeLog
+ *   ↓
+ * timelineToProject() converts ProjectJSON → Project
+ *   ↓
+ * actions.loadProject() updates Zustand store
+ * ```
+ *
+ * **2. Project Store → Twick** (Programmatic updates):
+ * ```
+ * Code calls store action (e.g., appendClipFromAsset)
+ *   ↓
+ * Zustand project state updates
+ *   ↓
+ * useEffect detects project change
+ *   ↓
+ * projectToTimelineJSON() converts Project → ProjectJSON
+ *   ↓
+ * editor.loadProject() updates Twick timeline
+ * ```
+ *
+ * ### Feedback Loop Prevention:
+ *
+ * The component uses multiple strategies to prevent infinite sync loops:
+ *
+ * - **Signature Comparison**: JSON.stringify() both directions and compare signatures
+ * - **Direction Flags**: `pushingProjectToTimeline` / `pushingTimelineToProject` refs
+ * - **Skip Logic**: When sync is initiated, opposite direction sync is skipped
+ *
+ * ### Integration Points:
+ *
+ * - `useTimelineContext()` - Twick editor, selection, undo/redo state
+ * - `usePlayerControl()` - Playback control (play, pause, seek)
+ * - `useEditorManager()` - Add, update, remove timeline elements
+ * - `useTimelineControl()` - Split, delete, undo, redo operations
+ * - `useLivePlayerContext()` - Player state (playing, currentTime)
+ *
+ * ### Keyboard Shortcuts:
+ *
+ * - `S` - Split clip at playhead
+ * - `Delete/Backspace` - Delete selected clip (ripple if enabled)
+ * - `R` - Toggle ripple edit mode
+ *
+ * @component
+ * @internal
+ */
 const EditorBridge = () => {
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
@@ -43,6 +91,7 @@ const EditorBridge = () => {
   const { beatMarkers } = useSnapManager();
   const [containerWidth, setContainerWidth] = useState(1200);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [detectedZoom, setDetectedZoom] = useState(1.5); // Twick's default zoom
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Twick hooks integration
@@ -51,13 +100,41 @@ const EditorBridge = () => {
   const { addElement, updateElement } = useEditorManager();
   const { splitElement, deleteItem, handleUndo, handleRedo } = useTimelineControl();
   const livePlayerContext = useLivePlayerContext();
-  // Track the last signatures we pushed in each direction to avoid feedback loops.
+
+  /**
+   * Sync State Management (Feedback Loop Prevention)
+   * ==================================================
+   *
+   * These refs track the state of bidirectional sync to prevent infinite loops:
+   *
+   * - `lastProjectSignature`: JSON signature of last project → timeline push
+   * - `lastTimelineSignature`: JSON signature of last timeline → project pull
+   * - `pushingProjectToTimeline`: Flag indicating project → timeline sync in progress
+   * - `pushingTimelineToProject`: Flag indicating timeline → project sync in progress
+   *
+   * When a sync is initiated in one direction, the flag is set to skip the opposite
+   * direction's useEffect to prevent the change from bouncing back and forth.
+   */
   const lastProjectSignature = useRef<string | null>(null);
   const lastTimelineSignature = useRef<string | null>(null);
   const pushingProjectToTimeline = useRef(false);
   const pushingTimelineToProject = useRef(false);
 
-  // Sync Twick selection to Project Store
+  /**
+   * Selection Sync: Twick → Project Store
+   * ======================================
+   *
+   * Syncs the currently selected item in Twick's timeline to the project store.
+   * This enables other components (like properties panels) to react to selection changes.
+   *
+   * Flow:
+   * 1. User clicks clip in Twick timeline
+   * 2. Twick updates `selectedItem` in context
+   * 3. This effect detects the change
+   * 4. Updates project store selection with clip ID
+   *
+   * Note: Both Track and TrackElement have IDs, so we use a type guard to validate.
+   */
   useEffect(() => {
     if (isItemWithId(selectedItem)) {
       // We assume it's a clip/element if it has an ID. 
@@ -71,7 +148,21 @@ const EditorBridge = () => {
     }
   }, [selectedItem, actions]);
 
-  // Sync playback state between LivePlayer and Project Store
+  /**
+   * Playback State Sync: LivePlayer → Project Store
+   * ================================================
+   *
+   * Syncs playback state (playing/paused) from Twick's LivePlayer to the project store.
+   * This ensures the store's isPlaying flag stays in sync with the actual player state.
+   *
+   * Flow:
+   * 1. User clicks play/pause in Twick UI
+   * 2. LivePlayer updates its playerState
+   * 3. This effect detects the change
+   * 4. Updates project store isPlaying flag
+   *
+   * This enables other UI components to react to playback state changes.
+   */
   useEffect(() => {
     if (!livePlayerContext) return;
     const { playerState } = livePlayerContext;
@@ -167,6 +258,33 @@ const EditorBridge = () => {
     };
   }, [editor, togglePlayback, addElement, updateElement, splitElement, deleteItem, handleUndo, handleRedo, livePlayerContext, actions, rippleEditEnabled]);
 
+  /**
+   * Bidirectional Sync: Project Store → Twick Timeline
+   * ===================================================
+   *
+   * Syncs changes from the Zustand project store to Twick's timeline.
+   * This effect is triggered when the project state changes programmatically
+   * (e.g., via actions.appendClipFromAsset, actions.moveClip, etc.)
+   *
+   * Flow:
+   * 1. Code calls a project store action (e.g., appendClipFromAsset)
+   * 2. Zustand updates the project state
+   * 3. This effect detects the change via project/assets deps
+   * 4. Converts Project → ProjectJSON via projectToTimelineJSON()
+   * 5. Pushes to Twick via editor.loadProject()
+   *
+   * Feedback Loop Prevention:
+   * - Checks `pushingTimelineToProject` flag and skips if set (opposite direction sync)
+   * - Compares signatures to skip if no actual change occurred
+   * - Sets `pushingProjectToTimeline` flag to signal downstream sync
+   * - Keeps both signatures in sync after push to prevent bouncing
+   *
+   * Dependencies: [assets, editor, project, ready]
+   * - `assets`: Triggers when media assets change (for clip metadata)
+   * - `editor`: The Twick editor instance
+   * - `project`: The full project state from Zustand
+   * - `ready`: Only sync when project store is hydrated
+   */
   useEffect(() => {
     if (!ready || !project) return;
     if (pushingTimelineToProject.current) {
@@ -175,18 +293,59 @@ const EditorBridge = () => {
       return;
     }
 
-    const timeline = projectToTimelineJSON(project);
-    const signature = JSON.stringify(timeline);
+    try {
+      const timeline = projectToTimelineJSON(project);
+      const signature = JSON.stringify(timeline);
 
-    if (lastProjectSignature.current === signature) return;
+      if (lastProjectSignature.current === signature) return;
 
-    pushingProjectToTimeline.current = true;
-    editor.loadProject(timeline);
-    lastProjectSignature.current = signature;
-    lastTimelineSignature.current = signature; // keep both in sync after a push
-    pushingProjectToTimeline.current = false;
+      // Validate timeline has tracks before pushing to Twick
+      if (!timeline.tracks || timeline.tracks.length === 0) {
+        console.warn('[EditorController] Skipping empty timeline push to Twick');
+        return;
+      }
+
+      pushingProjectToTimeline.current = true;
+      editor.loadProject(timeline);
+      lastProjectSignature.current = signature;
+      lastTimelineSignature.current = signature; // keep both in sync after a push
+      pushingProjectToTimeline.current = false;
+    } catch (error) {
+      console.error('[EditorController] Error syncing project to timeline:', error);
+      pushingProjectToTimeline.current = false; // Reset flag on error
+    }
   }, [assets, editor, project, ready]);
 
+  /**
+   * Bidirectional Sync: Twick Timeline → Project Store
+   * ===================================================
+   *
+   * Syncs changes from Twick's timeline to the Zustand project store.
+   * This effect is triggered when users interact with the Twick UI
+   * (e.g., dragging clips, trimming, splitting, etc.)
+   *
+   * Flow:
+   * 1. User performs timeline operation in Twick UI
+   * 2. Twick updates its internal state (present: ProjectJSON)
+   * 3. This effect detects the change via changeLog increment
+   * 4. Converts ProjectJSON → Project via timelineToProject()
+   * 5. Pushes to store via actions.loadProject()
+   *
+   * Feedback Loop Prevention:
+   * - Checks `pushingProjectToTimeline` flag and skips if set (opposite direction sync)
+   * - Compares signatures to skip if no actual change occurred
+   * - Sets `pushingTimelineToProject` flag to signal downstream sync
+   *
+   * Dependencies: [actions, assets, changeLog, present, project, ready]
+   * - `actions`: Project store actions (specifically loadProject)
+   * - `assets`: Media assets for clip metadata enrichment
+   * - `changeLog`: Twick's change counter (increments on any timeline mutation)
+   * - `present`: Current timeline state from Twick
+   * - `project`: Base project to merge timeline data into
+   * - `ready`: Only sync when project store is hydrated
+   *
+   * Note: We persist to Convex on every sync with { persist: true }
+   */
   useEffect(() => {
     if (!ready || !project || !present) return;
     if (pushingProjectToTimeline.current) {
@@ -195,13 +354,33 @@ const EditorBridge = () => {
       return;
     }
 
-    const signature = JSON.stringify(present);
-    if (lastTimelineSignature.current === signature) return;
+    try {
+      const signature = JSON.stringify(present);
+      if (lastTimelineSignature.current === signature) return;
 
-    const nextProject = timelineToProject(project, present, assets);
-    lastTimelineSignature.current = signature;
-    pushingTimelineToProject.current = true;
-    void actions.loadProject(nextProject, { persist: true });
+      // Validate that present has valid structure before converting
+      if (!present.tracks || !Array.isArray(present.tracks)) {
+        console.warn('[EditorController] Invalid timeline structure from Twick, skipping sync');
+        return;
+      }
+
+      const nextProject = timelineToProject(project, present, assets);
+
+      // Validate the converted project has required structure
+      if (!nextProject.sequences || nextProject.sequences.length === 0) {
+        console.error('[EditorController] Timeline conversion resulted in invalid project structure');
+        return;
+      }
+
+      lastTimelineSignature.current = signature;
+      pushingTimelineToProject.current = true;
+      // Let Zustand subscription handle Convex saves (debounced)
+      // Persist: false prevents immediate duplicate save
+      void actions.loadProject(nextProject, { persist: false });
+    } catch (error) {
+      console.error('[EditorController] Error syncing timeline to project:', error);
+      pushingTimelineToProject.current = false; // Reset flag on error
+    }
   }, [actions, assets, changeLog, present, project, ready]);
 
   // Track container width for beat grid overlay
@@ -221,7 +400,6 @@ const EditorBridge = () => {
 
   // Observe Twick timeline scroll for beat grid sync
   useEffect(() => {
-    // Use setTimeout to ensure Twick has rendered
     const findAndAttachScrollListener = () => {
       const timelineScrollContainer = document.querySelector('.twick-timeline-scroll-container');
 
@@ -244,34 +422,104 @@ const EditorBridge = () => {
 
     // Try immediately
     let cleanup = findAndAttachScrollListener();
+    let found = false;
 
     // If not found, retry with delays
     if (!cleanup) {
       const timeouts: NodeJS.Timeout[] = [];
       [100, 500, 1000].forEach(delay => {
         timeouts.push(setTimeout(() => {
-          if (!cleanup) {
+          if (!found && !cleanup) {
             cleanup = findAndAttachScrollListener();
+            if (cleanup) found = true;
           }
         }, delay));
       });
 
       return () => {
+        found = true; // Cancel pending retries
         timeouts.forEach(t => clearTimeout(t));
+        if (typeof cleanup === 'function') cleanup();
       };
     }
 
-    return cleanup;
+    return typeof cleanup === 'function' ? cleanup : undefined;
   }, []);
+
+  // Detect Twick timeline zoom level via DOM observation
+  useEffect(() => {
+    const sequence = project?.sequences[0];
+    const duration = sequence?.duration ?? 300;
+
+    if (duration <= 0) return;
+
+    const detectZoomFromDOM = () => {
+      // Query the timeline content div that has width style applied
+      const timelineContent = document.querySelector('.twick-timeline-scroll-container > div');
+
+      if (!timelineContent) {
+        return false;
+      }
+
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry && duration > 0) {
+          const timelineWidth = entry.contentRect.width;
+          // Reverse Twick's formula: width = duration * zoom * 100
+          const calculatedZoom = timelineWidth / (duration * 100);
+
+          // Clamp to Twick's zoom range (0.1 to 3.0)
+          const clampedZoom = Math.max(0.1, Math.min(3.0, calculatedZoom));
+
+          setDetectedZoom(clampedZoom);
+        }
+      });
+
+      observer.observe(timelineContent);
+
+      // Initial measurement
+      const timelineWidth = timelineContent.getBoundingClientRect().width;
+      if (duration > 0) {
+        const initialZoom = Math.max(0.1, Math.min(3.0, timelineWidth / (duration * 100)));
+        setDetectedZoom(initialZoom);
+      }
+
+      return () => observer.disconnect();
+    };
+
+    // Try immediately
+    let cleanup = detectZoomFromDOM();
+    let found = false;
+
+    // Retry if not found
+    if (!cleanup) {
+      const timeouts: NodeJS.Timeout[] = [];
+      [100, 500, 1000].forEach(delay => {
+        timeouts.push(setTimeout(() => {
+          if (!found && !cleanup) {
+            cleanup = detectZoomFromDOM();
+            if (cleanup) found = true;
+          }
+        }, delay));
+      });
+
+      return () => {
+        found = true; // Cancel pending retries
+        timeouts.forEach(t => clearTimeout(t));
+        if (typeof cleanup === 'function') cleanup();
+      };
+    }
+
+    return typeof cleanup === 'function' ? cleanup : undefined;
+  }, [project]);
 
   const sequence = project?.sequences[0];
   const duration = sequence?.duration ?? 300; // Default 5 minutes
 
   return (
     <div ref={containerRef} id="twick-timeline-only" className="relative h-full w-full">
-      {/* Timeline thumbnail injectors - add thumbnails to timeline elements */}
+      {/* Timeline thumbnail injector - adds thumbnails to timeline elements via direct styling */}
       <ThumbnailInjector />
-      <ElementIdInjector />
 
       <VideoEditor
         editorConfig={{
@@ -290,7 +538,7 @@ const EditorBridge = () => {
           duration={duration}
           containerWidth={containerWidth}
           scrollLeft={scrollLeft}
-          zoom={1.5} // Twick's default zoom
+          zoom={detectedZoom}
         />
       )}
     </div>

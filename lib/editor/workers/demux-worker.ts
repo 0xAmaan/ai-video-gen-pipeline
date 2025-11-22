@@ -204,7 +204,7 @@ async function handleThumbnailRequest(
       }
     }
 
-    // Extract thumbnails
+    // Extract thumbnails and upload to R2
     const thumbnails: string[] = [];
     let current = 0;
 
@@ -212,14 +212,23 @@ async function handleThumbnailRequest(
       if (!result) {
         continue;
       }
-      // Convert canvas to data URL
+      
       const canvas = result.canvas as OffscreenCanvas;
       const blob = await canvas.convertToBlob({
         type: "image/jpeg",
-        quality: 0.7,
+        quality: 0.7, // Restored quality since we're not storing in project state
       });
-      const dataUrl = await blobToDataUrl(blob);
-      thumbnails.push(dataUrl);
+
+      // Upload to R2 via API endpoint
+      try {
+        const thumbnailUrl = await uploadThumbnailToR2(blob, assetId, current);
+        thumbnails.push(thumbnailUrl);
+      } catch (error) {
+        console.error(`Failed to upload thumbnail ${current} for asset ${assetId}:`, error);
+        // Fallback to data URL if R2 upload fails
+        const dataUrl = await blobToDataUrl(blob);
+        thumbnails.push(dataUrl);
+      }
 
       current++;
 
@@ -258,6 +267,33 @@ async function handleThumbnailRequest(
       error: errorMessage,
     });
   }
+}
+
+async function uploadThumbnailToR2(
+  blob: Blob,
+  assetId: string,
+  index: number
+): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", blob);
+  formData.append("assetId", assetId);
+  formData.append("index", index.toString());
+
+  // Workers need absolute URLs - construct from current origin
+  const apiUrl = `${self.location.origin}/api/upload-thumbnail`;
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Upload failed: ${error}`);
+  }
+
+  const result = await response.json();
+  return result.url;
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

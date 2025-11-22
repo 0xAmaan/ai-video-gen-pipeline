@@ -279,7 +279,9 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
       if (thumbnailInflight.current.has(asset.id)) return;
       thumbnailInflight.current.add(asset.id);
       void mediaManager
-        .generateThumbnails(asset.id, url, asset.duration, 12)
+        // Reduced from 12 to 6 thumbnails to prevent Convex document size limit
+        // TODO: Move thumbnails to R2 storage for proper solution
+        .generateThumbnails(asset.id, url, asset.duration, 6)
         .then((thumbs) => {
           if (!thumbs?.length) return;
           actions.updateMediaAsset(asset.id, {

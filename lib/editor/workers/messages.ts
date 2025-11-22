@@ -49,7 +49,7 @@ export interface ThumbnailResponseMessage {
   type: "THUMBNAIL_RESULT";
   requestId: string;
   assetId: string;
-  thumbnails: string[]; // Data URLs
+  thumbnails: string[]; // R2 URLs (or data URLs as fallback)
 }
 
 export interface ThumbnailErrorMessage {

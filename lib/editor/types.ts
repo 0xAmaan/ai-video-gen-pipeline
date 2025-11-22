@@ -132,7 +132,7 @@ export interface MediaAssetMeta {
    proxyR2Key?: string;
   sourceUrl?: string;
   predictionId?: string;
-  thumbnails?: string[]; // Data URLs for timeline thumbnails
+  thumbnails?: string[]; // R2 URLs for timeline thumbnails (or data URLs as fallback)
   thumbnailCount?: number;
   beatMarkers?: Array<{ time: number; strength?: number }>; // Audio beat analysis data
   bpm?: number; // Beats per minute (for audio assets)

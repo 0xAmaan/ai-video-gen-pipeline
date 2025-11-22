@@ -159,6 +159,29 @@ export const saveProject = mutation({
       throw new Error("Project not found or unauthorized");
     }
 
+    // Monitor document size before save
+    const projectSize = JSON.stringify(args.project).length;
+    const edlSize = args.edl ? JSON.stringify(args.edl).length : 0;
+    const totalSize = projectSize + edlSize;
+    
+    // Convex document limit is 1MB (1,048,576 bytes)
+    const CONVEX_LIMIT = 1048576;
+    const WARNING_THRESHOLD = CONVEX_LIMIT * 0.8; // Warn at 80%
+    
+    if (totalSize > WARNING_THRESHOLD) {
+      console.warn(
+        `[saveProject] Large document: ${totalSize} bytes (${Math.round((totalSize / CONVEX_LIMIT) * 100)}% of limit). ` +
+        `Project: ${projectSize} bytes, EDL: ${edlSize} bytes`
+      );
+    }
+    
+    if (totalSize > CONVEX_LIMIT) {
+      throw new Error(
+        `Document too large: ${totalSize} bytes exceeds Convex limit of ${CONVEX_LIMIT} bytes. ` +
+        `Consider splitting data or removing unnecessary fields.`
+      );
+    }
+
     await ctx.db.patch(args.projectId, {
       compositionState: args.project,
       edl: args.edl ?? existing.edl,

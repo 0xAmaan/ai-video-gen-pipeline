@@ -1,108 +1,201 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useProjectStore } from "@/lib/editor/core/project-store";
+import { useTimelineContext } from "@twick/timeline";
+
+// Enable debug logging for thumbnail injection
+const DEBUG_THUMBNAILS = false;
 
 /**
- * ThumbnailInjector Component
+ * ThumbnailInjector Component (Position-Based Direct Styling)
  *
- * Dynamically injects CSS to display video thumbnails on Twick timeline elements.
- * Uses CSS ::before pseudo-elements with background-image tiling to match CapCut-style preview.
+ * Applies video thumbnails to Twick timeline elements using direct DOM manipulation.
+ * Uses position-based matching since Twick doesn't expose element IDs in the DOM.
  *
- * How it works:
- * 1. Monitors project state for clips and assets
- * 2. For each clip with video thumbnails, generates CSS rules
- * 3. Uses CSS background-image with repeat-x to tile thumbnails horizontally
- * 4. Injects CSS into <style> tag in document head
- * 5. Cleans up on unmount
+ * Strategy:
+ * 1. Access timeline data from useTimelineContext() to get element order
+ * 2. Query DOM for .twick-track containers and .twick-track-element divs
+ * 3. Match DOM elements to timeline elements by position (sorted by start time and left position)
+ * 4. Apply thumbnails via inline backgroundImage styles
+ * 5. Re-apply when DOM changes (via MutationObserver)
+ *
+ * This approach bypasses the need for data attributes and works with Twick's rendering.
  */
 export const ThumbnailInjector = () => {
   const project = useProjectStore((state) => state.project);
-  const assets = project?.mediaAssets ?? {};
+  const { present } = useTimelineContext();
+  const appliedVersion = useRef<number>(0);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!project) return;
+    if (!project || !present) return;
 
-    // Thumbnail dimensions from demux-worker.ts (160x90)
-    const THUMBNAIL_WIDTH = 160;
-    const THUMBNAIL_HEIGHT = 90;
-    const CLIP_HEIGHT = 60; // Twick timeline element height (approximate)
+    // Create a version signature to avoid redundant applications
+    const version = present.version ?? 0;
 
-    const thumbnailAspectRatio = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
-    const tileWidth = CLIP_HEIGHT * thumbnailAspectRatio; // Maintain aspect ratio
+    // Skip if we've already applied this version
+    if (appliedVersion.current === version) {
+      return;
+    }
 
-    const cssRules: string[] = [];
+    /**
+     * Apply thumbnails to timeline elements by matching positions
+     */
+    const applyThumbnails = () => {
+      if (DEBUG_THUMBNAILS) console.log('[ThumbnailInjector] Applying thumbnails, version:', version);
 
-    // Iterate through all sequences, tracks, and clips
-    project.sequences.forEach((sequence) => {
-      sequence.tracks.forEach((track) => {
-        track.clips.forEach((clip) => {
-          const asset = assets[clip.mediaId];
+      // Find the timeline scroll container
+      const timelineContainer = document.querySelector('.twick-timeline-scroll-container');
+      if (!timelineContainer) {
+        if (DEBUG_THUMBNAILS) console.warn('[ThumbnailInjector] Timeline container not found');
+        return;
+      }
 
-          // Only process video clips with thumbnails
-          if (!asset || asset.type !== "video" || !asset.thumbnails?.length) {
+      // Find all track containers
+      const trackContainers = timelineContainer.querySelectorAll('.twick-track');
+
+      if (trackContainers.length === 0) {
+        if (DEBUG_THUMBNAILS) console.warn('[ThumbnailInjector] No track containers found');
+        return;
+      }
+
+      if (DEBUG_THUMBNAILS) console.log(`[ThumbnailInjector] Found ${trackContainers.length} tracks, ${present.tracks.length} data tracks`);
+
+      // Process each track
+      present.tracks.forEach((track, trackIndex) => {
+        const trackContainer = trackContainers[trackIndex];
+        if (!trackContainer) {
+          if (DEBUG_THUMBNAILS) console.warn(`[ThumbnailInjector] Track container ${trackIndex} not found in DOM`);
+          return;
+        }
+
+        // Get all track elements in this track
+        const elementDivs = Array.from(
+          trackContainer.querySelectorAll('.twick-track-element')
+        ) as HTMLElement[];
+
+        if (elementDivs.length === 0) {
+          if (DEBUG_THUMBNAILS) console.log(`[ThumbnailInjector] No elements in track ${trackIndex}`);
+          return;
+        }
+
+        // Sort DOM elements by left position (visual order)
+        const sortedDivs = elementDivs.sort((a, b) => {
+          const leftA = parseFloat(a.style.left || '0');
+          const leftB = parseFloat(b.style.left || '0');
+          return leftA - leftB;
+        });
+
+        // Sort timeline elements by start time
+        const sortedElements = [...track.elements].sort((a, b) => a.s - b.s);
+
+        if (DEBUG_THUMBNAILS) console.log(`[ThumbnailInjector] Track ${trackIndex}: ${sortedDivs.length} DOM elements, ${sortedElements.length} data elements`);
+
+        // Match by position and apply thumbnails
+        sortedDivs.forEach((div, index) => {
+          const element = sortedElements[index];
+          if (!element) {
+            if (DEBUG_THUMBNAILS) console.warn(`[ThumbnailInjector] No data element at index ${index}`);
             return;
           }
 
-          // Create repeating background-image pattern from all thumbnails
-          // This creates a tiled effect similar to CapCut
-          const thumbnailUrls = asset.thumbnails.map((t) => `url("${t}")`);
+          // Access thumbnails from element props
+          const thumbnails = (element as any).props?.thumbnails;
 
-          // Generate CSS rule for this specific clip element
-          // Note: data-element-id is added by ElementIdInjector component
-          cssRules.push(`
-            .twick-track-element[data-element-id="${clip.id}"]::before {
-              content: "";
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: 100%;
-              height: 100%;
-              background-image: ${thumbnailUrls.join(", ")};
-              background-size: auto 100%;
-              background-repeat: repeat-x;
-              background-position: left center;
-              z-index: 0;
-              pointer-events: none;
-              opacity: 0.9;
-            }
+          if (!thumbnails || !Array.isArray(thumbnails) || thumbnails.length === 0) {
+            // Clear any existing thumbnail backgrounds
+            div.style.backgroundImage = '';
+            return;
+          }
 
-            /* Ensure element content (text labels) appears above thumbnails */
-            .twick-track-element[data-element-id="${clip.id}"] .twick-track-element-content {
-              position: relative;
-              z-index: 1;
-              color: white;
-              text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-            }
+          // Apply thumbnail background
+          const thumbnailUrls = thumbnails.map((t: string) => `url("${t}")`).join(', ');
 
-            /* Dim thumbnails when element is selected for better text visibility */
-            .twick-track-element[data-element-id="${clip.id}"].twick-track-element-selected::before {
-              opacity: 0.6;
-            }
-          `);
+          if (DEBUG_THUMBNAILS) console.log(`[ThumbnailInjector] Applying ${thumbnails.length} thumbnails to element ${index}`);
+
+          div.style.backgroundImage = thumbnailUrls;
+          div.style.backgroundSize = 'auto 100%';
+          div.style.backgroundRepeat = 'repeat-x';
+          div.style.backgroundPosition = 'left center';
+          div.style.opacity = '0.9';
+
+          // Ensure content (text label) appears above background
+          const content = div.querySelector('.twick-track-element-content') as HTMLElement;
+          if (content) {
+            content.style.position = 'relative';
+            content.style.zIndex = '1';
+            content.style.color = 'white';
+            content.style.textShadow = '0 1px 3px rgba(0, 0, 0, 0.8)';
+          }
+
+          // Dim thumbnails when element is selected for better text visibility
+          if (div.classList.contains('twick-track-element-selected')) {
+            div.style.opacity = '0.6';
+          }
         });
       });
+
+      appliedVersion.current = version;
+      if (DEBUG_THUMBNAILS) console.log('[ThumbnailInjector] Thumbnails applied successfully');
+    };
+
+    // Apply thumbnails on mount and when data changes
+    // Use setTimeout to ensure Twick has finished rendering
+    const initialTimer = setTimeout(() => {
+      applyThumbnails();
+    }, 100);
+
+    // Set up MutationObserver to re-apply when DOM changes
+    const observer = new MutationObserver((mutations) => {
+      const hasTrackChanges = mutations.some((m) =>
+        Array.from(m.addedNodes).some(
+          (node) =>
+            node.nodeType === Node.ELEMENT_NODE &&
+            ((node as Element).classList?.contains('twick-track-element') ||
+              (node as Element).querySelector?.('.twick-track-element'))
+        )
+      );
+
+      const hasClassChanges = mutations.some(
+        (m) => m.type === 'attributes' && m.attributeName === 'class'
+      );
+
+      if (hasTrackChanges || hasClassChanges) {
+        // Debounce to avoid excessive re-runs during rapid changes
+        if (debounceTimer.current) {
+          clearTimeout(debounceTimer.current);
+        }
+
+        debounceTimer.current = setTimeout(() => {
+          // Only re-apply if version hasn't already been applied
+          if (appliedVersion.current !== version) {
+            if (DEBUG_THUMBNAILS) console.log('[ThumbnailInjector] DOM changed, re-applying thumbnails');
+            applyThumbnails();
+          }
+        }, 100); // Increased debounce time from 50ms to 100ms
+      }
     });
 
-    // Inject or update the style tag
-    let styleEl = document.getElementById("twick-thumbnails-css") as HTMLStyleElement;
-
-    if (!styleEl) {
-      styleEl = document.createElement("style");
-      styleEl.id = "twick-thumbnails-css";
-      document.head.appendChild(styleEl);
+    const timelineContainer = document.querySelector('.twick-timeline-scroll-container');
+    if (timelineContainer) {
+      observer.observe(timelineContainer, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class'], // Watch for selection state changes
+      });
     }
 
-    styleEl.textContent = cssRules.join("\n");
-
-    // Cleanup: remove style tag on unmount
+    // Cleanup
     return () => {
-      const el = document.getElementById("twick-thumbnails-css");
-      if (el) {
-        el.remove();
+      clearTimeout(initialTimer);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
       }
+      observer.disconnect();
     };
-  }, [project, assets]);
+  }, [project, present]);
 
   // This is a utility component that doesn't render anything
   return null;

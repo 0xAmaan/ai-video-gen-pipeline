@@ -10,9 +10,21 @@ type R2ObjectBody = {
   range?: { offset: number; end?: number; length?: number };
 };
 
+type R2Object = {
+  key: string;
+};
+
+type R2Objects = {
+  objects: R2Object[];
+  truncated: boolean;
+  cursor?: string;
+};
+
 type R2Bucket = {
   get: (key: string, options?: { range?: R2Range }) => Promise<R2ObjectBody | null>;
   put: (key: string, value: BodyInit, options?: any) => Promise<any>;
+  delete: (key: string | string[]) => Promise<void>;
+  list: (options?: { prefix?: string; cursor?: string; limit?: number }) => Promise<R2Objects>;
 };
 
 export interface Env {
@@ -50,6 +62,20 @@ export default {
         return withCors(new Response("Unauthorized", { status: 401 }), env, request);
       }
       return withCors(await ingestToR2(request, env), env, request);
+    }
+
+    if (url.pathname === "/upload-direct" && request.method === "POST") {
+      if (!isAuthorized(request, env)) {
+        return withCors(new Response("Unauthorized", { status: 401 }), env, request);
+      }
+      return withCors(await uploadDirect(request, env), env, request);
+    }
+
+    if (url.pathname === "/delete-prefix" && request.method === "POST") {
+      if (!isAuthorized(request, env)) {
+        return withCors(new Response("Unauthorized", { status: 401 }), env, request);
+      }
+      return withCors(await deletePrefix(request, env), env, request);
     }
 
     return new Response("Not found", { status: 404 });
@@ -131,6 +157,73 @@ async function serveAsset(request: Request, env: Env, key: string): Promise<Resp
   } catch (error) {
     console.error("R2 proxy error", error);
     return json({ error: "Proxy failure" }, { status: 502 });
+  }
+}
+
+async function deletePrefix(request: Request, env: Env): Promise<Response> {
+  try {
+    const payload = await safeJson(request);
+    if (!payload || typeof payload.prefix !== "string") {
+      return json({ error: "Expected body: { prefix: string }" }, { status: 400 });
+    }
+
+    const { prefix } = payload;
+    let deleted = 0;
+    let cursor: string | undefined;
+    
+    // List and delete all objects with this prefix
+    do {
+      const listed = await env.R2_BUCKET.list({
+        prefix,
+        cursor,
+        limit: 1000, // Max per request
+      });
+      
+      if (listed.objects.length > 0) {
+        const keys = listed.objects.map(obj => obj.key);
+        await env.R2_BUCKET.delete(keys);
+        deleted += keys.length;
+      }
+      
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+
+    console.log(`Deleted ${deleted} objects with prefix: ${prefix}`);
+    return json({ ok: true, deleted });
+  } catch (error) {
+    console.error("Delete prefix error:", error);
+    return json({ error: "Delete failed" }, { status: 500 });
+  }
+}
+
+async function uploadDirect(request: Request, env: Env): Promise<Response> {
+  try {
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const key = formData.get("key");
+
+    if (!file || typeof key !== "string") {
+      return json({ error: "Expected FormData with: file (Blob), key (string)" }, { status: 400 });
+    }
+
+    if (!(file instanceof Blob)) {
+      return json({ error: "File must be a Blob" }, { status: 400 });
+    }
+
+    // Upload to R2
+    await env.R2_BUCKET.put(key, file.stream(), {
+      httpMetadata: {
+        contentType: file.type || "image/jpeg"
+      },
+      customMetadata: {
+        uploadedAt: new Date().toISOString(),
+      },
+    });
+
+    return json({ ok: true, key });
+  } catch (error) {
+    console.error("Direct upload error:", error);
+    return json({ error: "Upload failed" }, { status: 500 });
   }
 }
 
