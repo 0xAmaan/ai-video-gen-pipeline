@@ -19,6 +19,7 @@ export async function POST(req: Request) {
       sceneNumber,
       duration,
       videoModel,
+      generateAudio,
     } = await req.json();
 
     flowTracker.trackAPICall("POST", "/api/retry-video-clip", {
@@ -43,6 +44,8 @@ export async function POST(req: Request) {
     if (!modelConfig) {
       return apiError(`Invalid video model: ${modelKey}`, 400);
     }
+    const supportsAudio = Boolean(modelConfig.supportsAudio);
+    const shouldGenerateAudio = supportsAudio ? Boolean(generateAudio) : false;
 
     flowTracker.trackModelSelection(
       modelConfig.name,
@@ -89,7 +92,9 @@ export async function POST(req: Request) {
 
     if (modelKey.includes("google/veo")) {
       input.aspect_ratio = "16:9";
-      input.generate_audio = false;
+      if (supportsAudio) {
+        input.generate_audio = shouldGenerateAudio;
+      }
       if (!modelKey.includes("fast")) {
         input.negative_prompt =
           "blur, distortion, jitter, artifacts, low quality";

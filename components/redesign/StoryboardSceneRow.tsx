@@ -115,6 +115,10 @@ export const StoryboardSceneRow = ({
             {scene.shots.map((shotWrapper) => {
               // Find clip for this shot using the helper function
               const clip = getClipForShot(shotWrapper.shot._id);
+              const isSelected = selectedShotId === shotWrapper.shot._id;
+              const handleVideoSelection = () => {
+                onShotSelect?.(shotWrapper.shot._id);
+              };
 
               const showVideo = clip && clip.status === "complete" && clip.videoUrl;
               const showSkeleton = (isGenerating && !clip) || (clip && (clip.status === "processing" || clip.status === "pending"));
@@ -126,9 +130,28 @@ export const StoryboardSceneRow = ({
               }
 
               return (
-                <div key={`video-${shotWrapper.shot._id}`} className="flex-shrink-0 w-[280px]">
+                <div
+                  key={`video-${shotWrapper.shot._id}`}
+                  className={cn(
+                    "flex-shrink-0 w-[280px] rounded-2xl border transition-all duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                    isSelected
+                      ? "border-emerald-400/60 shadow-lg shadow-emerald-500/15"
+                      : "border-transparent hover:border-emerald-400/30",
+                  )}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isSelected}
+                  onClick={handleVideoSelection}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleVideoSelection();
+                    }
+                  }}
+                  data-storyboard-selection-target="true"
+                >
                   {showVideo && clip.videoUrl && (
-                    <div className="rounded-2xl overflow-hidden border-2 border-green-900/50">
+                    <div className="rounded-2xl overflow-hidden border border-transparent">
                       <video
                         src={clip.videoUrl}
                         controls
@@ -142,8 +165,8 @@ export const StoryboardSceneRow = ({
                   )}
 
                   {showSkeleton && (
-                    <div className="space-y-2">
-                      <Skeleton className="w-[280px] h-[180px] rounded-2xl bg-gray-800 animate-pulse" />
+                    <div className="space-y-2 p-2">
+                      <Skeleton className="w-full h-[180px] rounded-2xl bg-gray-800 animate-pulse" />
                       <div className="px-2">
                         <p className="text-xs text-gray-400">
                           {clip?.status === "processing" ? "Generating video..." : "Queued for generation..."}
@@ -153,7 +176,7 @@ export const StoryboardSceneRow = ({
                   )}
 
                   {showError && (
-                    <div className="w-[280px] h-[180px] rounded-2xl border-2 border-red-900 bg-red-950/20 flex flex-col items-center justify-center p-4">
+                    <div className="h-[180px] rounded-2xl border border-red-900 bg-red-950/20 flex flex-col items-center justify-center p-4">
                       <p className="text-xs text-red-400 text-center mb-2">
                         {clip.errorMessage || "Video generation failed"}
                       </p>

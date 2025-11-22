@@ -38,6 +38,7 @@ import { ChatInput } from "@/components/redesign/ChatInput";
 import type { GenerationSettings } from "@/components/redesign/ChatSettings";
 import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery";
 import { SceneIteratorModal } from "@/components/redesign/SceneIteratorModal";
+import { useModelStore } from "@/lib/stores/modelStore";
 import {
   useProjectScenes,
   useSceneShots,
@@ -138,6 +139,8 @@ const PromptPlannerPage = () => {
     shotId: Id<"sceneShots">;
     imageId: Id<"shotImages">;
   } | null>(null);
+  const textToImageModel = useModelStore((state) => state.textToImageModel);
+  const setTextToImageModel = useModelStore((state) => state.setTextToImageModel);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [activeDragType, setActiveDragType] = useState<"scene" | "shot" | null>(null);
   const [highlightedShotId, setHighlightedShotId] = useState<
@@ -551,6 +554,11 @@ const PromptPlannerPage = () => {
     if (!shot) return;
 
     try {
+      console.log("[PromptPlanner] Generating shot preview", {
+        shotId: shot._id,
+        model: settings.model,
+        instructions: message.trim(),
+      });
       // TODO: Decide on API integration approach for chat refinements
       // Option A: image + original description + command (CURRENT IMPLEMENTATION)
       //   - Sends: parentImageId, shot.description (via API server-side), fixPrompt
@@ -1227,6 +1235,8 @@ const PromptPlannerPage = () => {
           onMessageChange={setChatInputValue}
           shouldFocus={!!selectedShot}
           selectedShotId={selectedShot?.shotId}
+          initialModel={textToImageModel}
+          onModelChange={(modelId) => setTextToImageModel(modelId)}
         />
       </div>
       </div>

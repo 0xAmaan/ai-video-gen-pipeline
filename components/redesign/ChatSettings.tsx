@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { Wand2, Volume2, Clock, Monitor, Ratio, Film } from "lucide-react";
 
+export interface ModelOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
 export interface GenerationSettings {
   mode: "image" | "video";
   model: string;
@@ -17,21 +23,51 @@ interface ChatSettingsProps {
   mode: "image" | "video";
   settings: GenerationSettings;
   onSettingsChange: (settings: GenerationSettings) => void;
+  modelOptions?: ModelOption[];
+  onModelChange?: (modelId: string) => void;
+  disableAudioControls?: boolean;
+  videoDurationOptions?: string[];
 }
 
 export const ChatSettings = ({
   mode,
   settings,
   onSettingsChange,
+  modelOptions,
+  onModelChange,
+  disableAudioControls = false,
+  videoDurationOptions = ["3s", "5s", "8s", "10s", "15s"],
 }: ChatSettingsProps) => {
+  const normalizedModelOptions =
+    modelOptions?.map((option) => ({
+      value: option.id,
+      label: option.label,
+      description: option.description,
+    })) ??
+    ["nano-banana", "nano-banana-pro"].map((value) => ({
+      value,
+      label: value,
+    }));
+
+  const activeModelLabel =
+    normalizedModelOptions.find((option) => option.value === settings.model)
+      ?.label ?? settings.model;
+
   return (
     <div className="flex items-center gap-1.5 justify-end">
       <SettingDropdown
         icon={Wand2}
-        label={settings.model}
+        label={activeModelLabel}
         value={settings.model}
-        options={["nano-banana", "nano-banana-pro"]}
-        onChange={(val) => onSettingsChange({ ...settings, model: val })}
+        options={normalizedModelOptions}
+        onChange={(val) => {
+          console.log("[ChatSettings] Model updated", {
+            mode,
+            model: val,
+          });
+          onSettingsChange({ ...settings, model: val });
+          onModelChange?.(val);
+        }}
       />
       {mode === "video" && (
         <>
@@ -43,13 +79,15 @@ export const ChatSettings = ({
             onChange={(val) =>
               onSettingsChange({ ...settings, audioOn: val === "On" })
             }
+            disabled={disableAudioControls}
           />
           <SettingDropdown
             icon={Clock}
             label={settings.duration}
             value={settings.duration}
-            options={["3s", "5s", "8s", "10s", "15s"]}
+            options={videoDurationOptions}
             onChange={(val) => onSettingsChange({ ...settings, duration: val })}
+            disabled={videoDurationOptions.length <= 1}
           />
           <SettingDropdown
             icon={Monitor}
@@ -99,11 +137,16 @@ const SettingDropdown = ({
   icon?: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
-  options: string[];
+  options: Array<string | { value: string; label: string; description?: string }>;
   onChange: (value: string) => void;
   disabled?: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const normalizedOptions = options.map((option) =>
+    typeof option === "string"
+      ? { value: option, label: option }
+      : option,
+  );
 
   return (
     <div className="relative">
@@ -127,18 +170,27 @@ const SettingDropdown = ({
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute bottom-full mb-2 left-0 bg-[#1a1a1a] border border-gray-800 rounded-lg shadow-xl overflow-hidden w-48 z-20">
-            {options.map((option) => (
+            {normalizedOptions.map((option) => (
               <button
-                key={option}
+                key={option.value}
                 onClick={() => {
-                  onChange(option);
+                  onChange(option.value);
                   setIsOpen(false);
                 }}
                 className={`w-full px-4 py-2 text-left hover:bg-[#252525] transition-colors text-xs whitespace-nowrap ${
-                  option === value ? "bg-[#131414] text-white" : "text-gray-300"
+                  option.value === value
+                    ? "bg-[#131414] text-white"
+                    : "text-gray-300"
                 }`}
               >
-                {option}
+                <div className="flex flex-col">
+                  <span>{option.label}</span>
+                  {option.description && (
+                    <span className="text-[10px] text-gray-500">
+                      {option.description}
+                    </span>
+                  )}
+                </div>
               </button>
             ))}
           </div>

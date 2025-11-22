@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageNavigation } from "@/components/redesign/PageNavigation";
 import { StoryboardSceneRow } from "@/components/redesign/StoryboardSceneRow";
@@ -13,43 +13,132 @@ import {
   useProjectProgress,
   useSyncShotToLegacyScene,
 } from "@/lib/hooks/useProjectRedesign";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useImageToVideoModel, useModelSelectionEnabled } from "@/lib/stores/modelStore";
+import {
+  useImageToVideoModel,
+  useModelSelectionEnabled,
+  useModelStore,
+} from "@/lib/stores/modelStore";
 import { apiFetch } from "@/lib/api-fetch";
+import { ChatInput } from "@/components/redesign/ChatInput";
+import type { GenerationSettings } from "@/components/redesign/ChatSettings";
+import { IMAGE_TO_VIDEO_MODELS } from "@/lib/types/models";
+import { proxiedImageUrl } from "@/lib/redesign/image-proxy";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+
+
+const getAllowedDurationsForModel = (modelId: string): number[] => {
+  if (modelId.includes("google/veo-3.1")) {
+    return [4, 6, 8];
+  }
+  if (modelId.includes("wan-video") || modelId.includes("kling")) {
+    return [5];
+  }
+  return [5];
+};
+
+const sanitizeDurationForModel = (
+  modelId: string,
+  requested?: number | null,
+): number => {
+  const allowed = getAllowedDurationsForModel(modelId);
+  if (allowed.length === 0) return 5;
+  if (requested === undefined || requested === null || Number.isNaN(requested)) {
+    return allowed[0];
+  }
+  return allowed.reduce((prev, curr) =>
+    Math.abs(curr - requested) < Math.abs(prev - requested) ? curr : prev,
+  );
+};
+
+const VIDEO_MODEL_FALLBACK =
+  IMAGE_TO_VIDEO_MODELS[0]?.id ?? "wan-video/wan-2.5-i2v-fast";
 
 const StoryboardPage = () => {
   const params = useParams<{ projectId: string }>();
   const router = useRouter();
+  const { isAuthenticated } = useConvexAuth();
   const projectId = params?.projectId as Id<"videoProjects"> | undefined;
   const storyboardRows = useStoryboardRows(projectId);
   const allMasterShotsSet = useAllMasterShotsSet(projectId);
   const projectProgress = useProjectProgress(projectId);
   const selectionsComplete = Boolean(projectProgress?.isSelectionComplete);
   const syncShotToLegacyScene = useSyncShotToLegacyScene();
-  const clearVideoClips = useMutation(api.video.clearVideoClips);
   const syncedShotIds = useRef<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
+  const storyboardRootRef = useRef<HTMLDivElement | null>(null);
 
   // Video generation state
   const selectedVideoModel = useImageToVideoModel();
   const modelSelectionEnabled = useModelSelectionEnabled();
+  const setImageToVideoModel = useModelStore(
+    (state) => state.setImageToVideoModel,
+  );
   const [isGenerating, setIsGenerating] = useState(false);
   const hasStartedGeneration = useRef(false);
   const activeVideoPolls = useRef(new Set<string>());
+  const [videoChatValue, setVideoChatValue] = useState("");
+  const getValidVideoModelId = useCallback(
+    (requested?: string | null) => {
+      if (requested) {
+        const match = IMAGE_TO_VIDEO_MODELS.find(
+          (model) => model.id === requested,
+        );
+        if (match) {
+          return match.id;
+        }
+      }
+
+      console.warn("[StoryboardPage] Invalid video model id, using fallback", {
+        requested,
+        fallback: VIDEO_MODEL_FALLBACK,
+      });
+      if (requested !== VIDEO_MODEL_FALLBACK) {
+        setImageToVideoModel(VIDEO_MODEL_FALLBACK);
+      }
+      return VIDEO_MODEL_FALLBACK;
+    },
+    [setImageToVideoModel],
+  );
 
   // Convex queries and mutations for video
-  const convexScenes = useQuery(api.video.getScenes, projectId ? { projectId } : "skip") || [];
-  const clips = useQuery(api.video.getVideoClips, projectId ? { projectId } : "skip") || [];
+  const convexScenes =
+    useQuery(
+      api.video.getScenes,
+      projectId && isAuthenticated ? { projectId } : "skip",
+    ) || [];
+  const clips =
+    useQuery(
+      api.video.getVideoClips,
+      projectId && isAuthenticated ? { projectId } : "skip",
+    ) || [];
   const createVideoClip = useMutation(api.video.createVideoClip);
   const updateVideoClip = useMutation(api.video.updateVideoClip);
   const updateProjectModelSelection = useMutation(api.video.updateProjectModelSelection);
   const updateProjectStatus = useMutation(api.video.updateProjectStatus);
 
-  const canGenerateVideo = Boolean(projectId) && selectionsComplete && !isSyncing && !isGenerating;
+  const canGenerateVideo =
+    Boolean(projectId) &&
+    selectionsComplete &&
+    !isSyncing &&
+    !isGenerating &&
+    isAuthenticated;
 
   // Retry handler for individual clips
-  const retryVideoClip = async (clipId: Id<"videoClips">, sceneId: Id<"scenes">) => {
+  const retryVideoClip = async (
+    clipId: Id<"videoClips">,
+    sceneId: Id<"scenes">,
+    promptOverride?: string,
+    modelOverride?: string,
+    durationOverride?: number,
+    audioOn?: boolean,
+  ) => {
+    if (!isAuthenticated) {
+      toast.error("Please sign in to regenerate videos.");
+      return;
+    }
     try {
       // Find the scene data
       const scene = convexScenes.find((s) => s._id === sceneId);
@@ -65,6 +154,24 @@ const StoryboardPage = () => {
         return;
       }
 
+      const safeModelId = getValidVideoModelId(
+        modelOverride ?? selectedVideoModel,
+      );
+      const supportsAudio = IMAGE_TO_VIDEO_MODELS.find(
+        (model) => model.id === safeModelId,
+      )?.supportsAudio;
+      const durationToUse = sanitizeDurationForModel(
+        safeModelId,
+        durationOverride ?? scene.duration,
+      );
+
+      console.log("[StoryboardPage] Retrying clip", {
+        clipId,
+        sceneId,
+        model: safeModelId,
+        promptOverride,
+      });
+
       // Call retry API
       const response = await apiFetch("/api/retry-video-clip", {
         method: "POST",
@@ -73,10 +180,11 @@ const StoryboardPage = () => {
           sceneId: scene._id,
           imageUrl: scene.imageUrl,
           description: scene.description,
-          visualPrompt: scene.visualPrompt,
+          visualPrompt: promptOverride || scene.visualPrompt,
           sceneNumber: scene.sceneNumber,
-          duration: scene.duration,
-          videoModel: selectedVideoModel,
+          duration: durationToUse,
+          generateAudio: supportsAudio ? Boolean(audioOn) : false,
+          videoModel: safeModelId,
         }),
       });
 
@@ -93,8 +201,8 @@ const StoryboardPage = () => {
         clipId,
         status: "pending",
         replicateVideoId: result.predictionId,
-        errorMessage: undefined,
-        videoUrl: undefined,
+        errorMessage: "",
+        videoUrl: "",
       });
 
       // Start polling the new prediction
@@ -109,6 +217,157 @@ const StoryboardPage = () => {
   const [selectedShotId, setSelectedShotId] = useState<Id<"sceneShots"> | null>(
     null,
   );
+  const selectedShotDetails = useMemo(() => {
+    if (!selectedShotId || !storyboardRows) {
+      return null;
+    }
+
+    for (const row of storyboardRows) {
+      const shotWrapper = row.shots.find(
+        (shotGroup) => shotGroup.shot._id === selectedShotId,
+      );
+      if (shotWrapper) {
+        const legacyScene = convexScenes.find(
+          (scene) => scene.redesignShotId === selectedShotId,
+        );
+        return {
+          sceneTitle: row.scene.title,
+          sceneNumber: row.scene.sceneNumber,
+          shotNumber: shotWrapper.shot.shotNumber,
+          description: shotWrapper.shot.description,
+          imageUrl:
+            shotWrapper.selectedImage?.imageUrl ||
+            legacyScene?.imageUrl ||
+            null,
+        };
+      }
+    }
+    return null;
+  }, [selectedShotId, storyboardRows, convexScenes]);
+
+  const handleVideoChatSubmit = async (
+    message: string,
+    settings: GenerationSettings,
+  ) => {
+    if (!projectId || !selectedShotId) {
+      console.warn("[StoryboardPage] Video chat submit requires a selected shot");
+      return;
+    }
+    if (!isAuthenticated) {
+      toast.error("Please sign in to regenerate videos.");
+      return;
+    }
+
+    if (!storyboardRows || storyboardRows.length === 0) {
+      console.warn("[StoryboardPage] No storyboard rows available for video chat");
+      return;
+    }
+
+    const targetRow = storyboardRows.find((row) =>
+      row.shots.some((shotWrapper) => shotWrapper.shot._id === selectedShotId),
+    );
+
+    if (!targetRow) {
+      console.warn("[StoryboardPage] Unable to find storyboard row for shot", selectedShotId);
+      return;
+    }
+
+    const targetShotWrapper = targetRow.shots.find(
+      (shotWrapper) => shotWrapper.shot._id === selectedShotId,
+    );
+
+    const legacyScene = convexScenes.find(
+      (scene) => scene.redesignShotId === selectedShotId,
+    );
+
+    if (!legacyScene) {
+      console.error("[StoryboardPage] No legacy scene found for selected shot", {
+        selectedShotId,
+      });
+      return;
+    }
+
+    const promptOverride =
+      message.trim() ||
+      legacyScene.visualPrompt ||
+      targetShotWrapper?.shot.description ||
+      legacyScene.description ||
+      "Cinematic, smooth motion video";
+
+    const imageUrl =
+      targetShotWrapper?.selectedImage?.imageUrl || legacyScene.imageUrl;
+
+    if (!imageUrl) {
+      console.error("[StoryboardPage] Missing image URL for scene", {
+        sceneId: legacyScene._id,
+      });
+      alert("Unable to generate video - missing source image.");
+      return;
+    }
+
+    console.log("[StoryboardPage] Video chat submission", {
+      shotId: selectedShotId,
+      model: settings.model,
+      prompt: promptOverride,
+    });
+
+    setImageToVideoModel(settings.model);
+
+    if (modelSelectionEnabled && settings.model) {
+      try {
+        await updateProjectModelSelection({
+          projectId,
+          stage: "video",
+          modelId: settings.model,
+        });
+      } catch (error) {
+        console.error("Failed to record video model selection:", error);
+      }
+    }
+
+    const existingClip =
+      clips.find((clip) => clip.sceneId === legacyScene._id) ?? null;
+    const requestedDuration = settings.duration
+      ? parseInt(settings.duration.replace(/\D/g, ""), 10)
+      : undefined;
+    const sanitizedDuration = sanitizeDurationForModel(
+      settings.model,
+      Number.isNaN(requestedDuration) ? undefined : requestedDuration,
+    );
+
+    try {
+      if (existingClip) {
+        await retryVideoClip(
+          existingClip._id,
+          legacyScene._id,
+          promptOverride,
+          settings.model,
+          sanitizedDuration,
+          settings.audioOn,
+        );
+      } else {
+        await launchVideoPredictions(
+          [
+            {
+              id: legacyScene._id,
+              sceneNumber: legacyScene.sceneNumber,
+              imageUrl,
+              description:
+                targetShotWrapper?.shot.description ?? legacyScene.description,
+              visualPrompt: promptOverride,
+              duration: sanitizedDuration,
+              generateAudio: settings.audioOn,
+            },
+          ],
+          settings.model,
+        );
+      }
+      setVideoChatValue("");
+      setSelectedShotId(null);
+    } catch (error) {
+      console.error("[StoryboardPage] Failed to handle video chat submit:", error);
+    }
+  };
 
   // Video polling function
   const startPolling = (
@@ -151,16 +410,22 @@ const StoryboardPage = () => {
         }
 
         if (result.status === "failed") {
+          const failureMessage =
+            result.errorMessage ||
+            "Video generation failed. Please try again.";
           await updateVideoClip({
             clipId,
             status: "failed",
-            errorMessage: result.errorMessage || "Video generation failed",
+            errorMessage: failureMessage,
           });
           activeVideoPolls.current.delete(clipId);
+          toast.error("Video generation failed", {
+            description: failureMessage,
+          });
           console.error("[StoryboardPage] Clip failed while polling", {
             clipId,
             predictionId,
-            error: result.errorMessage,
+            error: failureMessage,
           });
           return;
         }
@@ -212,14 +477,125 @@ const StoryboardPage = () => {
   };
 
   // Video generation function
+type SceneRequestPayload = {
+  id: Id<"scenes">;
+  sceneNumber?: number | null;
+  imageUrl: string;
+  description?: string | null;
+  visualPrompt?: string | null;
+  duration?: number | null;
+  generateAudio?: boolean;
+};
+
+  const launchVideoPredictions = async (
+    scenesPayload: SceneRequestPayload[],
+    modelOverride?: string,
+  ) => {
+    if (!projectId || scenesPayload.length === 0 || !isAuthenticated) {
+      return;
+    }
+
+    const modelToUse = getValidVideoModelId(
+      modelOverride ?? selectedVideoModel,
+    );
+    const normalizedScenes = scenesPayload.map((scene) => ({
+      ...scene,
+      duration: sanitizeDurationForModel(modelToUse, scene.duration ?? null),
+      generateAudio:
+        scene.generateAudio && IMAGE_TO_VIDEO_MODELS.find(
+          (model) => model.id === modelToUse,
+        )?.supportsAudio
+          ? true
+          : false,
+    }));
+
+    console.log("[StoryboardPage] Launching video predictions", {
+      model: modelToUse,
+      scenes: normalizedScenes.map((scene) => ({
+        id: scene.id,
+        sceneNumber: scene.sceneNumber,
+      })),
+    });
+
+    const response = await apiFetch("/api/generate-all-clips", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scenes: normalizedScenes,
+        videoModel: modelToUse,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null);
+      console.error("[StoryboardPage] generate-all-clips failed", errorBody);
+      throw new Error(errorBody?.error || "Failed to generate video clips");
+    }
+
+    const result = await response.json();
+
+    const clipRecords = await Promise.all(
+      result.predictions.map(async (prediction: any) => {
+        const sceneId = prediction.sceneId as Id<"scenes">;
+        const sceneMeta = normalizedScenes.find(
+          (scene) => scene.id === sceneId,
+        );
+        const existingClip =
+          clips.find((clip) => clip.sceneId === sceneId) ?? null;
+
+        if (existingClip) {
+          await updateVideoClip({
+            clipId: existingClip._id,
+            status: "pending",
+            videoUrl: "",
+            errorMessage: "",
+            replicateVideoId: prediction.predictionId,
+          });
+          return {
+            clipId: existingClip._id,
+            predictionId: prediction.predictionId,
+            sceneId,
+            duration: sceneMeta?.duration ?? prediction.duration,
+          };
+        }
+
+        const clipId = await createVideoClip({
+          sceneId,
+          projectId: projectId as Id<"videoProjects">,
+          duration: sceneMeta?.duration ?? prediction.duration,
+          resolution: "720p",
+          replicateVideoId: prediction.predictionId,
+        });
+        return {
+          clipId,
+          predictionId: prediction.predictionId,
+          sceneId,
+          duration: sceneMeta?.duration ?? prediction.duration,
+        };
+      }),
+    );
+
+    clipRecords.forEach(({ clipId, predictionId, sceneId }) => {
+      if (predictionId) {
+        startPolling(clipId, predictionId, sceneId);
+      }
+    });
+  };
+
   const generateVideoClips = async () => {
     try {
-      if (modelSelectionEnabled && selectedVideoModel) {
+      if (!isAuthenticated) {
+        toast.error("Please sign in to generate videos.");
+        return;
+      }
+      const safeModelId = getValidVideoModelId(selectedVideoModel);
+
+      if (modelSelectionEnabled && safeModelId) {
         try {
           await updateProjectModelSelection({
             projectId: projectId as Id<"videoProjects">,
             stage: "video",
-            modelId: selectedVideoModel,
+            modelId: safeModelId,
           });
         } catch (error) {
           console.error("Failed to record video model selection:", error);
@@ -230,16 +606,15 @@ const StoryboardPage = () => {
       const completedSceneIds = new Set(
         clips
           .filter((clip) => clip.status === "complete")
-          .map((clip) => clip.sceneId)
+          .map((clip) => clip.sceneId),
       );
 
       // Only generate for scenes without complete clips
       const scenesToGenerate = convexScenes.filter(
-        (scene) => !completedSceneIds.has(scene._id)
+        (scene) => !completedSceneIds.has(scene._id),
       );
 
       if (scenesToGenerate.length === 0) {
-        setIsGenerating(false);
         return;
       }
 
@@ -249,52 +624,12 @@ const StoryboardPage = () => {
         sceneNumber: scene.sceneNumber,
         imageUrl: scene.imageUrl || "",
         description: scene.description,
+        visualPrompt: scene.visualPrompt,
         duration: scene.duration,
+        generateAudio: false,
       }));
 
-      // Call API to create Replicate predictions
-      const response = await apiFetch("/api/generate-all-clips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scenes: scenesData,
-          videoModel: selectedVideoModel,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => null);
-        console.error("[StoryboardPage] generate-all-clips failed", errorBody);
-        throw new Error(
-          errorBody?.error || "Failed to generate video clips",
-        );
-      }
-
-      const result = await response.json();
-
-      // Create video clip records in Convex with prediction IDs
-      const clipRecords = await Promise.all(
-        result.predictions.map(async (prediction: any) => {
-          const sceneId = prediction.sceneId as Id<"scenes">;
-          const clipId = await createVideoClip({
-            sceneId,
-            projectId: projectId as Id<"videoProjects">,
-            duration: prediction.duration,
-            resolution: "720p",
-            replicateVideoId: prediction.predictionId,
-          });
-          return { clipId, predictionId: prediction.predictionId, sceneId };
-        }),
-      );
-
-      // Start polling each prediction
-      clipRecords.forEach(({ clipId, predictionId, sceneId }) => {
-        if (predictionId) {
-          startPolling(clipId, predictionId, sceneId);
-        }
-      });
-
-      setIsGenerating(false);
+      await launchVideoPredictions(scenesData, safeModelId);
 
       // Update project status when all videos complete
       const checkAllComplete = () => {
@@ -311,13 +646,14 @@ const StoryboardPage = () => {
       setTimeout(checkAllComplete, 2000);
     } catch (error) {
       console.error("Error generating video clips:", error);
-      setIsGenerating(false);
       hasStartedGeneration.current = false; // Allow retry
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   useEffect(() => {
-    if (!storyboardRows || !projectId) return;
+    if (!storyboardRows || !projectId || !isAuthenticated) return;
 
     const syncAllShots = async () => {
       const shotsToSync: Array<{
@@ -378,11 +714,11 @@ const StoryboardPage = () => {
     };
 
     syncAllShots();
-  }, [storyboardRows, projectId, syncShotToLegacyScene]);
+  }, [storyboardRows, projectId, syncShotToLegacyScene, isAuthenticated]);
 
   // Resume polling for clips that are still processing (on page load/refresh)
   useEffect(() => {
-    if (!clips || clips.length === 0) return;
+    if (!clips || clips.length === 0 || !isAuthenticated) return;
 
     const processingClips = clips.filter(
       (clip) => clip.status === "processing" || clip.status === "pending",
@@ -395,11 +731,11 @@ const StoryboardPage = () => {
         }
       });
     }
-  }, [clips?.length]); // Only run when clips array length changes
+  }, [clips?.length, isAuthenticated]); // Only run when clips array length changes
 
   // Auto-update project status when all clips are complete
   useEffect(() => {
-    if (!clips || !convexScenes || !projectId) return;
+    if (!clips || !convexScenes || !projectId || !isAuthenticated) return;
 
     // Check if we have clips for all scenes
     const allScenesHaveClips = convexScenes.length > 0 &&
@@ -419,7 +755,25 @@ const StoryboardPage = () => {
         status: "video_generated",
       }).catch(error => console.error("Failed to update project status:", error));
     }
-  }, [clips, convexScenes, projectId, projectProgress?.projectStatus, updateProjectStatus]);
+  }, [clips, convexScenes, projectId, projectProgress?.projectStatus, updateProjectStatus, isAuthenticated]);
+
+  useEffect(() => {
+    if (!selectedShotId) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-storyboard-selection-target='true']")) {
+        return;
+      }
+      setSelectedShotId(null);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [selectedShotId]);
 
   if (!projectId) {
     return (
@@ -438,8 +792,9 @@ const StoryboardPage = () => {
     : undefined;
 
   return (
-    <div className="min-h-screen bg-black text-white pb-24">
-      <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-sm border-b border-gray-900 px-8 py-4">
+    <>
+      <div className="min-h-screen bg-black text-white pb-32">
+        <div className="sticky top-0 z-10 bg-black/95 backdrop-blur-sm border-b border-gray-900 px-8 py-4">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wider text-gray-500">
@@ -535,7 +890,71 @@ const StoryboardPage = () => {
           ))
         )}
       </div>
-    </div>
+      </div>
+      {selectedShotDetails && (
+        <div
+          className="fixed bottom-[155px] left-0 right-0 z-40 px-4"
+          data-storyboard-selection-target="true"
+        >
+          <div className="max-w-4xl mx-auto">
+            <div className="flex flex-col sm:flex-row gap-4 rounded-2xl border border-emerald-400/30 bg-black/85 p-4 shadow-lg shadow-emerald-500/10">
+              <div className="w-full sm:w-40 h-28 rounded-xl border border-white/10 bg-gray-900 overflow-hidden">
+                {selectedShotDetails.imageUrl ? (
+                  <img
+                    src={
+                      proxiedImageUrl(selectedShotDetails.imageUrl) ??
+                      selectedShotDetails.imageUrl
+                    }
+                    alt="Reference frame for selected video"
+                    className="w-full h-full object-cover"
+                    crossOrigin="anonymous"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">
+                    Reference image unavailable
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-xs uppercase tracking-widest text-emerald-300">
+                  Selected Video
+                </p>
+                <h3 className="text-lg font-semibold text-white">
+                  Scene {selectedShotDetails.sceneNumber} · Shot{" "}
+                  {selectedShotDetails.shotNumber}
+                </h3>
+                <p className="text-sm text-gray-400 line-clamp-2">
+                  {selectedShotDetails.description}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Regenerations will use this reference frame for consistency.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <div data-storyboard-selection-target="true">
+        <ChatInput
+          onSubmit={handleVideoChatSubmit}
+          placeholder={
+            selectedShotId
+              ? "Describe how you want this video to evolve (or leave blank to rerun)."
+              : "Select a shot to generate or regenerate its video..."
+          }
+          disabled={!selectedShotId || isGenerating || isSyncing}
+          initialMessage={videoChatValue}
+          onMessageChange={setVideoChatValue}
+          shouldFocus={!!selectedShotId}
+          selectedShotId={selectedShotId ?? undefined}
+          initialMode="video"
+        allowEmptySubmit
+        initialModel={selectedVideoModel}
+        onModelChange={(modelId) => setImageToVideoModel(modelId)}
+          highlighted={!!selectedShotId}
+        />
+      </div>
+    </>
   );
 };
 

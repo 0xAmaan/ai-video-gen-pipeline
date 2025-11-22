@@ -14,6 +14,7 @@ export async function POST(req: Request) {
       duration = 5,
       resolution = "720p",
       videoModel,
+      generateAudio,
     } = await req.json();
 
     if (!imageUrl || typeof imageUrl !== "string") {
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
     if (!modelConfig) {
       return apiError(`Invalid video model: ${modelKey}`, 400);
     }
+    const supportsAudio = Boolean(modelConfig.supportsAudio);
+    const shouldGenerateAudio = supportsAudio ? Boolean(generateAudio) : false;
 
     console.log(`Using video model: ${modelConfig.name} (${modelKey})`);
 
@@ -68,7 +71,9 @@ export async function POST(req: Request) {
     // Add Google Veo specific parameters
     if (modelKey.includes("google/veo")) {
       input.aspect_ratio = "16:9";
-      input.generate_audio = false; // We handle audio separately
+      if (supportsAudio) {
+        input.generate_audio = shouldGenerateAudio;
+      }
       if (!modelKey.includes("fast")) {
         input.negative_prompt =
           "blur, distortion, jitter, artifacts, low quality";
