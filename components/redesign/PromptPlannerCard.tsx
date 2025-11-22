@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -57,6 +58,7 @@ interface PromptPlannerCardProps {
   onGeneratePreview?: (shot: SceneShot) => void;
   onUpdateShotAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
   assets?: ProjectAsset[];
+  resettingShotId?: Id<"sceneShots"> | null;
 }
 
 interface ShotCardProps {
@@ -76,6 +78,7 @@ interface ShotCardProps {
   onGeneratePreview?: (shot: SceneShot) => void;
   onUpdateAssets?: (shotId: Id<"sceneShots">, assetIds: Id<"projectAssets">[]) => void;
   assets?: ProjectAsset[];
+  isResetting?: boolean;
 }
 
 const ShotCard = ({
@@ -95,6 +98,7 @@ const ShotCard = ({
   onGeneratePreview,
   onUpdateAssets,
   assets,
+  isResetting = false,
 }: ShotCardProps) => {
   const [localDescription, setLocalDescription] = useState(shot.description);
 
@@ -227,9 +231,16 @@ const ShotCard = ({
                   e.stopPropagation();
                   onRegenerateShot?.(shot);
                 }}
-                className="h-8 w-8 text-gray-400 hover:text-gray-100"
+                disabled={isResetting}
+                className="h-8 w-8 text-gray-400 hover:text-gray-100 disabled:text-gray-600"
+                aria-label="Clear shot"
+                title="Clear shot"
               >
-                <RefreshCw className="w-4 h-4" />
+                {isResetting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
               </Button>
               <Button
                 size="icon"
@@ -286,6 +297,7 @@ export const PromptPlannerCard = ({
   onGeneratePreview,
   onUpdateShotAssets,
   assets,
+  resettingShotId,
 }: PromptPlannerCardProps) => {
   const {
     attributes: sceneAttributes,
@@ -405,6 +417,7 @@ export const PromptPlannerCard = ({
               onGeneratePreview={onGeneratePreview}
               onUpdateAssets={onUpdateShotAssets}
               assets={assets}
+              isResetting={resettingShotId === shot._id}
             />
           ))}
 

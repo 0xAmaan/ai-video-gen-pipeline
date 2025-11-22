@@ -326,8 +326,38 @@ export const clearShotImage = mutation({
     const shot = await ctx.db.get(args.shotId);
     if (!shot) throw new Error("Shot not found");
 
+    const [images, selections, legacyScenes] = await Promise.all([
+      ctx.db
+        .query("shotImages")
+        .withIndex("by_shot", (q) => q.eq("shotId", args.shotId))
+        .collect(),
+      ctx.db
+        .query("storyboardSelections")
+        .withIndex("by_shot", (q) => q.eq("shotId", args.shotId))
+        .collect(),
+      ctx.db
+        .query("scenes")
+        .withIndex("by_redesignShot", (q) => q.eq("redesignShotId", args.shotId))
+        .collect(),
+    ]);
+
+    for (const image of images) {
+      await ctx.db.delete(image._id);
+    }
+
+    for (const selection of selections) {
+      await ctx.db.delete(selection._id);
+    }
+
+    for (const legacyScene of legacyScenes) {
+      await ctx.db.delete(legacyScene._id);
+    }
+
     await ctx.db.patch(args.shotId, {
+      description: "",
+      initialPrompt: "",
       selectedImageId: undefined,
+      lastImageGenerationAt: undefined,
       lastImageStatus: undefined,
       updatedAt: Date.now(),
     });
