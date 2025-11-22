@@ -31,15 +31,6 @@ import { ChatInput } from "@/components/redesign/ChatInput";
 import { VerticalMediaGallery } from "@/components/redesign/VerticalMediaGallery";
 import { SceneIteratorModal } from "@/components/redesign/SceneIteratorModal";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import {
   useProjectScenes,
   useSceneShots,
   useCreateProjectScene,
@@ -133,9 +124,7 @@ const PromptPlannerPage = () => {
   const [highlightedShotId, setHighlightedShotId] = useState<
     Id<"sceneShots"> | null
   >(null);
-  const [regenerateTarget, setRegenerateTarget] = useState<SceneShot | null>(null);
-  const [regeneratePrompt, setRegeneratePrompt] = useState("");
-  const [regenerateBusy, setRegenerateBusy] = useState(false);
+  const [resettingShotId, setResettingShotId] = useState<Id<"sceneShots"> | null>(null);
   const [iteratorShotId, setIteratorShotId] = useState<Id<"sceneShots"> | null>(null);
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [lastBulkSummary, setLastBulkSummary] = useState<{
@@ -145,6 +134,9 @@ const PromptPlannerPage = () => {
   } | null>(null);
 
   const shotRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const shotUpdateTimers = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
 
   const registerShotRef = useCallback(
     (shotId: Id<"sceneShots">, node: HTMLDivElement | null) => {
@@ -152,6 +144,14 @@ const PromptPlannerPage = () => {
     },
     [],
   );
+
+  useEffect(() => {
+    return () => {
+      Object.values(shotUpdateTimers.current).forEach((timer) =>
+        clearTimeout(timer),
+      );
+    };
+  }, []);
 
   const shotPreviewMap = useMemo(() => {
     const map = new Map<Id<"sceneShots">, ShotPreviewImage[]>();
@@ -368,26 +368,46 @@ const PromptPlannerPage = () => {
     await deleteShot({ shotId });
   };
 
-  const handleUpdateShotText = async (
-    shotId: Id<"sceneShots">,
-    text: string,
-  ) => {
-    setPlannerScenes((prev) =>
-      prev.map((scene) => ({
-        ...scene,
-        shots: scene.shots.map((shot) =>
-          shot._id === shotId
-            ? { ...shot, description: text, initialPrompt: text }
-            : shot,
-        ),
-      })),
-    );
-    await updateShot({
-      shotId,
-      description: text,
-      initialPrompt: text,
-    });
-  };
+  const scheduleShotUpdate = useCallback(
+    (shotId: Id<"sceneShots">, text: string) => {
+      if (shotUpdateTimers.current[shotId]) {
+        clearTimeout(shotUpdateTimers.current[shotId]);
+      }
+
+      shotUpdateTimers.current[shotId] = setTimeout(async () => {
+        delete shotUpdateTimers.current[shotId];
+        try {
+          await updateShot({
+            shotId,
+            description: text,
+            initialPrompt: text,
+          });
+        } catch (error) {
+          console.error("Failed to save shot text", error);
+          toast.error("Unable to save shot text");
+        }
+      }, 400);
+    },
+    [updateShot],
+  );
+
+  const handleUpdateShotText = useCallback(
+    (shotId: Id<"sceneShots">, text: string) => {
+      setPlannerScenes((prev) =>
+        prev.map((scene) => ({
+          ...scene,
+          shots: scene.shots.map((shot) =>
+            shot._id === shotId
+              ? { ...shot, description: text, initialPrompt: text }
+              : shot,
+          ),
+        })),
+      );
+
+      scheduleShotUpdate(shotId, text);
+    },
+    [scheduleShotUpdate],
+  );
 
   const handleUpdateShotAssets = async (
     shotId: Id<"sceneShots">,
@@ -649,40 +669,36 @@ const PromptPlannerPage = () => {
     }
   };
 
-  const handleOpenRegenerate = (shot: SceneShot) => {
-    setRegenerateTarget(shot);
-    setRegeneratePrompt(shot.description || "");
-  };
-
-  const handleRegenerateShot = async () => {
-    if (!projectId || !regenerateTarget || regenerateBusy) return;
-    setRegenerateBusy(true);
+  const handleResetShot = async (shot: SceneShot) => {
+    if (resettingShotId) return;
+    setResettingShotId(shot._id);
     try {
-      const response = await fetch("/api/generate-shot-images", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          sceneId: regenerateTarget.sceneId,
-          shotId: regenerateTarget._id,
-          fixPrompt: regeneratePrompt.trim() || undefined,
-          mode: "preview",
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error ?? "Generation failed");
-      }
-      toast.success("Regenerating images...");
-      setRegenerateTarget(null);
-      setRegeneratePrompt("");
+      await clearShotImage({ shotId: shot._id });
+      setPlannerScenes((prev) =>
+        prev.map((scene) => ({
+          ...scene,
+          shots: scene.shots.map((existingShot) =>
+            existingShot._id === shot._id
+              ? {
+                  ...existingShot,
+                  description: "",
+                  initialPrompt: "",
+                  selectedImageId: undefined,
+                  lastImageStatus: undefined,
+                  lastImageGenerationAt: undefined,
+                }
+              : existingShot,
+          ),
+        })),
+      );
+      toast.success("Shot cleared. Add a new prompt to regenerate.");
     } catch (error) {
-      console.error("Failed to regenerate shot", error);
+      console.error("Failed to clear shot", error);
       toast.error(
-        error instanceof Error ? error.message : "Unable to regenerate shot",
+        error instanceof Error ? error.message : "Unable to clear shot",
       );
     } finally {
-      setRegenerateBusy(false);
+      setResettingShotId(null);
     }
   };
 
@@ -894,10 +910,11 @@ const PromptPlannerPage = () => {
                                 shotPreviewMap.get(shotId) ?? []
                               }
                               onSelectShotImage={handleSelectShotImage}
-                              onRegenerateShot={handleOpenRegenerate}
+                              onRegenerateShot={handleResetShot}
                               onGeneratePreview={handleGeneratePreview}
                               onUpdateShotAssets={handleUpdateShotAssets}
                               assets={projectAssets}
+                              resettingShotId={resettingShotId}
                             />
                           </SortableContext>
 
@@ -997,55 +1014,6 @@ const PromptPlannerPage = () => {
         isOpen={!!iteratorShotId}
         onClose={() => setIteratorShotId(null)}
       />
-
-      <Dialog
-        open={!!regenerateTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRegenerateTarget(null);
-            setRegeneratePrompt("");
-          }
-        }}
-      >
-        <DialogContent className="bg-[#111] border border-white/10 text-white max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Regenerate shot images</DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Describe what should change. We&apos;ll generate a new preview frame for{" "}
-              {regenerateTarget
-                ? `Shot ${regenerateTarget.shotNumber}`
-                : "this shot"}{" "}
-              using your guidance.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={regeneratePrompt}
-            onChange={(e) => setRegeneratePrompt(e.target.value)}
-            className="bg-[#1b1b1b] border-white/10 text-white min-h-[120px]"
-            placeholder="e.g., make it dusk, add dramatic lighting..."
-          />
-          <DialogFooter className="mt-4">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setRegenerateTarget(null);
-                setRegeneratePrompt("");
-              }}
-              className="border-white/20 text-gray-300"
-              disabled={regenerateBusy}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleRegenerateShot}
-              disabled={regenerateBusy}
-              className="bg-white text-black hover:bg-gray-200"
-            >
-              {regenerateBusy ? "Generating..." : "Generate preview frame"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 };
