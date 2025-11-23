@@ -14,6 +14,9 @@ import { TracksLayer } from './layers/TracksLayer'
 import { ClipsLayer } from './layers/ClipsLayer'
 import { RulerLayer } from './layers/RulerLayer'
 import { OverlayLayer } from './layers/OverlayLayer'
+import { SnapGuidesLayer } from './layers/SnapGuidesLayer'
+import { DropZoneIndicator } from './layers/DropZoneIndicator'
+import type { DropZoneInfo } from './layers/ClipsLayer'
 
 interface TimelineCanvasProps extends TimelineProps {
   zoomLevel: number
@@ -29,6 +32,8 @@ export const TimelineCanvas = ({
   currentTime,
   selectedClipIds,
   onSeek,
+  onClipSelect,
+  onClipMove,
   zoomLevel,
   pixelsPerSecond,
   timelineWidth,
@@ -40,6 +45,8 @@ export const TimelineCanvas = ({
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [hoverTime, setHoverTime] = useState<number | null>(null)
+  const [snapGuidePosition, setSnapGuidePosition] = useState<number | null>(null)
+  const [dropZone, setDropZone] = useState<DropZoneInfo | null>(null)
 
   // Update dimensions by observing the parent timeline section (not our own container)
   useEffect(() => {
@@ -202,12 +209,20 @@ export const TimelineCanvas = ({
             viewportHeight={dimensions.height}
           />
 
+          <DropZoneIndicator dropZone={dropZone} />
+
           <ClipsLayer
             sequence={sequence}
             mediaAssets={mediaAssets}
             pixelsPerSecond={pixelsPerSecond}
             selectedClipIds={selectedClipIds}
             viewportHeight={dimensions.height}
+            currentTime={currentTime}
+            dropZone={dropZone}
+            onClipSelect={onClipSelect}
+            onClipMove={onClipMove}
+            onSnapGuideShow={setSnapGuidePosition}
+            onDropZoneChange={setDropZone}
           />
 
           <RulerLayer
@@ -216,6 +231,12 @@ export const TimelineCanvas = ({
             timelineWidth={effectiveTimelineWidth}
             totalDuration={totalDuration}
             stageHeight={dimensions.height}
+          />
+
+          <SnapGuidesLayer
+            snapPosition={snapGuidePosition}
+            pixelsPerSecond={pixelsPerSecond}
+            viewportHeight={dimensions.height}
           />
 
           <OverlayLayer

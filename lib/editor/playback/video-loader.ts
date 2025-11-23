@@ -21,6 +21,7 @@ export class VideoLoader {
   private readonly requestInit?: RequestInit;
   private lastAnchor = 0;
   private disableTrimming = false; // For export mode - keep all frames
+  private decodeInProgress = false; // Prevent concurrent decode operations
 
   private async buildInput(url: string) {
     return new Input({
@@ -178,7 +179,7 @@ export class VideoLoader {
     this.lastAnchor = timeSeconds;
     await this.decoder?.flush().catch(() => undefined);
     this.decoder?.reset();
-    this.reconfigureDecoder();
+    // Don't reconfigure here - decodeAround() will handle it with proper keyframe
     this.cache.clear();
     await this.decodeAround(timeSeconds);
   }
@@ -214,26 +215,105 @@ export class VideoLoader {
 
   private async decodeAround(timeSeconds: number) {
     if (!this.decoder || !this.sink) return;
-    this.lastAnchor = timeSeconds;
 
-    await this.decoder.flush().catch(() => undefined);
-    const keyPacket = await this.sink.getKeyPacket(timeSeconds, {
-      verifyKeyPackets: true,
-    });
-    if (!keyPacket) return;
-
-    let packet: any | null = keyPacket;
-    const endTimestamp = timeSeconds + this.lookahead;
-    while (packet && packet.timestamp <= endTimestamp) {
-      // Skip metadata-only packets
-      if (!packet.isMetadataOnly && packet.byteLength > 0) {
-        this.decoder.decode(packet.toEncodedVideoChunk());
-      }
-      packet = await this.sink.getNextPacket(packet);
+    // Prevent concurrent decode operations - wait if one is in progress
+    if (this.decodeInProgress) {
+      console.log(
+        "[VideoLoader] Decode already in progress, skipping concurrent request at",
+        timeSeconds,
+      );
+      return;
     }
 
-    await this.decoder.flush();
-    this.trimCache(timeSeconds);
+    this.decodeInProgress = true;
+    try {
+      this.lastAnchor = timeSeconds;
+
+      await this.decoder.flush().catch(() => undefined);
+
+      // Only reconfigure if decoder is closed or not configured
+      if (
+        this.decoder.state === "closed" ||
+        this.decoder.state === "unconfigured"
+      ) {
+        this.reconfigureDecoder();
+      }
+
+      // Try to get keyframe at requested time
+      let keyPacket = await this.sink.getKeyPacket(timeSeconds, {
+        verifyKeyPackets: true,
+      });
+
+      // If no keyframe found at requested time and we're near the beginning, try time 0
+      if (!keyPacket && timeSeconds < 1.0) {
+        console.log(
+          "[VideoLoader] No keyframe at",
+          timeSeconds,
+          "trying from start",
+        );
+        keyPacket = await this.sink.getKeyPacket(0, {
+          verifyKeyPackets: true,
+        });
+      }
+
+      if (!keyPacket) {
+        console.error("[VideoLoader] No keyframe found at", timeSeconds);
+        return;
+      }
+
+      // Verify it's actually a keyframe
+      if (keyPacket.type !== "key") {
+        console.error(
+          "[VideoLoader] Packet is not a keyframe:",
+          keyPacket.type,
+        );
+        return;
+      }
+
+      let packet: any | null = keyPacket;
+      const endTimestamp = timeSeconds + this.lookahead;
+      let isFirstPacket = true;
+
+      while (packet && packet.timestamp <= endTimestamp) {
+        // Skip metadata-only packets
+        if (!packet.isMetadataOnly && packet.byteLength > 0) {
+          // Extra safety: verify first packet is keyframe
+          if (isFirstPacket) {
+            if (packet.type !== "key") {
+              console.error(
+                "[VideoLoader] First packet after config/flush is not a keyframe, skipping decode",
+                { type: packet.type, timestamp: packet.timestamp },
+              );
+              break;
+            }
+            console.log(
+              "[VideoLoader] Starting decode with keyframe at",
+              packet.timestamp,
+            );
+          }
+
+          // Only decode if decoder is in configured state
+          if (this.decoder.state !== "configured") {
+            console.error(
+              "[VideoLoader] Decoder not in configured state:",
+              this.decoder.state,
+              "packet type:",
+              packet.type,
+            );
+            break;
+          }
+
+          this.decoder.decode(packet.toEncodedVideoChunk());
+          isFirstPacket = false;
+        }
+        packet = await this.sink.getNextPacket(packet);
+      }
+
+      await this.decoder.flush();
+      this.trimCache(timeSeconds);
+    } finally {
+      this.decodeInProgress = false;
+    }
   }
 
   private handleDecodedFrame(frame: VideoFrame) {
@@ -266,13 +346,32 @@ export class VideoLoader {
 
   private reconfigureDecoder() {
     const config = this.decoderConfig;
-    if (!config) return;
+    if (!config) {
+      console.error(
+        "[VideoLoader] Cannot reconfigure decoder: no decoder config",
+      );
+      return;
+    }
+
     if (!this.decoder || this.decoder.state === "closed") {
       this.decoder = new VideoDecoder({
         output: (frame) => this.handleDecodedFrame(frame),
-        error: (error) => console.error("VideoDecoder error", error),
+        error: (error) => {
+          console.error("VideoDecoder error", error);
+          console.error("Asset URL:", this.asset.url);
+          console.error("Decoder state:", this.decoder?.state);
+        },
       });
     }
-    this.decoder.configure(config);
+
+    try {
+      this.decoder.configure(config);
+      console.log("[VideoLoader] Decoder configured for asset:", this.asset.id);
+    } catch (error) {
+      console.error("[VideoLoader] Failed to configure decoder:", error);
+      console.error("Config:", config);
+      console.error("Asset:", this.asset);
+      throw error;
+    }
   }
 }

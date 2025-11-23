@@ -36,7 +36,7 @@ export interface TimelineProps {
   duration: number;
 
   /** Ref to the parent section element for observing resize */
-  timelineSectionRef?: React.RefObject<HTMLElement>;
+  timelineSectionRef?: React.RefObject<HTMLElement | null>;
 
   /** Called when user toggles play/pause */
   onPlayPause: () => void;
@@ -47,8 +47,8 @@ export interface TimelineProps {
   /** Called when user seeks to a new time (click or scrub timeline) */
   onSeek: (time: number) => void;
 
-  /** Called when user moves a clip to new position/track */
-  onClipMove: (clipId: string, newStart: number, newTrackId: string) => void;
+  /** Called when user moves a clip to new position/track (may update multiple clips due to push logic) */
+  onClipMove: (updates: { clipId: string; newStart: number }[]) => void;
 
   /** Called when user trims a clip (adjusts in/out points) */
   onClipTrim: (clipId: string, trimStart: number, trimEnd: number) => void;
@@ -241,15 +241,16 @@ export const TIMELINE_LAYOUT = {
   tracksTopMargin: 40, // Vertical spacing below ruler
 
   // Tracks
-  trackHeight: 80,
+  trackHeight: 60,
   trackLabelWidth: 120,
   trackPadding: 4,
 
   // Clips
-  clipBorderRadius: 12,
+  clipBorderRadius: 8,
   clipPadding: 4,
   clipBorderWidth: 2,
-  clipSelectedBorderWidth: 3,
+  clipSelectedBorderWidth: 2,
+  clipGap: 1, // Gap between adjacent clips
 
   // Trim handles
   trimHandleWidth: 6,

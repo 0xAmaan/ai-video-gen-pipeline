@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -14,7 +14,8 @@ import { MediaLibraryPanel } from "@/components/editor3/MediaLibraryPanel";
 import { VideoPlayer } from "@/components/editor/VideoPlayer";
 import { Timeline } from "@/components/timeline";
 import { MediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
-import type { Sequence, MediaAssetMeta } from "@/lib/editor/types";
+import type { Sequence, MediaAssetMeta, Clip } from "@/lib/editor/types";
+import { getClipAtTime, splitClipAtTime } from "@/lib/editor/utils/clip-operations";
 
 type PanelType = 'media' | 'text' | 'captions' | 'transitions' | 'effects';
 
@@ -30,11 +31,14 @@ export default function Editor3Page() {
 
   // Video player state
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedTimelineClipIds, setSelectedTimelineClipIds] = useState<string[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [mediaBunnyManager, setMediaBunnyManager] = useState<MediaBunnyManager | null>(null);
   const [mediaAssets, setMediaAssets] = useState<Record<string, MediaAssetMeta>>({});
-  const timelineSectionRef = useRef<HTMLElement>(null);
+  const [clipPositionOverrides, setClipPositionOverrides] = useState<Record<string, number>>({});
+  const [modifiedClips, setModifiedClips] = useState<Clip[] | null>(null);
+  const timelineSectionRef = useRef<HTMLElement | null>(null);
 
   // Initialize MediaBunnyManager
   useEffect(() => {
@@ -50,76 +54,118 @@ export default function Editor3Page() {
 
   const clips = data?.clips ?? [];
 
-  // Transform Convex clip to Sequence and update mediaAssets
+  // Transform all Convex clips to a timeline Sequence and update mediaAssets
   const selectedSequence = useMemo(() => {
-    if (!selectedClipId) {
+    if (clips.length === 0) {
       return null;
     }
 
-    const selectedClip = clips.find((c) => c._id === selectedClipId);
-    if (!selectedClip) {
+    // Process all clips and create media assets
+    const timelineClips: any[] = [];
+    let currentStart = 0;
+    let totalDuration = 0;
+    let sequenceWidth = 1920;
+    let sequenceHeight = 1080;
+
+    clips.forEach((clip) => {
+      const videoUrl =
+        clip.lipsyncVideoUrl ??
+        clip.videoUrl ??
+        clip.originalVideoUrl ??
+        "";
+
+      // Skip clips with no valid URL (including empty strings)
+      if (!videoUrl || videoUrl.trim() === "") {
+        console.warn('Skipping clip with no valid video URL:', {
+          clipId: clip._id,
+          lipsyncVideoUrl: clip.lipsyncVideoUrl,
+          videoUrl: clip.videoUrl,
+          originalVideoUrl: clip.originalVideoUrl
+        });
+        return;
+      }
+
+      // Parse resolution (e.g., "1920x1080") or use defaults
+      let width = 1920;
+      let height = 1080;
+      if (clip.resolution) {
+        const [w, h] = clip.resolution.split('x').map(Number);
+        if (w && h) {
+          width = w;
+          height = h;
+        }
+      }
+
+      // Create/update MediaAssetMeta from Convex clip
+      const asset: MediaAssetMeta = mediaAssets[clip._id] || {
+        id: clip._id,
+        name: `Clip ${clip._id}`,
+        type: "video",
+        duration: clip.duration ?? 10,
+        width,
+        height,
+        fps: 30,
+        url: videoUrl,
+      };
+
+      // Update mediaAssets if needed (preserve thumbnails if they exist)
+      if (!mediaAssets[clip._id]) {
+        setMediaAssets((prev) => ({ ...prev, [asset.id]: asset }));
+      }
+
+      // Track max dimensions for sequence
+      if (asset.width > sequenceWidth) sequenceWidth = asset.width;
+      if (asset.height > sequenceHeight) sequenceHeight = asset.height;
+
+      // Use position override if available, otherwise stack horizontally
+      const clipStart = clipPositionOverrides[clip._id] !== undefined
+        ? clipPositionOverrides[clip._id]
+        : currentStart;
+
+      // Add clip to timeline
+      timelineClips.push({
+        id: clip._id,
+        mediaId: clip._id,
+        trackId: "video-track",
+        kind: "video",
+        start: clipStart,
+        duration: asset.duration,
+        trimStart: 0,
+        trimEnd: asset.duration,
+        opacity: 1,
+        volume: 1,
+        effects: [],
+        transitions: [],
+        speedCurve: null,
+        preservePitch: true,
+      });
+
+      // Only increment currentStart if not using override (for default stacking)
+      if (clipPositionOverrides[clip._id] === undefined) {
+        currentStart += asset.duration;
+      }
+      totalDuration += asset.duration;
+    });
+
+    if (timelineClips.length === 0) {
       return null;
     }
 
-    const videoUrl =
-      selectedClip.lipsyncVideoUrl ??
-      selectedClip.videoUrl ??
-      selectedClip.originalVideoUrl ??
-      "";
-
-    if (!videoUrl) {
-      return null;
-    }
-
-    // Create/update MediaAssetMeta from Convex clip
-    const asset: MediaAssetMeta = mediaAssets[selectedClip._id] || {
-      id: selectedClip._id,
-      name: `Clip ${selectedClip._id}`,
-      type: "video",
-      duration: selectedClip.duration ?? 10,
-      width: selectedClip.width ?? 1920,
-      height: selectedClip.height ?? 1080,
-      fps: 30,
-      url: videoUrl,
-    };
-
-    // Update mediaAssets if needed (preserve thumbnails if they exist)
-    if (!mediaAssets[selectedClip._id]) {
-      setMediaAssets((prev) => ({ ...prev, [asset.id]: asset }));
-    }
-
-    // Create a simple sequence with one clip
+    // Create a sequence with all clips horizontally stacked
     const sequence: Sequence = {
-      id: "preview-sequence",
-      name: "Preview",
-      width: asset.width,
-      height: asset.height,
+      id: "timeline-sequence",
+      name: "Timeline",
+      width: sequenceWidth,
+      height: sequenceHeight,
       fps: 30,
       sampleRate: 48000,
-      duration: asset.duration,
+      duration: totalDuration,
       tracks: [
         {
           id: "video-track",
           kind: "video",
           allowOverlap: false,
-          clips: [
-            {
-              id: selectedClip._id,
-              mediaId: selectedClip._id,
-              trackId: "video-track",
-              kind: "video",
-              start: 0,
-              duration: asset.duration,
-              trimStart: 0,
-              trimEnd: asset.duration,
-              opacity: 1,
-              volume: 1,
-              effects: [],
-              transitions: [],
-              speedCurve: null,
-              preservePitch: true,
-            },
-          ],
+          clips: modifiedClips || timelineClips,
           locked: false,
           muted: false,
           volume: 1,
@@ -128,58 +174,107 @@ export default function Editor3Page() {
     };
 
     return sequence;
-  }, [selectedClipId, clips, mediaAssets]);
+  }, [clips, mediaAssets, selectedClipId, clipPositionOverrides, modifiedClips]);
 
-  // Generate single thumbnail for selected clip (to loop in timeline)
+  // Generate thumbnails for all clips in the sequence
   useEffect(() => {
-    if (!mediaBunnyManager || !selectedClipId || !selectedSequence) return;
+    if (!mediaBunnyManager || !selectedSequence) return;
 
-    const asset = mediaAssets[selectedClipId];
-    if (!asset || asset.thumbnails?.length) return; // Skip if already has thumbnails
+    // Generate thumbnails for each clip that doesn't have them yet
+    clips.forEach((clip) => {
+      const asset = mediaAssets[clip._id];
+      if (!asset || asset.thumbnails?.length) return; // Skip if already has thumbnails
 
-    // Generate 6 thumbnails spread across video to loop
-    mediaBunnyManager
-      .generateThumbnails(asset.id, asset.url, asset.duration, 6)
-      .then((thumbs) => {
-        if (!thumbs?.length) {
-          return;
-        }
-        setMediaAssets((prev) => ({
-          ...prev,
-          [asset.id]: { ...asset, thumbnails: thumbs, thumbnailCount: thumbs.length },
-        }));
-      })
-      .catch((error) => {
-        console.warn('Failed to generate thumbnail for clip:', selectedClipId, error);
-      });
-  }, [selectedClipId, selectedSequence, mediaAssets, mediaBunnyManager]);
-
-  // Extract actual video dimensions
-  useEffect(() => {
-    if (!selectedClipId || !selectedSequence) return;
-
-    const asset = mediaAssets[selectedClipId];
-    if (!asset || (asset.width !== 1920 && asset.width !== undefined && asset.height !== 1080 && asset.height !== undefined)) return; // Skip if already has real dimensions
-
-    // Create temporary VideoLoader to get dimensions
-    import('@/lib/editor/playback/video-loader').then(({ VideoLoader }) => {
-      const loader = new VideoLoader(asset, { cacheSize: 10 });
-
-      loader.getVideoDimensions()
-        .then((dimensions) => {
+      // Generate 6 thumbnails spread across video to loop
+      mediaBunnyManager
+        .generateThumbnails(asset.id, asset.url, asset.duration, 6)
+        .then((thumbs) => {
+          if (!thumbs?.length) {
+            return;
+          }
           setMediaAssets((prev) => ({
             ...prev,
-            [asset.id]: { ...asset, ...dimensions },
+            [asset.id]: { ...asset, thumbnails: thumbs, thumbnailCount: thumbs.length },
           }));
         })
         .catch((error) => {
-          console.warn('Failed to extract video dimensions:', error);
-        })
-        .finally(() => {
-          loader.dispose();
+          console.warn('Failed to generate thumbnail for clip:', clip._id, error);
         });
     });
-  }, [selectedClipId, selectedSequence, mediaAssets]);
+  }, [clips, selectedSequence, mediaAssets, mediaBunnyManager]);
+
+  // Extract actual video dimensions for all clips
+  useEffect(() => {
+    if (!selectedSequence) return;
+
+    clips.forEach((clip) => {
+      const asset = mediaAssets[clip._id];
+      if (!asset || (asset.width !== 1920 && asset.width !== undefined && asset.height !== 1080 && asset.height !== undefined)) return; // Skip if already has real dimensions
+
+      // Create temporary VideoLoader to get dimensions
+      import('@/lib/editor/playback/video-loader').then(({ VideoLoader }) => {
+        const loader = new VideoLoader(asset, { cacheSize: 10 });
+
+        loader.getVideoDimensions()
+          .then((dimensions) => {
+            setMediaAssets((prev) => ({
+              ...prev,
+              [asset.id]: { ...asset, ...dimensions },
+            }));
+          })
+          .catch((error) => {
+            console.warn('Failed to extract video dimensions:', error);
+          })
+          .finally(() => {
+            loader.dispose();
+          });
+      });
+    });
+  }, [clips, selectedSequence, mediaAssets]);
+
+  const handleSplitClip = useCallback(() => {
+    if (!selectedSequence) {
+      console.warn('No sequence available');
+      return;
+    }
+
+    // Find clip at playhead position
+    const clipToSplit = getClipAtTime(selectedSequence, currentTime);
+
+    if (!clipToSplit) {
+      console.warn('No clip at playhead position');
+      return;
+    }
+
+    // Split the clip
+    const result = splitClipAtTime(clipToSplit, currentTime);
+
+    if (!result) {
+      // splitClipAtTime already logs the reason for failure
+      return;
+    }
+
+    const [leftClip, rightClip] = result;
+
+    // Update the clips in the sequence
+    const currentClips = selectedSequence.tracks[0].clips;
+    const newClips = currentClips.flatMap(clip =>
+      clip.id === clipToSplit.id ? [leftClip, rightClip] : [clip]
+    );
+
+    // Update modified clips state
+    setModifiedClips(newClips);
+
+    // Select the right clip after split
+    setSelectedTimelineClipIds([rightClip.id]);
+
+    console.log('Split clip successfully:', {
+      original: clipToSplit.id,
+      left: leftClip.id,
+      right: rightClip.id,
+      splitTime: currentTime
+    });
+  }, [selectedSequence, currentTime]);
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -215,6 +310,26 @@ export default function Editor3Page() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isDragging]);
+
+  // Keyboard shortcut handler for clip splitting (Cmd+B / Ctrl+B)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd+B (Mac) or Ctrl+B (Windows/Linux)
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (modifier && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        handleSplitClip();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleSplitClip]);
 
   const sidebarButtons = [
     { id: 'media' as PanelType, icon: Image, label: 'Media' },
@@ -324,7 +439,22 @@ export default function Editor3Page() {
                 onEnded={() => setIsPlaying(false)}
                 onError={(error) => {
                   console.error("Video player error:", error);
-                  alert(`Player Error: ${error.message}`);
+                  console.error("Current sequence clips:", selectedSequence?.tracks[0]?.clips.map(c => ({
+                    id: c.id,
+                    mediaId: c.mediaId,
+                    url: mediaAssets[c.mediaId]?.url
+                  })));
+
+                  // Find which clip might be failing
+                  const currentClip = selectedSequence?.tracks[0]?.clips.find(
+                    clip => currentTime >= clip.start && currentTime < clip.start + clip.duration
+                  );
+
+                  const errorDetails = currentClip
+                    ? `${error.message}\n\nClip: ${currentClip.id}\nURL: ${mediaAssets[currentClip.mediaId]?.url || 'unknown'}`
+                    : error.message;
+
+                  alert(`Player Error: ${errorDetails}`);
                 }}
                 className="w-full h-full"
               />
@@ -359,22 +489,50 @@ export default function Editor3Page() {
                 mediaAssets={mediaAssets}
                 currentTime={currentTime}
                 isPlaying={isPlaying}
-                selectedClipIds={[]}
+                selectedClipIds={selectedTimelineClipIds}
                 duration={selectedSequence.duration}
                 timelineSectionRef={timelineSectionRef}
                 onPlayPause={() => setIsPlaying(!isPlaying)}
                 onSeek={(time) => setCurrentTime(time)}
-                onClipMove={(clipId, start, trackId) => {
-                  console.log('Clip moved:', { clipId, start, trackId })
-                  // TODO: Implement clip moving logic when we have multi-clip editing
+                onClipMove={(updates) => {
+                  console.log('Clips moved:', updates)
+
+                  if (!selectedSequence) return;
+
+                  // Get current clips from sequence
+                  const currentClips = selectedSequence.tracks[0]?.clips || [];
+
+                  // Create a map of updates
+                  const updateMap = new Map(updates.map(u => [u.clipId, u]));
+
+                  // Apply updates to clips and sort by new order
+                  const updatedClips = currentClips.map(clip => {
+                    const update = updateMap.get(clip.id);
+                    if (update) {
+                      return {
+                        ...clip,
+                        start: update.newStart
+                      };
+                    }
+                    return clip;
+                  });
+
+                  // Sort by start position to maintain correct order
+                  updatedClips.sort((a, b) => a.start - b.start);
+
+                  // Update modified clips state
+                  setModifiedClips(updatedClips);
+
+                  // Note: This updates local state only. On page refresh, clips will return to default positions.
+                  // To persist, we would need to add a position field to the Convex videoClips schema
+                  // or implement clip ordering logic.
                 }}
                 onClipTrim={(clipId, trimStart, trimEnd) => {
                   console.log('Clip trimmed:', { clipId, trimStart, trimEnd })
                   // TODO: Implement clip trimming logic
                 }}
                 onClipSelect={(clipIds) => {
-                  console.log('Clips selected:', clipIds)
-                  // TODO: Implement clip selection logic
+                  setSelectedTimelineClipIds(clipIds)
                 }}
                 onClipDelete={(clipIds) => {
                   console.log('Clips deleted:', clipIds)
