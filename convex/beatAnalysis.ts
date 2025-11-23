@@ -55,6 +55,7 @@ async function parseReplicateOutput(output: unknown): Promise<{
   bpm: number | undefined;
 }> {
   console.log("[parseReplicateOutput] Parsing Replicate output...");
+  console.log("[parseReplicateOutput] Output type:", typeof output);
 
   // Default return value
   const result = {
@@ -67,49 +68,91 @@ async function parseReplicateOutput(output: unknown): Promise<{
     return result;
   }
 
+  // Log output keys for debugging
+  try {
+    const keys = Object.keys(output);
+    console.log("[parseReplicateOutput] Output top-level keys:", keys);
+  } catch (e) {
+    console.warn("[parseReplicateOutput] Could not extract keys from output");
+  }
+
   // Replicate often returns an array with a single element containing the results
-  let data: ReplicateAnalysisOutput;
+  let data: ReplicateAnalysisOutput | undefined;
   const outputArray = output as any;
 
   if (outputArray['0']) {
     const firstElement = outputArray['0'];
+    console.log("[parseReplicateOutput] Found element at index 0, type:", typeof firstElement);
 
     // Check if it's a ReadableStream (has _reader, _state properties)
     if (firstElement && typeof firstElement === 'object' && '_reader' in firstElement) {
-      console.log("[parseReplicateOutput] Output is a ReadableStream, need to read it");
-      // This is a stream - Replicate returns file outputs as streams
-      // We need to convert it to a blob/text first
-      const blob = await new Response(firstElement).blob();
-      const text = await blob.text();
-      data = JSON.parse(text);
-      console.log("[parseReplicateOutput] Parsed stream data keys:", Object.keys(data));
+      console.log("[parseReplicateOutput] Output is a ReadableStream, converting to JSON");
+      try {
+        const blob = await new Response(firstElement).blob();
+        const text = await blob.text();
+        console.log("[parseReplicateOutput] Stream text length:", text.length);
+        data = JSON.parse(text);
+        console.log("[parseReplicateOutput] Parsed stream data keys:", Object.keys(data || {}));
+      } catch (e) {
+        console.error("[parseReplicateOutput] Failed to parse ReadableStream:", e);
+        return result;
+      }
     } else if (typeof firstElement === 'string' && firstElement.startsWith('http')) {
       // Output is an array with URL to JSON results file
       console.log("[parseReplicateOutput] Fetching results from URL:", firstElement);
-      const response = await fetch(firstElement);
-      data = await response.json();
-      console.log("[parseReplicateOutput] Fetched data keys:", Object.keys(data));
+      try {
+        const response = await fetch(firstElement);
+        data = await response.json();
+        console.log("[parseReplicateOutput] Fetched data keys:", Object.keys(data || {}));
+      } catch (e) {
+        console.error("[parseReplicateOutput] Failed to fetch from URL:", e);
+        return result;
+      }
     } else if (typeof firstElement === 'object') {
       // Output is an array with the results object directly
       console.log("[parseReplicateOutput] Using first array element as data");
       data = firstElement as ReplicateAnalysisOutput;
-      console.log("[parseReplicateOutput] Data keys:", Object.keys(data));
+      console.log("[parseReplicateOutput] Data keys:", Object.keys(data || {}));
     } else {
+      console.log("[parseReplicateOutput] First element is unexpected type:", typeof firstElement);
       data = output as ReplicateAnalysisOutput;
     }
   } else {
+    console.log("[parseReplicateOutput] No element at index 0, using output directly");
     data = output as ReplicateAnalysisOutput;
+    console.log("[parseReplicateOutput] Direct output keys:", Object.keys(data || {}));
+  }
+
+  // Safety check - ensure data is defined
+  if (!data || typeof data !== 'object') {
+    console.error("[parseReplicateOutput] Data is undefined or not an object after parsing");
+    return result;
   }
 
   // Helper function to fetch JSON from URL if needed
   async function getDataFromUrlOrDirect(value: any): Promise<any> {
     if (typeof value === 'string' && value.startsWith('http')) {
       console.log(`[parseReplicateOutput] Fetching data from URL: ${value}`);
-      const response = await fetch(value);
-      return await response.json();
+      try {
+        const response = await fetch(value);
+        return await response.json();
+      } catch (e) {
+        console.error(`[parseReplicateOutput] Failed to fetch from URL:`, e);
+        return undefined;
+      }
     }
     return value;
   }
+
+  // Log what fields are available in data
+  console.log("[parseReplicateOutput] Available data fields:", {
+    hasBpm: 'bpm' in data,
+    hasBeats: 'beats' in data,
+    hasDownbeats: 'downbeats' in data,
+    bpmType: typeof data.bpm,
+    beatsType: typeof data.beats,
+    downbeatsType: typeof data.downbeats,
+  });
 
   // Extract BPM (may be URL or direct value)
   const bpmData = await getDataFromUrlOrDirect(data.bpm);
@@ -126,16 +169,28 @@ async function parseReplicateOutput(output: unknown): Promise<{
 
   // Extract beats array (may be URL or direct array)
   let beats: number[] = [];
-  const beatsData = await getDataFromUrlOrDirect(data.beats);
-  if (Array.isArray(beatsData)) {
-    beats = beatsData.filter((b) => typeof b === "number");
+  if (data.beats !== undefined) {
+    const beatsData = await getDataFromUrlOrDirect(data.beats);
+    if (Array.isArray(beatsData)) {
+      beats = beatsData.filter((b) => typeof b === "number");
+    } else {
+      console.warn("[parseReplicateOutput] beats data is not an array:", typeof beatsData);
+    }
+  } else {
+    console.warn("[parseReplicateOutput] No beats field in data");
   }
 
   // Extract downbeats array (may be URL or direct array)
   let downbeats: number[] = [];
-  const downbeatsData = await getDataFromUrlOrDirect(data.downbeats);
-  if (Array.isArray(downbeatsData)) {
-    downbeats = downbeatsData.filter((d) => typeof d === "number");
+  if (data.downbeats !== undefined) {
+    const downbeatsData = await getDataFromUrlOrDirect(data.downbeats);
+    if (Array.isArray(downbeatsData)) {
+      downbeats = downbeatsData.filter((d) => typeof d === "number");
+    } else {
+      console.warn("[parseReplicateOutput] downbeats data is not an array:", typeof downbeatsData);
+    }
+  } else {
+    console.warn("[parseReplicateOutput] No downbeats field in data");
   }
 
   console.log(`[parseReplicateOutput] Extracted ${beats.length} beats, ${downbeats.length} downbeats`);

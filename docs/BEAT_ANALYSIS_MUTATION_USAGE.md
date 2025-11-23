@@ -118,7 +118,39 @@ async function triggerAnalysis(assetId: string) {
 
 ## Monitoring Analysis Progress
 
-Poll the asset to check status:
+### Option 1: Using getAnalysisStatus Query (Recommended)
+
+```typescript
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+
+function AnalysisStatus({ assetId }: { assetId: Id<"audioAssets"> }) {
+  const status = useQuery(api.beatAnalysis.getAnalysisStatus, { assetId });
+
+  if (!status) return <div>Loading...</div>;
+
+  switch (status.status) {
+    case "not_analyzed":
+      return <div>Not analyzed</div>;
+    case "analyzing":
+      return <div>Analyzing... (30-60 seconds)</div>;
+    case "completed":
+      return (
+        <div>
+          Complete! {status.beatCount} beats detected
+          {status.bpm && ` at ${status.bpm} BPM`}
+          ({status.analysisMethod})
+        </div>
+      );
+    case "failed":
+      return <div>Failed: {status.error}</div>;
+    default:
+      return <div>Unknown status</div>;
+  }
+}
+```
+
+### Option 2: Query Asset Directly
 
 ```typescript
 import { useQuery } from "convex/react";
