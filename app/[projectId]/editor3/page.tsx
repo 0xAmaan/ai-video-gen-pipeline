@@ -76,8 +76,8 @@ export default function Editor3Page() {
       name: `Clip ${selectedClip._id}`,
       type: "video",
       duration: selectedClip.duration ?? 10,
-      width: 1920,
-      height: 1080,
+      width: selectedClip.width ?? 1920,
+      height: selectedClip.height ?? 1080,
       fps: 30,
       url: videoUrl,
     };
@@ -91,8 +91,8 @@ export default function Editor3Page() {
     const sequence: Sequence = {
       id: "preview-sequence",
       name: "Preview",
-      width: 1920,
-      height: 1080,
+      width: asset.width,
+      height: asset.height,
       fps: 30,
       sampleRate: 48000,
       duration: asset.duration,
@@ -156,6 +156,36 @@ export default function Editor3Page() {
         console.warn('Failed to generate thumbnail for clip:', selectedClipId, error);
       });
   }, [selectedClipId, selectedSequence, mediaAssets, mediaBunnyManager]);
+
+  // Extract actual video dimensions
+  useEffect(() => {
+    if (!selectedClipId || !selectedSequence) return;
+
+    const asset = mediaAssets[selectedClipId];
+    if (!asset || (asset.width !== 1920 && asset.width !== undefined && asset.height !== 1080 && asset.height !== undefined)) return; // Skip if already has real dimensions
+
+    console.log('Extracting video dimensions for clip:', selectedClipId);
+
+    // Create temporary VideoLoader to get dimensions
+    import('@/lib/editor/playback/video-loader').then(({ VideoLoader }) => {
+      const loader = new VideoLoader(asset, { cacheSize: 10 });
+
+      loader.getVideoDimensions()
+        .then((dimensions) => {
+          console.log('Extracted dimensions:', dimensions);
+          setMediaAssets((prev) => ({
+            ...prev,
+            [asset.id]: { ...asset, ...dimensions },
+          }));
+        })
+        .catch((error) => {
+          console.warn('Failed to extract video dimensions:', error);
+        })
+        .finally(() => {
+          loader.dispose();
+        });
+    });
+  }, [selectedClipId, selectedSequence, mediaAssets]);
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();

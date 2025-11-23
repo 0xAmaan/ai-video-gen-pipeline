@@ -83,44 +83,54 @@ export class VideoLoader {
     this.reconfigureDecoder();
   }
 
+  async getVideoDimensions(): Promise<{ width: number; height: number }> {
+    await this.init();
+
+    // Decode first frame to get dimensions
+    const firstFrame = await this.getFrameAt(0);
+    if (!firstFrame) {
+      throw new Error("Could not decode first frame to get dimensions");
+    }
+
+    const dimensions = {
+      width: firstFrame.displayWidth,
+      height: firstFrame.displayHeight,
+    };
+
+    firstFrame.close();
+    return dimensions;
+  }
+
   async getFrameAt(timeSeconds: number): Promise<VideoFrame | null> {
     await this.init();
     const cacheKey = this.keyFor(timeSeconds);
+
+    // Check exact cache hit first
     const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached.clone();
     }
 
-    // If we don't have an exact match, try to use the nearest decoded frame.
-    // WebCodecs frame timestamps rarely line up exactly with arbitrary
-    // playback times, so relying only on exact millisecond-aligned keys will
-    // frequently miss and cause black frames.
-    const nearestBeforeDecode = this.cache.findNearest(timeSeconds);
-    if (nearestBeforeDecode) {
-      console.log(
-        `[VideoLoader] Using nearest cached frame for ${timeSeconds.toFixed(
-          3,
-        )}s (pre-decode)`,
-      );
-      return nearestBeforeDecode.clone();
+    // Decide if we need to decode more frames
+    const shouldDecode = this.shouldDecodeAround(timeSeconds);
+
+    if (shouldDecode) {
+      await this.decodeAround(timeSeconds);
     }
 
-    await this.decodeAround(timeSeconds);
-    // After decoding around the target time, prefer an exact key if present,
-    // otherwise fall back to the nearest available frame.
+    // After potential decode, try exact match again
     const decodedExact = this.cache.get(cacheKey);
     if (decodedExact) {
       return decodedExact.clone();
     }
 
-    const nearestAfterDecode = this.cache.findNearest(timeSeconds);
-    if (nearestAfterDecode) {
+    // Fall back to nearest available frame
+    const nearest = this.cache.findNearest(timeSeconds);
+    if (nearest) {
       console.log(
-        `[VideoLoader] Using nearest decoded frame for ${timeSeconds.toFixed(
-          3,
-        )}s (post-decode)`,
+        `[VideoLoader] Using nearest frame for ${timeSeconds.toFixed(3)}s`,
       );
-      return nearestAfterDecode.clone();
+      return nearest.clone();
     }
 
     return null;
@@ -184,6 +194,22 @@ export class VideoLoader {
     this.cache.clear();
     this.decoder?.close();
     this.input?.dispose();
+  }
+
+  private shouldDecodeAround(timeSeconds: number): boolean {
+    // If cache is empty, definitely need to decode
+    if (this.cache.size() === 0) return true;
+
+    // If time is far from last anchor, need to decode new window
+    const distanceFromAnchor = Math.abs(timeSeconds - this.lastAnchor);
+    if (distanceFromAnchor > this.lookahead * 0.5) {
+      console.log(
+        `[VideoLoader] Time ${timeSeconds.toFixed(3)}s is ${distanceFromAnchor.toFixed(3)}s from anchor ${this.lastAnchor.toFixed(3)}s, re-decoding`,
+      );
+      return true;
+    }
+
+    return false;
   }
 
   private async decodeAround(timeSeconds: number) {

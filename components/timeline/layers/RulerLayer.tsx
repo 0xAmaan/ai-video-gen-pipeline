@@ -29,14 +29,17 @@ export const RulerLayer = ({
   const markers: Array<{ time: number; x: number; isMajor: boolean }> = []
   const subMarkers: Array<{ time: number; x: number }> = []
 
+  // Calculate max time from timeline width to fill entire ruler
+  const maxTime = timelineWidth / pixelsPerSecond
+
   // Generate major time markers (with labels)
-  for (let time = 0; time <= totalDuration + interval; time += interval) {
+  for (let time = 0; time <= maxTime; time += interval) {
     const x = time * pixelsPerSecond
     markers.push({ time, x, isMajor: true })
   }
 
   // Generate sub-interval tick marks (between major markers)
-  for (let time = subInterval; time <= totalDuration; time += subInterval) {
+  for (let time = subInterval; time <= maxTime; time += subInterval) {
     // Skip if this is a major interval (already has a label)
     if (time % interval === 0) continue
 
@@ -59,7 +62,7 @@ export const RulerLayer = ({
       {subMarkers.map(({ time, x }) => (
         <Line
           key={`tick-${time}`}
-          points={[x, TIMELINE_LAYOUT.rulerHeight - 8, x, TIMELINE_LAYOUT.rulerHeight]}
+          points={[x, 0, x, 8]}
           stroke={TIMELINE_THEME.textMuted}
           strokeWidth={1}
           listening={false}
@@ -89,13 +92,12 @@ export const RulerLayer = ({
  */
 const Ruler = ({ time, x, isMajor }: { time: number; x: number; isMajor: boolean }) => {
   const tickHeight = isMajor ? 20 : 10
-  const tickY = TIMELINE_LAYOUT.rulerHeight - tickHeight
 
   return (
     <>
       {/* Tick line */}
       <Line
-        points={[x, tickY, x, TIMELINE_LAYOUT.rulerHeight]}
+        points={[x, 0, x, tickHeight]}
         stroke={isMajor ? TIMELINE_THEME.textSecondary : TIMELINE_THEME.textMuted}
         strokeWidth={1}
       />

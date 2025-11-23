@@ -199,9 +199,9 @@ export interface SelectionBoxState {
  */
 export const TIMELINE_THEME = {
   // Backgrounds
-  background: "#1a1a1a",
-  trackAltRow: "#222222",
-  ruler: "#181818",
+  background: "#18181b", // zinc-900
+  trackAltRow: "#27272a", // zinc-800
+  ruler: "#0a0a0a",
 
   // Clips
   clip: "#3a3a3a",
@@ -235,6 +235,7 @@ export const TIMELINE_THEME = {
 export const TIMELINE_LAYOUT = {
   // Ruler
   rulerHeight: 32,
+  tracksTopMargin: 40, // Vertical spacing below ruler
 
   // Tracks
   trackHeight: 80,

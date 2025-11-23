@@ -17,10 +17,17 @@ interface TracksLayerProps {
 export const TracksLayer = ({ sequence, timelineWidth, viewportHeight }: TracksLayerProps) => {
   const tracks = sequence.tracks || []
 
+  // Calculate total height of all tracks
+  const totalTracksHeight = tracks.length * TIMELINE_LAYOUT.trackHeight
+
+  // Calculate vertical offset to center tracks in remaining space below ruler
+  const availableHeight = viewportHeight - TIMELINE_LAYOUT.rulerHeight
+  const centeredOffset = (availableHeight - totalTracksHeight) / 2
+
   return (
     <Layer>
       {tracks.map((track, index) => {
-        const trackY = TIMELINE_LAYOUT.rulerHeight + index * TIMELINE_LAYOUT.trackHeight
+        const trackY = TIMELINE_LAYOUT.rulerHeight + Math.max(0, centeredOffset) + index * TIMELINE_LAYOUT.trackHeight
         const isAlternate = index % 2 === 1
 
         return (

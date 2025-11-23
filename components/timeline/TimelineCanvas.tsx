@@ -152,18 +152,21 @@ export const TimelineCanvas = ({
   // Calculate total duration from sequence
   const totalDuration = calculateTotalDuration(sequence)
 
+  // Ensure timeline width is at least the viewport width
+  const effectiveTimelineWidth = Math.max(dimensions.width, timelineWidth)
+
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full overflow-auto bg-[#1a1a1a]"
+      className="relative w-full h-full overflow-auto bg-zinc-950"
       style={{
         scrollbarGutter: 'stable',
       }}
     >
       {/* Wrapper div to enable horizontal scrolling */}
-      <div style={{ width: timelineWidth, minHeight: '100%' }}>
+      <div style={{ width: effectiveTimelineWidth, minHeight: '100%' }}>
         <Stage
-          width={Math.max(dimensions.width, timelineWidth)}
+          width={effectiveTimelineWidth}
           height={dimensions.height}
           onClick={handleStageClick}
           onMouseDown={handleStageMouseDown}
@@ -174,7 +177,7 @@ export const TimelineCanvas = ({
           {/* Layer order (bottom to top) */}
           <TracksLayer
             sequence={sequence}
-            timelineWidth={timelineWidth}
+            timelineWidth={effectiveTimelineWidth}
             viewportHeight={dimensions.height}
           />
 
@@ -183,12 +186,13 @@ export const TimelineCanvas = ({
             mediaAssets={mediaAssets}
             pixelsPerSecond={pixelsPerSecond}
             selectedClipIds={selectedClipIds}
+            viewportHeight={dimensions.height}
           />
 
           <RulerLayer
             zoomLevel={zoomLevel}
             pixelsPerSecond={pixelsPerSecond}
-            timelineWidth={timelineWidth}
+            timelineWidth={effectiveTimelineWidth}
             totalDuration={totalDuration}
             stageHeight={dimensions.height}
           />
