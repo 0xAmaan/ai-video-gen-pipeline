@@ -55,6 +55,9 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const thumbnailInflight = useRef<Set<string>>(new Set());
   const thumbnailsCompletedRef = useRef<Set<string>>(new Set());
   const webGpuFailed = useRef(false);
+  
+  // Track previous analysis status for reactive notifications
+  const prevAnalysisStatusRef = useRef<string | undefined>(undefined);
 
   // Automatically sync local project to Convex and get Convex project ID
   const { isAuthenticated } = useConvexAuth();
@@ -63,6 +66,57 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   // Convex mutations for asset management
   const createConvexAsset = useMutation(api.editorAssets.createAsset);
   const analyzeBeatMutation = useMutation(api.editorAssets.analyzeBeat);
+  
+  // Get the currently selected clip's asset ID for beat analysis subscription
+  const selectedClipAssetId = useMemo(() => {
+    if (selection.clipIds.length !== 1 || !project) return null;
+    
+    const clipId = selection.clipIds[0];
+    for (const sequence of project.sequences) {
+      for (const track of sequence.tracks) {
+        const clip = track.clips.find(c => c.id === clipId);
+        if (clip) {
+          const asset = project.mediaAssets[clip.mediaId];
+          return asset?.convexAssetId ?? null;
+        }
+      }
+    }
+    return null;
+  }, [selection.clipIds, project]);
+  
+  // Subscribe to beat analysis status for selected clip's asset
+  const beatAnalysisStatus = useQuery(
+    api.editorAssets.getAssetAnalysisStatus,
+    selectedClipAssetId ? { assetId: selectedClipAssetId } : "skip"
+  );
+  
+  // Show reactive toast notifications when analysis status changes
+  useEffect(() => {
+    if (!beatAnalysisStatus) {
+      prevAnalysisStatusRef.current = undefined;
+      return;
+    }
+    
+    const currentStatus = beatAnalysisStatus.status;
+    const prevStatus = prevAnalysisStatusRef.current;
+    
+    // Only show toast if status actually changed (not on initial mount)
+    if (prevStatus && prevStatus !== currentStatus) {
+      if (currentStatus === 'completed') {
+        const beatCount = beatAnalysisStatus.beatCount;
+        const bpm = beatAnalysisStatus.bpm;
+        toast.success(
+          `Beat analysis complete! ${beatCount} beat${beatCount !== 1 ? 's' : ''} detected` +
+          (bpm ? ` at ${Math.round(bpm)} BPM` : '')
+        );
+      } else if (currentStatus === 'failed') {
+        const errorMsg = beatAnalysisStatus.error || 'Unknown error';
+        toast.error(`Beat analysis failed: ${errorMsg}`);
+      }
+    }
+    
+    prevAnalysisStatusRef.current = currentStatus;
+  }, [beatAnalysisStatus]);
 
   // STABILITY FIX: Use WebGL in legacy mode; allow Twick mode to use WebGPU when available.
   const forceWebGL = timelineMode === "legacy";
@@ -516,7 +570,11 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
                     {/* Beat Analysis Section */}
                     {selection.clipIds.length === 1 && (() => {
                       const clipId = selection.clipIds[0];
-                      if (!project) return null;
+                      console.log('[Properties Panel] Clip ID:', clipId);
+                      if (!project) {
+                        console.log('[Properties Panel] No project');
+                        return null;
+                      }
                       
                       // Find the clip and its asset
                       let clip = null;
@@ -531,21 +589,44 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
                         if (clip) break;
                       }
                       
-                      if (!clip) return null;
+                      if (!clip) {
+                        console.log('[Properties Panel] Clip not found with ID:', clipId);
+                        return null;
+                      }
+                      console.log('[Properties Panel] Found clip:', clip.id, 'mediaId:', clip.mediaId);
                       const asset = project.mediaAssets[clip.mediaId];
-                      if (!asset || (asset.type !== 'audio' && asset.type !== 'video')) return null;
+                      if (!asset) {
+                        console.log('[Properties Panel] Asset not found with mediaId:', clip.mediaId);
+                        return null;
+                      }
+                      console.log('[Properties Panel] Found asset:', asset.id, 'type:', asset.type, 'convexAssetId:', asset.convexAssetId);
+                      if (asset.type !== 'audio' && asset.type !== 'video') {
+                        console.log('[Properties Panel] Asset is not audio/video:', asset.type);
+                        return null;
+                      }
                       
                       const beatStatus = getClipBeatAnalysisStatus(project, clipId);
                       const hasBeats = beatStatus?.hasBeats ?? false;
+                      const isAnalyzing = beatAnalysisStatus?.status === 'analyzing';
                       
                       // Only show if asset has convexAssetId (synced to Convex)
-                      if (!asset.convexAssetId) return null;
+                      if (!asset.convexAssetId) {
+                        console.log('[Properties Panel] Asset not synced to Convex (no convexAssetId)');
+                        return null;
+                      }
+                      console.log('[Properties Panel] Rendering beat analysis UI for asset:', asset.convexAssetId);
                       
                       return (
                         <div className="mb-4 p-3 rounded-md border bg-card">
                           <div className="flex items-center gap-2 mb-2">
-                            <Activity className={`h-4 w-4 ${hasBeats ? 'text-green-600' : 'text-muted-foreground'}`} />
-                            <span className="font-medium text-sm">Beat Analysis</span>
+                            <Activity className={`h-4 w-4 ${
+                              isAnalyzing ? 'text-blue-600 animate-pulse' :
+                              hasBeats ? 'text-green-600' :
+                              'text-muted-foreground'
+                            }`} />
+                            <span className="font-medium text-sm">
+                              {isAnalyzing ? 'Analyzing Beats...' : 'Beat Analysis'}
+                            </span>
                           </div>
                           
                           {hasBeats ? (
@@ -570,17 +651,18 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
                                 size="sm"
                                 variant="ghost"
                                 className="w-full text-xs"
+                                disabled={isAnalyzing}
                                 onClick={async () => {
                                   try {
                                     await analyzeBeatMutation({ assetId: asset.convexAssetId! });
-                                    toast.success('Beat analysis started!');
+                                    toast.info('Re-analyzing beats...');
                                   } catch (error) {
                                     console.error('Beat analysis failed:', error);
                                     toast.error(error instanceof Error ? error.message : 'Failed to analyze beats');
                                   }
                                 }}
                               >
-                                Re-analyze Beats
+                                {isAnalyzing ? 'Analyzing...' : 'Re-analyze Beats'}
                               </Button>
                             </>
                           ) : (
@@ -592,18 +674,19 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
                                 size="sm"
                                 variant="outline"
                                 className="w-full"
+                                disabled={isAnalyzing}
                                 onClick={async () => {
                                   try {
                                     await analyzeBeatMutation({ assetId: asset.convexAssetId! });
-                                    toast.success('Beat analysis started! This may take a moment...');
+                                    toast.info('Beat analysis started! This may take a moment...');
                                   } catch (error) {
                                     console.error('Beat analysis failed:', error);
                                     toast.error(error instanceof Error ? error.message : 'Failed to analyze beats');
                                   }
                                 }}
                               >
-                                <Activity className="mr-2 h-4 w-4" />
-                                Analyze Beats
+                                <Activity className={`mr-2 h-4 w-4 ${isAnalyzing ? 'animate-pulse' : ''}`} />
+                                {isAnalyzing ? 'Analyzing...' : 'Analyze Beats'}
                               </Button>
                             </>
                           )}

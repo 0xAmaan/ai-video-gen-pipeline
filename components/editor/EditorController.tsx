@@ -13,14 +13,16 @@ import { projectToTimelineJSON, timelineToProject } from "@/lib/editor/twick-ada
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { useSnapManager } from "@/lib/editor/hooks/useSnapManager";
 import { useSlipSlideMode, calculatePixelsPerSecond, getCursorForMode } from "@/lib/editor/hooks/useSlipSlideMode";
-import { isItemWithId } from "@/lib/editor/types/twick-integration";
+import { isItemWithId, isTrackElement, isTrack } from "@/lib/editor/types/twick-integration";
 import { BeatGridOverlay } from "./BeatGridOverlay";
 import { ThumbnailInjector } from "./ThumbnailInjector";
 import { EditingModeIndicator } from "./EditingModeIndicator";
 import { SlipSlideDragInterceptor } from "./SlipSlideDragInterceptor";
 import { TwickMultiSelectInterceptor } from "./TwickMultiSelectInterceptor";
+import { SelectionRectangle } from "./SelectionRectangle";
 import { SlipSlidePreviewOverlay } from "./SlipSlidePreviewOverlay";
 import { HistoryDebugPanel } from "./HistoryDebugPanel";
+import { ClipContextMenu } from "./ClipContextMenu";
 
 /**
  * EditorBridge Component
@@ -93,16 +95,22 @@ const EditorBridge = () => {
   const actions = useProjectStore((state) => state.actions);
   const selection = useProjectStore((state) => state.selection);
   const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
+  const clipboard = useProjectStore((state) => state.clipboard);
+  const currentTime = useProjectStore((state) => state.currentTime);
   const assets = project?.mediaAssets ?? {};
 
   // Beat grid support
-  const { beatMarkers } = useSnapManager();
+  const { beatMarkers, bpm } = useSnapManager();
   const [containerWidth, setContainerWidth] = useState(1200);
   const [containerHeight, setContainerHeight] = useState(600);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [detectedZoom, setDetectedZoom] = useState(1.5); // Twick's default zoom
   const containerRef = useRef<HTMLDivElement>(null);
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Context menu state
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Slip/slide editing mode support
   const {
@@ -157,19 +165,32 @@ const EditorBridge = () => {
    * 1. User clicks clip in Twick timeline
    * 2. Twick updates `selectedItem` in context
    * 3. This effect detects the change
-   * 4. Updates project store selection with clip ID
+   * 4. Updates project store selection with clip ID or track ID
    *
-   * Note: Both Track and TrackElement have IDs, so we use a type guard to validate.
+   * Important: We use type guards to distinguish between Track (container) and TrackElement (clip).
+   * Only TrackElement selections should populate clipIds for the Properties panel to work correctly.
    */
   useEffect(() => {
-    if (isItemWithId(selectedItem)) {
-      // We assume it's a clip/element if it has an ID. 
-      // Twick types distinguish Track vs TrackElement, but both have IDs.
-      // For now, we just select it. The properties panel will decide if it's valid.
-      console.log('[EditorController] Syncing selection to store:', selectedItem.id);
-      actions.setSelection({ clipIds: [selectedItem.id], trackIds: [] });
-    } else {
+    if (isTrackElement(selectedItem)) {
+      // This is a clip/element - add to clipIds
+      // Note: Cast to any to access protected properties for logging
+      const itemId = (selectedItem as any).id;
+      const startTime = (selectedItem as any).s ?? (selectedItem as any).startTime; // Twick uses 's' for start
+      console.log('[EditorController] Clip selected:', itemId, 'start:', startTime);
+      actions.setSelection({ clipIds: [itemId], trackIds: [] });
+    } else if (isTrack(selectedItem)) {
+      // This is a track (container) - add to trackIds
+      // Note: Cast to any to access private id property for logging
+      const trackId = (selectedItem as any).id;
+      console.log('[EditorController] Track selected:', trackId);
+      actions.setSelection({ clipIds: [], trackIds: [trackId] });
+    } else if (selectedItem === null) {
+      // Nothing selected - clear selection
       console.log('[EditorController] Clearing selection');
+      actions.setSelection({ clipIds: [], trackIds: [] });
+    } else {
+      // Unknown item type - log for debugging
+      console.warn('[EditorController] Unknown selected item type:', selectedItem);
       actions.setSelection({ clipIds: [], trackIds: [] });
     }
   }, [selectedItem, actions]);
@@ -249,6 +270,40 @@ const EditorBridge = () => {
         return;
       }
 
+    // Cmd+X (Mac) or Ctrl+X (Windows): Cut clips
+      if ((event.metaKey || event.ctrlKey) && event.key === 'x') {
+        event.preventDefault();
+        if (selection.clipIds.length > 0) {
+          console.log('[EditorController] Cut clips (Cmd+X):', selection.clipIds);
+          actions.cutClips(selection.clipIds);
+        }
+      }
+
+      // Cmd+C (Mac) or Ctrl+C (Windows): Copy clips
+      if ((event.metaKey || event.ctrlKey) && event.key === 'c') {
+        event.preventDefault();
+        if (selection.clipIds.length > 0) {
+          console.log('[EditorController] Copy clips (Cmd+C):', selection.clipIds);
+          actions.copyClips(selection.clipIds);
+        }
+      }
+
+      // Cmd+V (Mac) or Ctrl+V (Windows): Paste clips
+      if ((event.metaKey || event.ctrlKey) && event.key === 'v') {
+        event.preventDefault();
+        console.log('[EditorController] Paste clips (Cmd+V) at playhead:', currentTime);
+        actions.pasteClips(currentTime);
+      }
+
+      // Cmd+D (Mac) or Ctrl+D (Windows): Duplicate clips
+      if ((event.metaKey || event.ctrlKey) && event.key === 'd') {
+        event.preventDefault();
+        if (selection.clipIds.length > 0) {
+          console.log('[EditorController] Duplicate clips (Cmd+D):', selection.clipIds);
+          actions.duplicateClips(selection.clipIds);
+        }
+      }
+
       // Cmd+B (Mac) or Ctrl+B (Windows): Split clip at playhead
       if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
         event.preventDefault();
@@ -278,16 +333,22 @@ const EditorBridge = () => {
         event.preventDefault();
         if (selection.clipIds.length > 0) {
           console.log('[EditorController] Deleting clips:', selection.clipIds, 'Ripple:', rippleEditEnabled);
-          // Delete all selected clips
-          selection.clipIds.forEach((clipId) => {
-            if (rippleEditEnabled) {
-              actions.rippleDelete(clipId);
-            } else {
-              actions.deleteClip(clipId);
-            }
-          });
-          // Clear selection after deletion
-          actions.setSelection({ clipIds: [], trackIds: [] });
+          
+          // Use batch delete for multi-clip selection (atomic undo/redo)
+          if (selection.clipIds.length > 1 && !rippleEditEnabled) {
+            actions.deleteClips(selection.clipIds);
+          } else {
+            // For single clip or ripple delete, use existing commands
+            selection.clipIds.forEach((clipId) => {
+              if (rippleEditEnabled) {
+                actions.rippleDelete(clipId);
+              } else {
+                actions.deleteClip(clipId);
+              }
+            });
+            // Clear selection after deletion
+            actions.setSelection({ clipIds: [], trackIds: [] });
+          }
         } else {
           console.log('[EditorController] No clips selected for delete operation');
         }
@@ -314,7 +375,7 @@ const EditorBridge = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selection, rippleEditEnabled, actions]);
+    }, [selection, rippleEditEnabled, actions, currentTime]);
 
   // Expose Twick editor methods and project store actions to window for debugging and external access
   useEffect(() => {
@@ -618,8 +679,86 @@ const EditorBridge = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, [isSlipMode, isSlideMode]);
 
+  // Manual context menu handler (captures right-click before Twick can intercept)
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault(); // Prevent browser context menu
+    event.stopPropagation(); // Stop event from reaching other handlers
+    
+    console.log('[EditorController] Context menu triggered at:', event.clientX, event.clientY);
+    setContextMenuPosition({ x: event.clientX, y: event.clientY });
+    setContextMenuOpen(true);
+  };
+  
+  // Context menu handlers
+  const handleCut = () => {
+    setContextMenuOpen(false);
+    if (selection.clipIds.length > 0) {
+      console.log('[EditorController] Cut clips:', selection.clipIds);
+      actions.cutClips(selection.clipIds);
+    }
+  };
+
+  const handleCopy = () => {
+    setContextMenuOpen(false);
+    if (selection.clipIds.length > 0) {
+      console.log('[EditorController] Copy clips:', selection.clipIds);
+      actions.copyClips(selection.clipIds);
+    }
+  };
+
+  const handlePaste = () => {
+    setContextMenuOpen(false);
+    console.log('[EditorController] Paste clips at playhead:', currentTime);
+    actions.pasteClips(currentTime);
+  };
+
+  const handleDuplicate = () => {
+    setContextMenuOpen(false);
+    if (selection.clipIds.length > 0) {
+      console.log('[EditorController] Duplicate clips:', selection.clipIds);
+      actions.duplicateClips(selection.clipIds);
+    }
+  };
+
+  const handleSplitAtPlayhead = () => {
+    setContextMenuOpen(false);
+    const selectedClipId = selection.clipIds[0];
+    if (selectedClipId) {
+      console.log('[EditorController] Split clip at playhead (context menu):', selectedClipId);
+      actions.splitAtPlayhead(selectedClipId);
+    }
+  };
+
+  const handleDelete = () => {
+    setContextMenuOpen(false);
+    if (selection.clipIds.length > 0) {
+      console.log('[EditorController] Delete clips (context menu):', selection.clipIds, 'Ripple:', rippleEditEnabled);
+      
+      // Use batch delete for multi-clip selection (atomic undo/redo)
+      if (selection.clipIds.length > 1 && !rippleEditEnabled) {
+        actions.deleteClips(selection.clipIds);
+      } else {
+        // For single clip or ripple delete, use existing commands
+        selection.clipIds.forEach((clipId) => {
+          if (rippleEditEnabled) {
+            actions.rippleDelete(clipId);
+          } else {
+            actions.deleteClip(clipId);
+          }
+        });
+      }
+      // Clear selection after deletion
+      actions.setSelection({ clipIds: [], trackIds: [] });
+    }
+  };
+
   return (
-    <div ref={containerRef} id="twick-timeline-only" className="relative h-full w-full">
+    <div
+      ref={containerRef}
+      id="twick-timeline-only"
+      className="relative h-full w-full"
+      onContextMenu={handleContextMenu}
+    >
       {/* Timeline thumbnail injector - adds thumbnails to timeline elements via direct styling */}
       <ThumbnailInjector />
 
@@ -628,6 +767,9 @@ const EditorBridge = () => {
 
       {/* Multi-selection interceptor - adds Shift+Click and Cmd+Click multi-selection */}
       <TwickMultiSelectInterceptor />
+
+      {/* Selection rectangle - adds drag-to-select (marquee selection) */}
+      <SelectionRectangle />
 
       <VideoEditor
         editorConfig={{
@@ -638,15 +780,38 @@ const EditorBridge = () => {
           timelineTickConfigs: DEFAULT_TIMELINE_TICK_CONFIGS,
         }}
       />
+      
+      {/* Context menu - Controlled via manual onContextMenu handler */}
+      <ClipContextMenu
+        open={contextMenuOpen}
+        onOpenChange={setContextMenuOpen}
+        position={contextMenuPosition}
+        clipId={selection.clipIds[0] ?? ""}
+        selectedClipIds={selection.clipIds}
+        playheadTime={currentTime}
+        clipStart={0}
+        clipEnd={0}
+        hasClipboard={!!clipboard && clipboard.length > 0}
+        hasBeatAnalysis={false} // TODO: Implement beat analysis status check
+        isAnalyzing={false} // TODO: Implement analyzing status check
+        canAnalyze={selection.clipIds.length === 1} // Can only analyze single clips
+        onCut={handleCut}
+        onCopy={handleCopy}
+        onPaste={handlePaste}
+        onDuplicate={handleDuplicate}
+        onSplit={handleSplitAtPlayhead}
+        onDelete={handleDelete}
+      />
 
       {/* Beat Grid Overlay */}
-      {beatMarkers.length > 0 && (
+      {(beatMarkers.length > 0 || bpm) && (
         <BeatGridOverlay
           beatMarkers={beatMarkers}
           duration={duration}
           containerWidth={containerWidth}
           scrollLeft={scrollLeft}
           zoom={detectedZoom}
+          bpm={bpm ?? undefined}
         />
       )}
 

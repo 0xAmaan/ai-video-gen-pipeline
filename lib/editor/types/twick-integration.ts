@@ -187,6 +187,39 @@ export function isItemWithId(item: unknown): item is TwickItemWithId {
 }
 
 /**
+ * Type guard to check if an item is a Twick TrackElement (clip).
+ * TrackElements have properties like startTime, duration, and source that Tracks don't have.
+ * @param item - The item to check
+ * @returns True if the item is a TrackElement
+ */
+export function isTrackElement(item: unknown): item is TrackElement {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'id' in item &&
+    ('s' in item || 'startTime' in item) &&
+    ('e' in item || 'duration' in item) &&
+    (typeof (item as any).s === 'number' || typeof (item as any).startTime === 'number')
+  );
+}
+
+/**
+ * Type guard to check if an item is a Twick Track (container for clips).
+ * Tracks have properties like elements array and type property that TrackElements don't have.
+ * @param item - The item to check
+ * @returns True if the item is a Track
+ */
+export function isTrack(item: unknown): item is Track {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'id' in item &&
+    'elements' in item &&
+    Array.isArray((item as any).elements)
+  );
+}
+
+/**
  * Adapter functions for converting between Project Store and Twick formats.
  */
 export interface TwickAdapterFunctions {
