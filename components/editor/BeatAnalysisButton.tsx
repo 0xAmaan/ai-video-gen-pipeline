@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import type { Id } from "@/convex/_generated/dataModel";
 
 interface BeatAnalysisButtonProps {
-  assetId: Id<"assets">;
+  assetId: Id<"audioAssets">;
   disabled?: boolean;
 }
 
