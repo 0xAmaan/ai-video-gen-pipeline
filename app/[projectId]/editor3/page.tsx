@@ -311,10 +311,23 @@ export default function Editor3Page() {
     };
   }, [isDragging]);
 
-  // Keyboard shortcut handler for clip splitting (Cmd+B / Ctrl+B)
+  // Keyboard shortcuts (Cmd+B for split, Space for play/pause)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Cmd+B (Mac) or Ctrl+B (Windows/Linux)
+      // Ignore if user is typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Space for play/pause
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        setIsPlaying(!isPlaying);
+        return;
+      }
+
+      // Cmd+B (Mac) or Ctrl+B (Windows/Linux) for split
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const modifier = isMac ? e.metaKey : e.ctrlKey;
 
@@ -329,7 +342,7 @@ export default function Editor3Page() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleSplitClip]);
+  }, [handleSplitClip, isPlaying]);
 
   const sidebarButtons = [
     { id: 'media' as PanelType, icon: Image, label: 'Media' },
@@ -342,7 +355,7 @@ export default function Editor3Page() {
   return (
     <div className="h-screen w-full bg-black text-white relative">
       <div className="h-full grid" style={{
-        gridTemplateColumns: isPanelOpen ? "64px 320px 1fr" : "64px 0px 1fr",
+        gridTemplateColumns: isPanelOpen ? "64px 280px 1fr" : "64px 0px 1fr",
       }}>
         {/* Left Sidebar */}
         <aside className="bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-4 gap-2">
@@ -376,7 +389,7 @@ export default function Editor3Page() {
         {/* Content Panel */}
         <aside
           className="bg-zinc-900 border-r border-zinc-800 overflow-hidden transition-all duration-300"
-          style={{ width: isPanelOpen ? "320px" : "0px" }}
+          style={{ width: isPanelOpen ? "280px" : "0px" }}
         >
           {activePanel === 'media' && (
             <MediaLibraryPanel
@@ -565,8 +578,8 @@ export default function Editor3Page() {
         onClick={() => setIsPanelOpen(!isPanelOpen)}
         className="absolute top-1/2 -translate-y-1/2 z-50 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 flex items-center justify-center transition-all shadow-lg cursor-pointer"
         style={{
-          left: isPanelOpen ? "384px" : "64px", // 64px (sidebar) + 320px (panel) or just 64px
-          width: "24px",
+          left: isPanelOpen ? "344px" : "64px", // 64px (sidebar) + 280px (panel) or just 64px
+          width: "16px",
           height: "64px",
           borderTopRightRadius: "12px",
           borderBottomRightRadius: "12px",

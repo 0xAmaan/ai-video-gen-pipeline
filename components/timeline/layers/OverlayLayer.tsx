@@ -1,7 +1,7 @@
 /**
- * Overlay Layer - Playhead, scrubber, and snap guides
+ * Overlay Layer - Playhead and snap guides
  *
- * Phase 3: Playhead + scrubber preview
+ * Phase 3: Main playhead indicator
  */
 
 import { Layer, Line, Circle } from 'react-konva'
@@ -11,31 +11,17 @@ interface OverlayLayerProps {
   currentTime: number
   pixelsPerSecond: number
   viewportHeight: number
-  hoverTime?: number | null
-  showScrubber?: boolean
 }
 
 export const OverlayLayer = ({
   currentTime,
   pixelsPerSecond,
   viewportHeight,
-  hoverTime = null,
-  showScrubber = false,
 }: OverlayLayerProps) => {
   const playheadX = currentTime * pixelsPerSecond
-  const scrubberX = hoverTime !== null ? hoverTime * pixelsPerSecond : null
 
   return (
     <Layer listening={false}>
-      {/* Scrubber preview line (semi-transparent) */}
-      {showScrubber && scrubberX !== null && (
-        <Line
-          points={[scrubberX, 0, scrubberX, viewportHeight]}
-          stroke={TIMELINE_THEME.scrubber}
-          strokeWidth={1}
-        />
-      )}
-
       {/* Playhead line (CapCut-style red) */}
       <Line
         points={[playheadX, 0, playheadX, viewportHeight]}

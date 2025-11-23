@@ -31,6 +31,7 @@ export const VideoPlayer = ({
   const playbackControllerRef = useRef<PlaybackController | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [renderError, setRenderError] = useState<Error | null>(null);
+  const lastSeekTimeRef = useRef<number>(currentTime);
 
   /**
    * Initialize renderer and playback controller
@@ -96,17 +97,21 @@ export const VideoPlayer = ({
 
   /**
    * Handle currentTime changes (seeking/scrubbing)
-   * Only seek when NOT playing to avoid feedback loop with RAF updates
+   * Seek when user clicks timeline, even during playback
    */
   useEffect(() => {
     if (!isInitialized || !playbackControllerRef.current) return;
 
-    // Don't seek while playing - let PlaybackController manage time
-    // Only seek when user manually scrubs while paused
-    if (!isPlaying) {
+    // Check if this is a user-initiated seek (not from playback updates)
+    const timeDifference = Math.abs(currentTime - lastSeekTimeRef.current);
+    const SEEK_THRESHOLD = 0.1; // 100ms threshold to detect user seeks
+
+    // If time jumped significantly, it's a user seek - apply it
+    if (timeDifference > SEEK_THRESHOLD) {
       playbackControllerRef.current.seek(currentTime);
+      lastSeekTimeRef.current = currentTime;
     }
-  }, [currentTime, isInitialized, isPlaying]);
+  }, [currentTime, isInitialized]);
 
   /**
    * Handle play/pause changes

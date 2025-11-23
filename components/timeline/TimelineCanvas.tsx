@@ -44,7 +44,6 @@ export const TimelineCanvas = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [isDragging, setIsDragging] = useState(false)
-  const [hoverTime, setHoverTime] = useState<number | null>(null)
   const [snapGuidePosition, setSnapGuidePosition] = useState<number | null>(null)
   const [dropZone, setDropZone] = useState<DropZoneInfo | null>(null)
 
@@ -157,9 +156,6 @@ export const TimelineCanvas = ({
       const mouseX = pointerPosition.x + scrollX
       const time = Math.max(0, mouseX / pixelsPerSecond)
 
-      // Update hover time for scrubber preview
-      setHoverTime(time)
-
       // If dragging, seek to this position
       if (isDragging) {
         onSeek(time)
@@ -173,7 +169,6 @@ export const TimelineCanvas = ({
   }, [])
 
   const handleStageMouseLeave = useCallback(() => {
-    setHoverTime(null)
     setIsDragging(false)
   }, [])
 
@@ -243,8 +238,6 @@ export const TimelineCanvas = ({
             currentTime={currentTime}
             pixelsPerSecond={pixelsPerSecond}
             viewportHeight={dimensions.height}
-            hoverTime={hoverTime}
-            showScrubber={!isDragging}
           />
         </Stage>
       </div>
