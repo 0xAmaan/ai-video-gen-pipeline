@@ -18,6 +18,8 @@ import { BeatGridOverlay } from "./BeatGridOverlay";
 import { ThumbnailInjector } from "./ThumbnailInjector";
 import { EditingModeIndicator } from "./EditingModeIndicator";
 import { SlipSlideDragInterceptor } from "./SlipSlideDragInterceptor";
+import { TwickMultiSelectInterceptor } from "./TwickMultiSelectInterceptor";
+import { SlipSlidePreviewOverlay } from "./SlipSlidePreviewOverlay";
 
 /**
  * EditorBridge Component
@@ -93,6 +95,7 @@ const EditorBridge = () => {
   // Beat grid support
   const { beatMarkers } = useSnapManager();
   const [containerWidth, setContainerWidth] = useState(1200);
+  const [containerHeight, setContainerHeight] = useState(600);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [detectedZoom, setDetectedZoom] = useState(1.5); // Twick's default zoom
   const containerRef = useRef<HTMLDivElement>(null);
@@ -103,6 +106,7 @@ const EditorBridge = () => {
     mode: editingMode,
     isSlipMode,
     isSlideMode,
+    originalClip,
     previewClip,
     startSlipEdit,
     startSlideEdit,
@@ -245,19 +249,23 @@ const EditorBridge = () => {
         }
       }
 
-      // Delete key: Remove selected clip (with ripple edit if enabled)
+      // Delete key: Remove selected clip(s) (with ripple edit if enabled)
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
-        const selectedClipId = selection.clipIds[0];
-        if (selectedClipId) {
-          console.log('[EditorController] Deleting clip:', selectedClipId, 'Ripple:', rippleEditEnabled);
-          if (rippleEditEnabled) {
-            actions.rippleDelete(selectedClipId);
-          } else {
-            actions.deleteClip(selectedClipId);
-          }
+        if (selection.clipIds.length > 0) {
+          console.log('[EditorController] Deleting clips:', selection.clipIds, 'Ripple:', rippleEditEnabled);
+          // Delete all selected clips
+          selection.clipIds.forEach((clipId) => {
+            if (rippleEditEnabled) {
+              actions.rippleDelete(clipId);
+            } else {
+              actions.deleteClip(clipId);
+            }
+          });
+          // Clear selection after deletion
+          actions.setSelection({ clipIds: [], trackIds: [] });
         } else {
-          console.log('[EditorController] No clip selected for delete operation');
+          console.log('[EditorController] No clips selected for delete operation');
         }
       }
 
@@ -448,6 +456,7 @@ const EditorBridge = () => {
       const entry = entries[0];
       if (entry) {
         setContainerWidth(entry.contentRect.width);
+        setContainerHeight(entry.contentRect.height);
       }
     });
 
@@ -593,6 +602,9 @@ const EditorBridge = () => {
       {/* Slip/slide drag interceptor - intercepts drag events when Alt/Cmd+Alt is held */}
       <SlipSlideDragInterceptor />
 
+      {/* Multi-selection interceptor - adds Shift+Click and Cmd+Click multi-selection */}
+      <TwickMultiSelectInterceptor />
+
       <VideoEditor
         editorConfig={{
           videoProps: {
@@ -613,6 +625,19 @@ const EditorBridge = () => {
           zoom={detectedZoom}
         />
       )}
+
+      {/* Slip/Slide Preview Overlay - Real-time frame and position preview */}
+      <SlipSlidePreviewOverlay
+        mode={editingMode}
+        previewClip={previewClip}
+        originalClip={originalClip}
+        tracks={sequence?.tracks ?? []}
+        mediaAssets={assets}
+        zoom={detectedZoom}
+        scrollLeft={scrollLeft}
+        containerWidth={containerWidth}
+        containerHeight={containerHeight}
+      />
 
       {/* Editing Mode Indicator */}
       <EditingModeIndicator
