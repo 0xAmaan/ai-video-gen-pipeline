@@ -70,54 +70,19 @@ export const ClipsLayer = ({
           Math.max(TIMELINE_LAYOUT.tracksTopMargin, centeredOffset) +
           trackIndex * TIMELINE_LAYOUT.trackHeight
 
-        // Split clips into regular clips and dragged clip
-        const draggedClipId = dropZone?.draggedClipId
-        const regularClips = draggedClipId
-          ? track.clips.filter((c) => c.id !== draggedClipId)
-          : track.clips
-        const draggedClip = draggedClipId
-          ? track.clips.find((c) => c.id === draggedClipId)
-          : null
-
         return (
           <Group key={track.id}>
-            {/* Render regular clips (excluding dragged clip) */}
-            {regularClips.map((clip, clipIndex) => {
-              // Calculate the original clip index from ALL clips for gap offset
-              const originalClipIndex = track.clips.findIndex((c) => c.id === clip.id)
-              return (
-                <ClipRect
-                  key={clip.id}
-                  clip={clip}
-                  mediaAsset={mediaAssets[clip.mediaId]}
-                  trackY={trackY}
-                  trackId={track.id}
-                  allClips={track.clips}
-                  pixelsPerSecond={pixelsPerSecond}
-                  isSelected={selectedClipIds.includes(clip.id)}
-                  clipIndex={originalClipIndex}
-                  currentTime={currentTime}
-                  dropZone={dropZone}
-                  onClipSelect={onClipSelect}
-                  onClipMove={onClipMove}
-                  onSnapGuideShow={onSnapGuideShow}
-                  onDropZoneChange={onDropZoneChange}
-                />
-              )
-            })}
-
-            {/* Render dragged clip last with reduced opacity */}
-            {draggedClip && (
+            {track.clips.map((clip, clipIndex) => (
               <ClipRect
-                key={draggedClip.id}
-                clip={draggedClip}
-                mediaAsset={mediaAssets[draggedClip.mediaId]}
+                key={clip.id}
+                clip={clip}
+                mediaAsset={mediaAssets[clip.mediaId]}
                 trackY={trackY}
                 trackId={track.id}
                 allClips={track.clips}
                 pixelsPerSecond={pixelsPerSecond}
-                isSelected={selectedClipIds.includes(draggedClip.id)}
-                clipIndex={track.clips.findIndex((c) => c.id === draggedClip.id)}
+                isSelected={selectedClipIds.includes(clip.id)}
+                clipIndex={clipIndex}
                 currentTime={currentTime}
                 dropZone={dropZone}
                 onClipSelect={onClipSelect}
@@ -125,7 +90,7 @@ export const ClipsLayer = ({
                 onSnapGuideShow={onSnapGuideShow}
                 onDropZoneChange={onDropZoneChange}
               />
-            )}
+            ))}
           </Group>
         )
       })}
@@ -323,34 +288,53 @@ const ClipRect = ({
   // Check if this clip is being dragged
   const isBeingDragged = dropZone && dropZone.draggedClipId === clip.id
 
-  // Calculate position
+  // Calculate base position (cumulative layout, not time-based during drag)
   let x: number
-  if (isBeingDragged) {
-    // Dragged clip: Use Konva's drag position (will be controlled by drag handlers)
-    // Start at original position, Konva will handle the rest
-    const gapOffset = clipIndex * TIMELINE_LAYOUT.clipGap
-    x = clip.start * pixelsPerSecond + gapOffset
-  } else if (dropZone) {
-    // Non-dragged clip during a drag operation:
-    // Calculate position WITHOUT the dragged clip (it's filtered out)
-    const sortedClips = allClips
-      .filter((c) => c.id !== dropZone.draggedClipId)
-      .sort((a, b) => a.start - b.start)
 
-    const currentClipIndex = sortedClips.findIndex((c) => c.id === clip.id)
-    if (currentClipIndex === -1) return null // Safety check
+  if (dropZone) {
+    // During drag: Layout clips WITHOUT the dragged clip, with drop zone as placeholder
+    const draggedClip = allClips.find((c) => c.id === dropZone.draggedClipId)
+    if (!draggedClip) {
+      x = clip.start * pixelsPerSecond + clipIndex * TIMELINE_LAYOUT.clipGap
+    } else {
+      // Get clips without the dragged one, sorted by start time
+      const sortedWithoutDragged = allClips
+        .filter((c) => c.id !== dropZone.draggedClipId)
+        .sort((a, b) => a.start - b.start)
 
-    // Position based on sorted order WITHOUT dragged clip
-    const gapOffset = currentClipIndex * TIMELINE_LAYOUT.clipGap
-    let baseX = clip.start * pixelsPerSecond + gapOffset
+      const currentClipIndex = sortedWithoutDragged.findIndex((c) => c.id === clip.id)
 
-    // Make room for drop zone: shift clips at/after drop position to the right
-    const dropZoneOffset = currentClipIndex >= dropZone.slotIndex ? dropZone.width : 0
-    x = baseX + dropZoneOffset
+      if (!isBeingDragged && currentClipIndex !== -1) {
+        // Calculate cumulative position: sum of all widths before this clip
+        let cumulativeX = 0
+
+        for (let i = 0; i < sortedWithoutDragged.length; i++) {
+          if (i === dropZone.slotIndex) {
+            // Add drop zone width at its slot position
+            cumulativeX += dropZone.width + TIMELINE_LAYOUT.clipGap
+          }
+
+          if (i === currentClipIndex) {
+            // This is our clip's position
+            x = cumulativeX
+            break
+          }
+
+          // Add this clip's width
+          cumulativeX += sortedWithoutDragged[i].duration * pixelsPerSecond + TIMELINE_LAYOUT.clipGap
+        }
+
+        // Handle case where drop zone is after all clips
+        if (currentClipIndex >= 0 && x === undefined) {
+          x = cumulativeX
+        }
+      } else {
+        x = clip.start * pixelsPerSecond + clipIndex * TIMELINE_LAYOUT.clipGap
+      }
+    }
   } else {
-    // Normal positioning (no drag operation)
-    const gapOffset = clipIndex * TIMELINE_LAYOUT.clipGap
-    x = clip.start * pixelsPerSecond + gapOffset
+    // No drag: normal time-based positioning
+    x = clip.start * pixelsPerSecond + clipIndex * TIMELINE_LAYOUT.clipGap
   }
 
   // Get clip color based on type and state
@@ -379,12 +363,17 @@ const ClipRect = ({
     }
   }
 
+  // Hide the dragged clip's static position, only show the dragged version
+  if (isBeingDragged && !isDragging) {
+    return null
+  }
+
   return (
     <Group
       x={x}
       y={y}
       draggable={true}
-      opacity={isBeingDragged ? 0.5 : 1.0}
+      opacity={isBeingDragged ? 0.6 : 1.0}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}

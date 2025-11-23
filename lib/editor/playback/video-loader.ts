@@ -37,7 +37,7 @@ export class VideoLoader {
     private readonly asset: MediaAssetMeta,
     options?: VideoLoaderOptions,
   ) {
-    this.lookahead = options?.lookaheadSeconds ?? 0.75;
+    this.lookahead = options?.lookaheadSeconds ?? 3.0; // Increased from 0.75s to 3.0s
     this.cache = new FrameCache<VideoFrame>(options?.cacheSize ?? 48);
     this.requestInit = options?.requestInit;
   }
@@ -115,7 +115,7 @@ export class VideoLoader {
     // Decide if we need to decode more frames
     const shouldDecode = this.shouldDecodeAround(timeSeconds);
 
-    if (shouldDecode) {
+    if (shouldDecode && !this.decodeInProgress) {
       await this.decodeAround(timeSeconds);
     }
 
@@ -128,9 +128,6 @@ export class VideoLoader {
     // Fall back to nearest available frame
     const nearest = this.cache.findNearest(timeSeconds);
     if (nearest) {
-      console.log(
-        `[VideoLoader] Using nearest frame for ${timeSeconds.toFixed(3)}s`,
-      );
       return nearest.clone();
     }
 
@@ -202,8 +199,9 @@ export class VideoLoader {
     if (this.cache.size() === 0) return true;
 
     // If time is far from last anchor, need to decode new window
+    // Using 0.3 (30%) instead of 0.5 (50%) for more preemptive decoding
     const distanceFromAnchor = Math.abs(timeSeconds - this.lastAnchor);
-    if (distanceFromAnchor > this.lookahead * 0.5) {
+    if (distanceFromAnchor > this.lookahead * 0.3) {
       console.log(
         `[VideoLoader] Time ${timeSeconds.toFixed(3)}s is ${distanceFromAnchor.toFixed(3)}s from anchor ${this.lastAnchor.toFixed(3)}s, re-decoding`,
       );
@@ -216,12 +214,8 @@ export class VideoLoader {
   private async decodeAround(timeSeconds: number) {
     if (!this.decoder || !this.sink) return;
 
-    // Prevent concurrent decode operations - wait if one is in progress
+    // Don't skip concurrent requests - they're queued in getFrameAt()
     if (this.decodeInProgress) {
-      console.log(
-        "[VideoLoader] Decode already in progress, skipping concurrent request at",
-        timeSeconds,
-      );
       return;
     }
 

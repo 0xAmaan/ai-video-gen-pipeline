@@ -20,6 +20,13 @@ import { VideoLoader } from "../playback/video-loader";
 import { renderTransition } from "../transitions/renderer";
 import { getEasingFunction, type TransitionType } from "../transitions/presets";
 
+type AspectRatioCache = {
+  drawWidth: number;
+  drawHeight: number;
+  offsetX: number;
+  offsetY: number;
+};
+
 export class FrameRenderer {
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
@@ -28,10 +35,17 @@ export class FrameRenderer {
   private mediaAssets: Map<string, MediaAssetMeta> = new Map();
   private isDetaching: boolean = false;
 
+  // Performance optimizations
+  private aspectRatioCache: Map<string, AspectRatioCache> = new Map();
+  private transitionCanvasFrom: HTMLCanvasElement | null = null;
+  private transitionCanvasTo: HTMLCanvasElement | null = null;
+  private transitionCtxFrom: CanvasRenderingContext2D | null = null;
+  private transitionCtxTo: CanvasRenderingContext2D | null = null;
+
   constructor(config: FrameRendererConfig) {
     this.config = {
       enableCache: true,
-      maxCacheSize: 200,
+      maxCacheSize: 150, // Increased from 48/200 for better 60fps coverage
       useWebGL: false,
       ...config,
     };
@@ -59,6 +73,9 @@ export class FrameRenderer {
     // Set canvas size
     canvas.width = this.config.width;
     canvas.height = this.config.height;
+
+    // Initialize persistent transition canvases
+    this.initTransitionCanvases();
   }
 
   /**
@@ -74,6 +91,15 @@ export class FrameRenderer {
     }
     this.videoLoaders.clear();
     this.mediaAssets.clear();
+
+    // Clear caches
+    this.aspectRatioCache.clear();
+
+    // Clean up transition canvases
+    this.transitionCanvasFrom = null;
+    this.transitionCanvasTo = null;
+    this.transitionCtxFrom = null;
+    this.transitionCtxTo = null;
 
     this.canvas = null;
     this.ctx = null;
@@ -95,15 +121,13 @@ export class FrameRenderer {
       throw new Error("Renderer not attached to canvas");
     }
 
-    // Clear canvas
-    this.ctx.fillStyle = "#000000";
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
     // Find active clips at current time
     const activeClips = this.findActiveClips(sequence, time);
 
     if (activeClips.length === 0) {
-      // No clips to render - canvas stays black
+      // Clear canvas only when no clips to render
+      this.ctx.fillStyle = "#000000";
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       return;
     }
 
@@ -112,7 +136,7 @@ export class FrameRenderer {
     if (videoTrack) {
       const transitionResult = this.findTransition(videoTrack, time);
       if (transitionResult) {
-        // Render transition between two clips
+        // Render transition between two clips (will clear internally)
         await this.renderTransitionBetweenClips(
           transitionResult.fromClip,
           transitionResult.toClip,
@@ -126,8 +150,19 @@ export class FrameRenderer {
     }
 
     // No transition - render each active clip normally (layered by track order)
+    // Only clear canvas if we successfully get frames
+    let hasFrames = false;
     for (const { clip, localTime } of activeClips) {
-      await this.renderClip(clip, localTime);
+      const rendered = await this.renderClip(clip, localTime);
+      if (rendered) {
+        hasFrames = true;
+      }
+    }
+
+    // If no frames were rendered, clear to black
+    if (!hasFrames && this.ctx && this.canvas) {
+      this.ctx.fillStyle = "#000000";
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
   }
 
@@ -170,20 +205,21 @@ export class FrameRenderer {
 
   /**
    * Render a single clip to the canvas
+   * Returns true if frame was successfully rendered, false otherwise
    */
-  private async renderClip(clip: Clip, localTime: number): Promise<void> {
-    if (this.isDetaching || !this.ctx || !this.canvas) return;
+  private async renderClip(clip: Clip, localTime: number): Promise<boolean> {
+    if (this.isDetaching || !this.ctx || !this.canvas) return false;
 
     // Get or create video loader for this clip's media
     const loader = await this.getVideoLoader(clip.mediaId);
     if (this.isDetaching || !loader) {
-      return;
+      return false;
     }
 
     // Load the frame at the specified local time
     const frame = await loader.getFrameAt(localTime);
     if (this.isDetaching || !frame) {
-      return;
+      return false;
     }
 
     try {
@@ -192,14 +228,28 @@ export class FrameRenderer {
 
       // Guard check before drawing (context can be lost during async operations)
       if (this.isDetaching || !this.ctx || !this.canvas) {
-        return;
+        return false;
       }
 
-      // Draw frame to canvas
-      this.ctx.drawImage(frame, 0, 0, this.canvas.width, this.canvas.height);
+      // Get cached aspect ratio calculations or compute new ones
+      const dimensions = this.getAspectRatioDimensions(
+        clip.mediaId,
+        frame.displayWidth,
+        frame.displayHeight,
+      );
+
+      // Draw frame to canvas with proper aspect ratio
+      this.ctx.drawImage(
+        frame,
+        dimensions.offsetX,
+        dimensions.offsetY,
+        dimensions.drawWidth,
+        dimensions.drawHeight,
+      );
 
       // Reset effects
       this.resetEffects();
+      return true; // Successfully rendered
     } finally {
       // Close the frame to free memory
       frame.close();
@@ -337,7 +387,15 @@ export class FrameRenderer {
     transition: TransitionSpec,
     progress: number,
   ): Promise<void> {
-    if (!this.ctx || !this.canvas) return;
+    if (
+      !this.ctx ||
+      !this.canvas ||
+      !this.transitionCanvasFrom ||
+      !this.transitionCanvasTo ||
+      !this.transitionCtxFrom ||
+      !this.transitionCtxTo
+    )
+      return;
 
     // Load frames from both clips
     const fromLoader = await this.getVideoLoader(fromClip.mediaId);
@@ -359,13 +417,27 @@ export class FrameRenderer {
     }
 
     try {
+      // Render frames to persistent canvases with proper aspect ratio
+      this.renderFrameToCanvas(
+        fromFrame,
+        fromClip.mediaId,
+        this.transitionCanvasFrom,
+        this.transitionCtxFrom,
+      );
+      this.renderFrameToCanvas(
+        toFrame,
+        toClip.mediaId,
+        this.transitionCanvasTo,
+        this.transitionCtxTo,
+      );
+
       // Render the transition using the transition renderer
       renderTransition(transition.type as TransitionType, {
         ctx: this.ctx,
         width: this.canvas.width,
         height: this.canvas.height,
-        fromFrame,
-        toFrame,
+        fromFrame: this.transitionCanvasFrom,
+        toFrame: this.transitionCanvasTo,
         progress,
       });
     } finally {
@@ -373,6 +445,110 @@ export class FrameRenderer {
       fromFrame.close();
       toFrame.close();
     }
+  }
+
+  /**
+   * Initialize persistent transition canvases
+   */
+  private initTransitionCanvases(): void {
+    if (!this.canvas) return;
+
+    // Create persistent canvases for transitions
+    this.transitionCanvasFrom = document.createElement("canvas");
+    this.transitionCanvasFrom.width = this.canvas.width;
+    this.transitionCanvasFrom.height = this.canvas.height;
+    this.transitionCtxFrom = this.transitionCanvasFrom.getContext("2d");
+
+    this.transitionCanvasTo = document.createElement("canvas");
+    this.transitionCanvasTo.width = this.canvas.width;
+    this.transitionCanvasTo.height = this.canvas.height;
+    this.transitionCtxTo = this.transitionCanvasTo.getContext("2d");
+
+    if (!this.transitionCtxFrom || !this.transitionCtxTo) {
+      throw new Error("Failed to create transition canvas contexts");
+    }
+  }
+
+  /**
+   * Get or calculate aspect ratio dimensions for a media asset
+   */
+  private getAspectRatioDimensions(
+    mediaId: string,
+    frameWidth: number,
+    frameHeight: number,
+  ): AspectRatioCache {
+    if (!this.canvas) {
+      throw new Error("Canvas not available");
+    }
+
+    // Check cache first
+    const cached = this.aspectRatioCache.get(mediaId);
+    if (cached) {
+      return cached;
+    }
+
+    // Calculate aspect ratios
+    const videoAspect = frameWidth / frameHeight;
+    const canvasAspect = this.canvas.width / this.canvas.height;
+
+    let drawWidth: number;
+    let drawHeight: number;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // Fit video to canvas while preserving aspect ratio
+    if (videoAspect > canvasAspect) {
+      // Video is wider than canvas - fit to width
+      drawWidth = this.canvas.width;
+      drawHeight = this.canvas.width / videoAspect;
+      offsetY = (this.canvas.height - drawHeight) / 2;
+    } else {
+      // Video is taller than canvas - fit to height
+      drawHeight = this.canvas.height;
+      drawWidth = this.canvas.height * videoAspect;
+      offsetX = (this.canvas.width - drawWidth) / 2;
+    }
+
+    const dimensions: AspectRatioCache = {
+      drawWidth,
+      drawHeight,
+      offsetX,
+      offsetY,
+    };
+
+    // Cache for future use
+    this.aspectRatioCache.set(mediaId, dimensions);
+
+    return dimensions;
+  }
+
+  /**
+   * Render a frame to a specific canvas with proper aspect ratio
+   */
+  private renderFrameToCanvas(
+    frame: VideoFrame,
+    mediaId: string,
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+  ): void {
+    // Clear canvas with transparent background
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Get cached dimensions
+    const dimensions = this.getAspectRatioDimensions(
+      mediaId,
+      frame.displayWidth,
+      frame.displayHeight,
+    );
+
+    // Draw frame with proper aspect ratio
+    ctx.drawImage(
+      frame as CanvasImageSource,
+      dimensions.offsetX,
+      dimensions.offsetY,
+      dimensions.drawWidth,
+      dimensions.drawHeight,
+    );
   }
 
   /**
@@ -394,7 +570,7 @@ export class FrameRenderer {
     // Create new loader
     const loader = new VideoLoader(asset, {
       cacheSize: this.config.maxCacheSize,
-      lookaheadSeconds: 2.0,
+      lookaheadSeconds: 3.0, // Increased from 2.0s for better buffering
     });
 
     await loader.init();
