@@ -24,6 +24,7 @@ interface TimelineCanvasProps extends TimelineProps {
   timelineWidth: number
   onWheel: (e: WheelEvent, scrollX: number) => { newScrollX: number; zoomed: boolean }
   onBackgroundClick: (time: number) => void
+  onClipAdd?: (mediaId: string, trackId: string, startTime: number) => void
 }
 
 export const TimelineCanvas = ({
@@ -34,6 +35,7 @@ export const TimelineCanvas = ({
   onSeek,
   onClipSelect,
   onClipMove,
+  onClipAdd,
   zoomLevel,
   pixelsPerSecond,
   timelineWidth,
@@ -172,6 +174,44 @@ export const TimelineCanvas = ({
     setIsDragging(false)
   }, [])
 
+  // Helper function to calculate which track from Y position
+  const calculateTargetTrack = useCallback((mouseY: number): string | null => {
+    let currentY = TIMELINE_LAYOUT.rulerHeight + TIMELINE_LAYOUT.tracksTopMargin
+    for (const track of sequence.tracks) {
+      if (mouseY >= currentY && mouseY < currentY + track.height) {
+        return track.id
+      }
+      currentY += track.height
+    }
+    return null
+  }, [sequence.tracks])
+
+  // Handle drop from media library
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    const mediaId = e.dataTransfer.getData('mediaId')
+    if (!mediaId || !onClipAdd || !containerRef.current) return
+
+    // Calculate drop position
+    const rect = containerRef.current.getBoundingClientRect()
+    const scrollX = containerRef.current.scrollLeft
+    const mouseX = e.clientX - rect.left + scrollX
+    const mouseY = e.clientY - rect.top
+
+    // Calculate drop time and track
+    const dropTime = Math.max(0, mouseX / pixelsPerSecond)
+    const targetTrackId = calculateTargetTrack(mouseY)
+
+    if (targetTrackId) {
+      onClipAdd(mediaId, targetTrackId, dropTime)
+    }
+  }, [onClipAdd, pixelsPerSecond, calculateTargetTrack])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }, [])
+
   // Calculate total duration from sequence
   const totalDuration = calculateTotalDuration(sequence)
 
@@ -185,6 +225,8 @@ export const TimelineCanvas = ({
       style={{
         scrollbarGutter: 'stable',
       }}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
     >
       {/* Wrapper div to enable horizontal scrolling */}
       <div style={{ width: effectiveTimelineWidth, minHeight: '100%' }}>

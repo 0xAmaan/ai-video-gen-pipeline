@@ -166,8 +166,18 @@ export class VideoLoader {
     }
 
     await this.decoder.flush();
+
+    // CRITICAL FIX: Set lastAnchor to cover the entire decoded range
+    // This prevents shouldDecodeAround() from triggering re-decode
+    this.lastAnchor = (startSeconds + endSeconds) / 2;
+    // Set lookahead to cover entire range so shouldDecodeAround never triggers
+    this.lookahead = Math.max(
+      this.lookahead,
+      (endSeconds - startSeconds) / 2 + 1,
+    );
+
     console.log(
-      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size()}`,
+      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size()}, anchor: ${this.lastAnchor}, lookahead: ${this.lookahead}`,
     );
   }
 
@@ -195,6 +205,12 @@ export class VideoLoader {
   }
 
   private shouldDecodeAround(timeSeconds: number): boolean {
+    // CRITICAL FIX: In export mode (disableTrimming = true), NEVER re-decode
+    // The sequential decode has already loaded all frames
+    if (this.disableTrimming) {
+      return false;
+    }
+
     // If cache is empty, definitely need to decode
     if (this.cache.size() === 0) return true;
 

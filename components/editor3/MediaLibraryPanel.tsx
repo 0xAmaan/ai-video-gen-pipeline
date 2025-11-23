@@ -98,8 +98,18 @@ export const MediaLibraryPanel = ({
             return (
               <div
                 key={clip._id}
+                draggable={true}
+                onDragStart={(e) => {
+                  // Set the media ID in the dataTransfer so timeline can access it
+                  e.dataTransfer.setData('mediaId', clip._id);
+                  e.dataTransfer.effectAllowed = 'copy';
+
+                  // Set drag image (optional: makes the drag look nicer)
+                  const target = e.currentTarget as HTMLElement;
+                  e.dataTransfer.setDragImage(target, 50, 50);
+                }}
                 onClick={() => onClipSelect?.(clip._id)}
-                className={`group cursor-pointer bg-zinc-800/50 hover:bg-zinc-800 rounded-lg overflow-hidden transition-colors border ${
+                className={`group cursor-grab active:cursor-grabbing bg-zinc-800/50 hover:bg-zinc-800 rounded-lg overflow-hidden transition-colors border ${
                   isSelected
                     ? 'border-cyan-500 ring-2 ring-cyan-500/50'
                     : 'border-zinc-700/50 hover:border-zinc-600'

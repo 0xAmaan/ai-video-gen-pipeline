@@ -48,7 +48,9 @@ export interface TimelineProps {
   onSeek: (time: number) => void;
 
   /** Called when user moves a clip to new position/track (may update multiple clips due to push logic) */
-  onClipMove: (updates: { clipId: string; newStart: number }[]) => void;
+  onClipMove: (
+    updates: { clipId: string; newStart: number; newTrackId?: string }[],
+  ) => void;
 
   /** Called when user trims a clip (adjusts in/out points) */
   onClipTrim: (clipId: string, trimStart: number, trimEnd: number) => void;
@@ -58,6 +60,39 @@ export interface TimelineProps {
 
   /** Called when user deletes clips */
   onClipDelete: (clipIds: string[]) => void;
+
+  /** Called when user duplicates a clip */
+  onClipDuplicate?: (clipId: string) => void;
+
+  /** Called when user drags media from library onto timeline */
+  onClipAdd?: (mediaId: string, trackId: string, startTime: number) => void;
+
+  // ========== TRACK MANAGEMENT CALLBACKS ==========
+
+  /** Called when user adds a new track */
+  onTrackAdd?: (kind: "video" | "audio") => void;
+
+  /** Called when user removes a track */
+  onTrackRemove?: (trackId: string) => void;
+
+  /** Called when user updates track properties (volume, mute, solo, etc.) */
+  onTrackUpdate?: (
+    trackId: string,
+    updates: Partial<{
+      volume: number;
+      muted: boolean;
+      solo: boolean;
+      locked: boolean;
+      visible: boolean;
+    }>,
+  ) => void;
+
+  /** Called when user right-clicks a clip to show context menu */
+  onClipContextMenu?: (
+    clip: import("@/lib/editor/types").Clip,
+    x: number,
+    y: number,
+  ) => void;
 
   // ========== OPTIONAL FEATURES ==========
 

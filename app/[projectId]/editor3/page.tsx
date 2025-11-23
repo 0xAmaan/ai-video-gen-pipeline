@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Image, Type, Subtitles, Shuffle, Sparkles, ChevronLeft, ChevronRight, Play, Pause } from "lucide-react";
+import { Image, Type, Subtitles, Shuffle, Sparkles, ChevronLeft, ChevronRight, Play, Pause, Download } from "lucide-react";
 import { TextPanel } from "@/components/editor/TextPanel";
 import { CaptionsPanel } from "@/components/editor/CaptionsPanel";
 import { TransitionLibrary } from "@/components/editor/TransitionLibrary";
@@ -14,8 +14,12 @@ import { MediaLibraryPanel } from "@/components/editor3/MediaLibraryPanel";
 import { VideoPlayer } from "@/components/editor/VideoPlayer";
 import { Timeline } from "@/components/timeline";
 import { MediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
-import type { Sequence, MediaAssetMeta, Clip } from "@/lib/editor/types";
+import type { Sequence, MediaAssetMeta, Clip, Project } from "@/lib/editor/types";
 import { getClipAtTime, splitClipAtTime } from "@/lib/editor/utils/clip-operations";
+import { getExportPipeline } from "@/lib/editor/export/export-pipeline";
+import { saveBlob } from "@/lib/editor/export/save-file";
+import { Button } from "@/components/ui/button";
+import { useProjectStore } from "@/lib/editor/core/project-store";
 
 type PanelType = 'media' | 'text' | 'captions' | 'transitions' | 'effects';
 
@@ -38,12 +42,28 @@ export default function Editor3Page() {
   const [mediaAssets, setMediaAssets] = useState<Record<string, MediaAssetMeta>>({});
   const [clipPositionOverrides, setClipPositionOverrides] = useState<Record<string, number>>({});
   const [modifiedClips, setModifiedClips] = useState<Clip[] | null>(null);
+  const [modifiedTracks, setModifiedTracks] = useState<any[] | null>(null);
+  const [additionalTracks, setAdditionalTracks] = useState<any[]>([]);
   const timelineSectionRef = useRef<HTMLElement | null>(null);
+
+  // Export state
+  const [exportStatus, setExportStatus] = useState<{progress: number; status: string} | null>(null);
 
   // Initialize MediaBunnyManager
   useEffect(() => {
     const manager = new MediaBunnyManager();
     setMediaBunnyManager(manager);
+  }, []);
+
+  // Initialize export manager
+  const exportManager = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return getExportPipeline();
+    } catch (error) {
+      console.warn("Export disabled:", error);
+      return null;
+    }
   }, []);
 
   // Fetch project data from Convex
@@ -68,6 +88,7 @@ export default function Editor3Page() {
     let sequenceHeight = 1080;
 
     clips.forEach((clip) => {
+      // Build MediaAssetMeta exactly like convex-adapter.ts does
       const videoUrl =
         clip.lipsyncVideoUrl ??
         clip.videoUrl ??
@@ -96,16 +117,25 @@ export default function Editor3Page() {
         }
       }
 
-      // Create/update MediaAssetMeta from Convex clip
+      // Create/update MediaAssetMeta - EXACT PATTERN FROM convex-adapter.ts
+      const safeDuration = Math.max(clip.duration ?? 0, 0.1);
+      const originalUrl = clip.sourceUrl ?? clip.videoUrl ?? videoUrl;
+      const proxyUrl = clip.proxyUrl ?? undefined;
+      const playbackUrl = proxyUrl ?? originalUrl;
+
       const asset: MediaAssetMeta = mediaAssets[clip._id] || {
         id: clip._id,
         name: `Clip ${clip._id}`,
         type: "video",
-        duration: clip.duration ?? 10,
+        duration: safeDuration,
         width,
         height,
         fps: 30,
-        url: videoUrl,
+        url: playbackUrl,  // Use playbackUrl (proxy preferred!)
+        r2Key: clip.r2Key ?? undefined,
+        proxyUrl,
+        proxyR2Key: proxyUrl ? clip.r2Key ?? undefined : undefined,
+        sourceUrl: originalUrl,
       };
 
       // Update mediaAssets if needed (preserve thumbnails if they exist)
@@ -131,25 +161,31 @@ export default function Editor3Page() {
         start: clipStart,
         duration: asset.duration,
         trimStart: 0,
-        trimEnd: asset.duration,
+        trimEnd: 0, // No trimming - play full clip
         opacity: 1,
         volume: 1,
         effects: [],
         transitions: [],
         speedCurve: null,
         preservePitch: true,
+        blendMode: "normal",
       });
 
       // Only increment currentStart if not using override (for default stacking)
       if (clipPositionOverrides[clip._id] === undefined) {
         currentStart += asset.duration;
       }
-      totalDuration += asset.duration;
     });
 
     if (timelineClips.length === 0) {
       return null;
     }
+
+    // Calculate ACTUAL sequence duration - end of the furthest clip
+    const actualClips = modifiedClips || timelineClips;
+    const sequenceDuration = actualClips.length > 0
+      ? Math.max(...actualClips.map(clip => clip.start + clip.duration))
+      : 0;
 
     // Create a sequence with all clips horizontally stacked
     const sequence: Sequence = {
@@ -159,22 +195,28 @@ export default function Editor3Page() {
       height: sequenceHeight,
       fps: 30,
       sampleRate: 48000,
-      duration: totalDuration,
-      tracks: [
+      duration: sequenceDuration,
+      tracks: modifiedTracks || [
         {
           id: "video-track",
+          name: "Video 1",
           kind: "video",
           allowOverlap: false,
           clips: modifiedClips || timelineClips,
           locked: false,
           muted: false,
+          solo: false,
           volume: 1,
+          zIndex: 0,
+          height: 60,
+          visible: true,
         },
+        ...additionalTracks,
       ],
     };
 
     return sequence;
-  }, [clips, mediaAssets, selectedClipId, clipPositionOverrides, modifiedClips]);
+  }, [clips, mediaAssets, selectedClipId, clipPositionOverrides, modifiedClips, modifiedTracks, additionalTracks]);
 
   // Generate thumbnails for all clips in the sequence
   useEffect(() => {
@@ -256,14 +298,40 @@ export default function Editor3Page() {
 
     const [leftClip, rightClip] = result;
 
-    // Update the clips in the sequence
-    const currentClips = selectedSequence.tracks[0].clips;
-    const newClips = currentClips.flatMap(clip =>
-      clip.id === clipToSplit.id ? [leftClip, rightClip] : [clip]
-    );
+    // Find which track contains the clip to split
+    let trackWithClip: any = null;
+    for (const track of selectedSequence.tracks) {
+      if (track.clips.find((c: Clip) => c.id === clipToSplit.id)) {
+        trackWithClip = track;
+        break;
+      }
+    }
 
-    // Update modified clips state
-    setModifiedClips(newClips);
+    if (!trackWithClip) {
+      console.warn('Track not found for clip');
+      return;
+    }
+
+    // Update all tracks - replace the clip with left and right clips on its track
+    const updatedTracks = selectedSequence.tracks.map(track => {
+      if (track.id !== trackWithClip.id) {
+        return track;
+      }
+
+      // Replace the clip with the split clips
+      const newClips = track.clips.flatMap((clip: Clip) =>
+        clip.id === clipToSplit.id ? [leftClip, rightClip] : [clip]
+      );
+
+      return { ...track, clips: newClips };
+    });
+
+    // Update both track and clip states
+    setModifiedTracks(updatedTracks);
+
+    // For backwards compatibility: also update modifiedClips
+    const allClips = updatedTracks.flatMap(t => t.clips);
+    setModifiedClips(allClips);
 
     // Select the right clip after split
     setSelectedTimelineClipIds([rightClip.id]);
@@ -275,6 +343,158 @@ export default function Editor3Page() {
       splitTime: currentTime
     });
   }, [selectedSequence, currentTime]);
+
+  const handleDuplicateClip = useCallback(() => {
+    if (!selectedSequence) {
+      console.warn('No sequence available');
+      return;
+    }
+
+    if (selectedTimelineClipIds.length === 0) {
+      console.warn('No clip selected');
+      return;
+    }
+
+    if (selectedTimelineClipIds.length > 1) {
+      alert('Please select only one clip to duplicate');
+      return;
+    }
+
+    const clipId = selectedTimelineClipIds[0];
+
+    // Find which track contains the clip to duplicate
+    let clipToDuplicate: Clip | null = null;
+    let trackWithClip: any = null;
+
+    for (const track of selectedSequence.tracks) {
+      const found = track.clips.find((c: Clip) => c.id === clipId);
+      if (found) {
+        clipToDuplicate = found;
+        trackWithClip = track;
+        break;
+      }
+    }
+
+    if (!clipToDuplicate || !trackWithClip) {
+      console.warn('Selected clip not found in any track');
+      return;
+    }
+
+    // Create duplicate with new ID
+    const duplicate: Clip = {
+      ...clipToDuplicate,
+      id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+      start: clipToDuplicate.start + clipToDuplicate.duration,
+    };
+
+    // Update all tracks - add duplicate to the same track and apply ripple insert
+    const updatedTracks = selectedSequence.tracks.map(track => {
+      if (track.id !== trackWithClip.id) {
+        // Other tracks remain unchanged
+        return track;
+      }
+
+      // This is the track containing the clip to duplicate
+      const newClips = track.clips.map((clip: Clip) => {
+        // Shift all clips after the duplicate position to the right
+        if (clip.start >= duplicate.start && clip.id !== clipId) {
+          return { ...clip, start: clip.start + duplicate.duration };
+        }
+        return clip;
+      });
+
+      // Insert duplicate and sort by start position
+      newClips.push(duplicate);
+      newClips.sort((a, b) => a.start - b.start);
+
+      return { ...track, clips: newClips };
+    });
+
+    // Update both track and clip states
+    setModifiedTracks(updatedTracks);
+
+    // For backwards compatibility: also update modifiedClips
+    const allClips = updatedTracks.flatMap(t => t.clips);
+    setModifiedClips(allClips);
+
+    // Select the duplicate
+    setSelectedTimelineClipIds([duplicate.id]);
+
+    console.log('Duplicated clip successfully:', {
+      original: clipId,
+      duplicate: duplicate.id,
+    });
+  }, [selectedSequence, selectedTimelineClipIds]);
+
+  const handleDeleteClip = useCallback(() => {
+    if (!selectedSequence) {
+      console.warn('No sequence available');
+      return;
+    }
+
+    if (selectedTimelineClipIds.length === 0) {
+      console.warn('No clip selected');
+      return;
+    }
+
+    if (selectedTimelineClipIds.length > 1) {
+      alert('Please select only one clip to delete');
+      return;
+    }
+
+    const clipId = selectedTimelineClipIds[0];
+
+    // Find which track contains the clip to delete
+    let clipToDelete: Clip | null = null;
+    let trackWithClip: any = null;
+
+    for (const track of selectedSequence.tracks) {
+      const found = track.clips.find((c: Clip) => c.id === clipId);
+      if (found) {
+        clipToDelete = found;
+        trackWithClip = track;
+        break;
+      }
+    }
+
+    if (!clipToDelete || !trackWithClip) {
+      console.warn('Selected clip not found in any track');
+      return;
+    }
+
+    // Update all tracks - remove the clip and apply ripple delete on its track
+    const updatedTracks = selectedSequence.tracks.map(track => {
+      if (track.id !== trackWithClip.id) {
+        // Other tracks remain unchanged
+        return track;
+      }
+
+      // This is the track containing the clip to delete
+      const newClips = track.clips
+        .filter((clip: Clip) => clip.id !== clipId)
+        .map((clip: Clip) => {
+          // Apply ripple delete - shift clips left if they're after the deleted clip
+          if (clip.start > clipToDelete!.start) {
+            return { ...clip, start: Math.max(0, clip.start - clipToDelete!.duration) };
+          }
+          return clip;
+        });
+
+      return { ...track, clips: newClips };
+    });
+
+    // Update both track and clip states
+    setModifiedTracks(updatedTracks);
+
+    // For backwards compatibility: also update modifiedClips
+    const allClips = updatedTracks.flatMap(t => t.clips);
+    setModifiedClips(allClips);
+
+    // Clear selection
+    setSelectedTimelineClipIds([]);
+
+    console.log('Deleted clip successfully:', clipId);
+  }, [selectedSequence, selectedTimelineClipIds]);
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -311,7 +531,7 @@ export default function Editor3Page() {
     };
   }, [isDragging]);
 
-  // Keyboard shortcuts (Cmd+B for split, Space for play/pause)
+  // Keyboard shortcuts (Cmd+B for split, Cmd+D for duplicate, Delete for delete, Space for play/pause)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if user is typing in an input field
@@ -327,13 +547,28 @@ export default function Editor3Page() {
         return;
       }
 
+      // Delete or Backspace for delete clip
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        handleDeleteClip();
+        return;
+      }
+
       // Cmd+B (Mac) or Ctrl+B (Windows/Linux) for split
+      // Cmd+D (Mac) or Ctrl+D (Windows/Linux) for duplicate
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const modifier = isMac ? e.metaKey : e.ctrlKey;
 
       if (modifier && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         handleSplitClip();
+        return;
+      }
+
+      if (modifier && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        handleDuplicateClip();
+        return;
       }
     };
 
@@ -342,7 +577,88 @@ export default function Editor3Page() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleSplitClip, isPlaying]);
+  }, [handleSplitClip, handleDuplicateClip, handleDeleteClip, isPlaying]);
+
+  // Export handler - uses default settings
+  const handleExport = useCallback(async () => {
+    if (!selectedSequence || !exportManager) {
+      alert("Export is not available");
+      return;
+    }
+
+    // Validate sequence has clips
+    const hasClips = selectedSequence.tracks.some(track => track.clips.length > 0);
+    if (!hasClips) {
+      alert("Cannot export empty timeline");
+      return;
+    }
+
+    // Validate all clips have accessible media assets
+    const missingAssets: string[] = [];
+    for (const track of selectedSequence.tracks) {
+      for (const clip of track.clips) {
+        if (!mediaAssets[clip.mediaId] || !mediaAssets[clip.mediaId].url) {
+          missingAssets.push(clip.mediaId);
+        }
+      }
+    }
+
+    if (missingAssets.length > 0) {
+      alert(`Cannot export: Missing media for clips: ${missingAssets.join(", ")}`);
+      return;
+    }
+
+    // Convert to Project format
+    const project: Project = {
+      id: projectId,
+      title: data?.project?.title || "Untitled",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      sequences: [selectedSequence],
+      mediaAssets: mediaAssets,
+      settings: {
+        snap: true,
+        snapThreshold: 0.1,
+        zoom: 1,
+        activeSequenceId: selectedSequence.id,
+      },
+    };
+
+    // Default export settings - 1080p high quality
+    const defaultOptions = {
+      resolution: "1080p",
+      quality: "high",
+      format: "mp4",
+      aspectRatio: "16:9",
+    };
+
+    setExportStatus({ progress: 0, status: "Preparing" });
+
+    try {
+      const blob = await exportManager.exportProject(
+        project,
+        selectedSequence,
+        defaultOptions,
+        (progress, status) => {
+          setExportStatus({ progress, status });
+        }
+      );
+
+      await saveBlob(
+        blob,
+        `${project.title || "video"}.${defaultOptions.format}`
+      );
+
+      setExportStatus({ progress: 100, status: "Complete" });
+
+      // Clear status after 2 seconds
+      setTimeout(() => setExportStatus(null), 2000);
+    } catch (error) {
+      console.error("Export failed", error);
+      setExportStatus(null);
+      alert(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [selectedSequence, exportManager, mediaAssets, projectId, data?.project?.title]);
 
   const sidebarButtons = [
     { id: 'media' as PanelType, icon: Image, label: 'Media' },
@@ -512,33 +828,64 @@ export default function Editor3Page() {
 
                   if (!selectedSequence) return;
 
-                  // Get current clips from sequence
-                  const currentClips = selectedSequence.tracks[0]?.clips || [];
-
-                  // Create a map of updates
+                  // Create a map of updates for quick lookup
                   const updateMap = new Map(updates.map(u => [u.clipId, u]));
 
-                  // Apply updates to clips and sort by new order
-                  const updatedClips = currentClips.map(clip => {
-                    const update = updateMap.get(clip.id);
-                    if (update) {
-                      return {
-                        ...clip,
-                        start: update.newStart
-                      };
-                    }
-                    return clip;
+                  // Handle track changes - rebuild all track clip arrays
+                  const updatedTracks = selectedSequence.tracks.map(track => {
+                    // Get all clips for this track (both existing and newly moved)
+                    let trackClips = track.clips.filter(clip => {
+                      const update = updateMap.get(clip.id);
+                      // Keep clip if: (1) no update, or (2) update exists but no track change, or (3) update moves it TO this track
+                      if (!update) return true;
+                      if (!update.newTrackId) return true; // No track change
+                      return update.newTrackId === track.id; // Moved TO this track
+                    });
+
+                    // Check if any clips were moved FROM other tracks TO this track
+                    selectedSequence.tracks.forEach(otherTrack => {
+                      if (otherTrack.id === track.id) return; // Skip same track
+                      otherTrack.clips.forEach(clip => {
+                        const update = updateMap.get(clip.id);
+                        if (update?.newTrackId === track.id) {
+                          // This clip was moved TO this track
+                          trackClips.push({ ...clip, trackId: track.id });
+                        }
+                      });
+                    });
+
+                    // Apply position updates and filter out moved clips
+                    trackClips = trackClips
+                      .filter(clip => {
+                        const update = updateMap.get(clip.id);
+                        // Remove if moved to different track
+                        if (update?.newTrackId && update.newTrackId !== track.id) return false;
+                        return true;
+                      })
+                      .map(clip => {
+                        const update = updateMap.get(clip.id);
+                        if (update) {
+                          return {
+                            ...clip,
+                            start: update.newStart,
+                            trackId: update.newTrackId || clip.trackId
+                          };
+                        }
+                        return clip;
+                      })
+                      .sort((a, b) => a.start - b.start);
+
+                    return { ...track, clips: trackClips };
                   });
 
-                  // Sort by start position to maintain correct order
-                  updatedClips.sort((a, b) => a.start - b.start);
+                  // Update the tracks state with new clip positions
+                  setModifiedTracks(updatedTracks);
 
-                  // Update modified clips state
-                  setModifiedClips(updatedClips);
+                  // For single-track backwards compat: also update modifiedClips
+                  const allClips = updatedTracks.flatMap(t => t.clips);
+                  setModifiedClips(allClips);
 
-                  // Note: This updates local state only. On page refresh, clips will return to default positions.
-                  // To persist, we would need to add a position field to the Convex videoClips schema
-                  // or implement clip ordering logic.
+                  console.log('Tracks after move:', updatedTracks.map(t => ({ id: t.id, clipCount: t.clips.length })));
                 }}
                 onClipTrim={(clipId, trimStart, trimEnd) => {
                   console.log('Clip trimmed:', { clipId, trimStart, trimEnd })
@@ -548,8 +895,195 @@ export default function Editor3Page() {
                   setSelectedTimelineClipIds(clipIds)
                 }}
                 onClipDelete={(clipIds) => {
-                  console.log('Clips deleted:', clipIds)
-                  // TODO: Implement clip deletion logic
+                  if (clipIds.length === 0) return;
+
+                  if (clipIds.length > 1) {
+                    alert('Please select only one clip to delete');
+                    return;
+                  }
+
+                  const clipId = clipIds[0];
+                  if (!selectedSequence) return;
+
+                  // Find which track contains the clip to delete
+                  let clipToDelete: Clip | null = null;
+                  let trackWithClip: any = null;
+
+                  for (const track of selectedSequence.tracks) {
+                    const found = track.clips.find((c: Clip) => c.id === clipId);
+                    if (found) {
+                      clipToDelete = found;
+                      trackWithClip = track;
+                      break;
+                    }
+                  }
+
+                  if (!clipToDelete || !trackWithClip) return;
+
+                  // Update all tracks - remove the clip and apply ripple delete on its track
+                  const updatedTracks = selectedSequence.tracks.map(track => {
+                    if (track.id !== trackWithClip.id) {
+                      return track;
+                    }
+
+                    const newClips = track.clips
+                      .filter((clip: Clip) => clip.id !== clipId)
+                      .map((clip: Clip) => {
+                        if (clip.start > clipToDelete!.start) {
+                          return { ...clip, start: Math.max(0, clip.start - clipToDelete!.duration) };
+                        }
+                        return clip;
+                      });
+
+                    return { ...track, clips: newClips };
+                  });
+
+                  setModifiedTracks(updatedTracks);
+                  const allClips = updatedTracks.flatMap(t => t.clips);
+                  setModifiedClips(allClips);
+                  setSelectedTimelineClipIds([]);
+                  console.log('Deleted clip:', clipId);
+                }}
+                onClipDuplicate={(clipId) => {
+                  if (!selectedSequence) return;
+
+                  // Find which track contains the clip to duplicate
+                  let clipToDuplicate: Clip | null = null;
+                  let trackWithClip: any = null;
+
+                  for (const track of selectedSequence.tracks) {
+                    const found = track.clips.find((c: Clip) => c.id === clipId);
+                    if (found) {
+                      clipToDuplicate = found;
+                      trackWithClip = track;
+                      break;
+                    }
+                  }
+
+                  if (!clipToDuplicate || !trackWithClip) return;
+
+                  // Create duplicate with new ID
+                  const duplicate: Clip = {
+                    ...clipToDuplicate,
+                    id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+                    start: clipToDuplicate.start + clipToDuplicate.duration,
+                  };
+
+                  // Update all tracks - add duplicate to the same track and apply ripple insert
+                  const updatedTracks = selectedSequence.tracks.map(track => {
+                    if (track.id !== trackWithClip.id) {
+                      return track;
+                    }
+
+                    const newClips = track.clips.map((clip: Clip) => {
+                      if (clip.start >= duplicate.start && clip.id !== clipId) {
+                        return { ...clip, start: clip.start + duplicate.duration };
+                      }
+                      return clip;
+                    });
+
+                    newClips.push(duplicate);
+                    newClips.sort((a, b) => a.start - b.start);
+
+                    return { ...track, clips: newClips };
+                  });
+
+                  setModifiedTracks(updatedTracks);
+                  const allClips = updatedTracks.flatMap(t => t.clips);
+                  setModifiedClips(allClips);
+                  setSelectedTimelineClipIds([duplicate.id]);
+                  console.log('Duplicated clip from context menu:', clipId, '→', duplicate.id);
+                }}
+                onClipAdd={(mediaId, trackId, startTime) => {
+                  console.log('Add clip from library:', { mediaId, trackId, startTime });
+
+                  if (!selectedSequence) return;
+
+                  // Get the media asset for this clip
+                  const asset = mediaAssets[mediaId];
+                  if (!asset) {
+                    console.error('Media asset not found:', mediaId);
+                    return;
+                  }
+
+                  // Create a new clip
+                  const newClip: Clip = {
+                    id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+                    mediaId: mediaId,
+                    trackId: trackId,
+                    kind: asset.type === 'audio' ? 'audio' : 'video',
+                    start: startTime,
+                    duration: asset.duration,
+                    trimStart: 0,
+                    trimEnd: 0,
+                    opacity: 1,
+                    volume: 1,
+                    effects: [],
+                    transitions: [],
+                    speedCurve: null,
+                    preservePitch: true,
+                    blendMode: 'normal',
+                  };
+
+                  // Update tracks - add clip to the specified track
+                  const updatedTracks = selectedSequence.tracks.map(track => {
+                    if (track.id !== trackId) {
+                      return track;
+                    }
+
+                    // Add new clip and sort by start time
+                    const newClips = [...track.clips, newClip].sort((a, b) => a.start - b.start);
+                    return { ...track, clips: newClips };
+                  });
+
+                  // Update state
+                  setModifiedTracks(updatedTracks);
+
+                  // For backwards compatibility
+                  const allClips = updatedTracks.flatMap(t => t.clips);
+                  setModifiedClips(allClips);
+
+                  // Select the new clip
+                  setSelectedTimelineClipIds([newClip.id]);
+
+                  console.log('Added clip to timeline:', newClip.id, 'on track:', trackId);
+                }}
+                onTrackAdd={(kind) => {
+                  console.log('Add track:', kind)
+                  if (!selectedSequence) return;
+
+                  // Find highest zIndex across all tracks
+                  const maxZIndex = selectedSequence.tracks.reduce((max, t) => Math.max(max, t.zIndex), 0);
+                  const tracksOfKind = selectedSequence.tracks.filter(t => t.kind === kind);
+                  const trackNumber = tracksOfKind.length + 1;
+
+                  // Create new track with 60px height (matching baseline)
+                  const newTrack = {
+                    id: `${kind}-track-${Date.now()}`,
+                    name: `${kind.charAt(0).toUpperCase() + kind.slice(1)} ${trackNumber}`,
+                    kind,
+                    allowOverlap: kind !== "video",
+                    locked: false,
+                    muted: false,
+                    solo: false,
+                    volume: 1,
+                    zIndex: maxZIndex + 1,
+                    height: 60,
+                    visible: true,
+                    clips: [],
+                  };
+
+                  // Add to additional tracks state
+                  setAdditionalTracks(prev => [...prev, newTrack]);
+                  console.log('Track added:', newTrack.name);
+                }}
+                onTrackRemove={(trackId) => {
+                  console.log('Remove track:', trackId)
+                  // TODO: Implement track removal
+                }}
+                onTrackUpdate={(trackId, updates) => {
+                  console.log('Update track:', trackId, updates)
+                  // TODO: Implement track update
                 }}
                 magneticSnapEnabled={true}
               />
@@ -592,6 +1126,17 @@ export default function Editor3Page() {
           <ChevronRight className="w-4 h-4 text-zinc-400" />
         )}
       </button>
+
+      {/* Export FAB - Floating Action Button */}
+      <Button
+        onClick={handleExport}
+        disabled={!!exportStatus}
+        className="fixed top-4 right-4 z-50 gap-2 shadow-lg"
+        size="default"
+      >
+        <Download className="h-4 w-4" />
+        {exportStatus ? `${Math.round(exportStatus.progress)}%` : "Export"}
+      </Button>
     </div>
   );
 }

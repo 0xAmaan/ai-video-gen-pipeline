@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
-import { Layer, Group, Rect, Text, Image } from 'react-konva'
+import { Layer, Group, Rect, Text, Image, Shape, Circle, Line } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Sequence, Clip, MediaAssetMeta } from '@/lib/editor/types'
 import { TIMELINE_THEME, TIMELINE_LAYOUT } from '../types'
@@ -35,7 +35,7 @@ interface ClipsLayerProps {
   currentTime: number
   dropZone: DropZoneInfo | null
   onClipSelect: (clipIds: string[]) => void
-  onClipMove: (updates: { clipId: string; newStart: number }[]) => void
+  onClipMove: (updates: { clipId: string; newStart: number; newTrackId?: string }[]) => void
   onSnapGuideShow?: (snapPoint: number | null) => void
   onDropZoneChange?: (dropZone: DropZoneInfo | null) => void
 }
@@ -55,21 +55,22 @@ export const ClipsLayer = ({
 }: ClipsLayerProps) => {
   const tracks = sequence.tracks || []
 
-  // Calculate vertical centering for tracks within the visible viewport
-  const CONTROL_BAR_HEIGHT = 48 // Control bar height (fixed)
-  const tracksTotalHeight = tracks.length * TIMELINE_LAYOUT.trackHeight
-  const availableHeight = viewportHeight - TIMELINE_LAYOUT.rulerHeight - CONTROL_BAR_HEIGHT
-  const centeredOffset = (availableHeight - tracksTotalHeight) / 2
+  // Calculate track positions using each track's height
+  const trackPositions: Array<{ track: typeof tracks[0]; y: number; height: number }> = []
+  let currentY = TIMELINE_LAYOUT.rulerHeight + TIMELINE_LAYOUT.tracksTopMargin
+
+  tracks.forEach((track) => {
+    trackPositions.push({
+      track,
+      y: currentY,
+      height: track.height,
+    })
+    currentY += track.height
+  })
 
   return (
     <Layer>
-      {tracks.map((track, trackIndex) => {
-        // Position track with centering, but ensure minimum top margin
-        const trackY =
-          TIMELINE_LAYOUT.rulerHeight +
-          Math.max(TIMELINE_LAYOUT.tracksTopMargin, centeredOffset) +
-          trackIndex * TIMELINE_LAYOUT.trackHeight
-
+      {trackPositions.map(({ track, y, height }) => {
         return (
           <Group key={track.id}>
             {track.clips.map((clip, clipIndex) => (
@@ -77,9 +78,11 @@ export const ClipsLayer = ({
                 key={clip.id}
                 clip={clip}
                 mediaAsset={mediaAssets[clip.mediaId]}
-                trackY={trackY}
+                trackY={y}
+                trackHeight={height}
                 trackId={track.id}
                 allClips={track.clips}
+                allTrackPositions={trackPositions}
                 pixelsPerSecond={pixelsPerSecond}
                 isSelected={selectedClipIds.includes(clip.id)}
                 clipIndex={clipIndex}
@@ -105,15 +108,17 @@ interface ClipRectProps {
   clip: Clip
   mediaAsset?: MediaAssetMeta
   trackY: number
+  trackHeight: number
   trackId: string
   allClips: Clip[]
+  allTrackPositions: Array<{ track: any; y: number; height: number }>
   pixelsPerSecond: number
   isSelected: boolean
   clipIndex: number
   currentTime: number
   dropZone: DropZoneInfo | null
   onClipSelect: (clipIds: string[]) => void
-  onClipMove: (updates: { clipId: string; newStart: number }[]) => void
+  onClipMove: (updates: { clipId: string; newStart: number; newTrackId?: string }[]) => void
   onSnapGuideShow?: (snapPoint: number | null) => void
   onDropZoneChange?: (dropZone: DropZoneInfo | null) => void
 }
@@ -122,8 +127,10 @@ const ClipRect = ({
   clip,
   mediaAsset,
   trackY,
+  trackHeight,
   trackId,
   allClips,
+  allTrackPositions,
   pixelsPerSecond,
   isSelected,
   clipIndex,
@@ -139,6 +146,17 @@ const ClipRect = ({
   const [thumbnailImages, setThumbnailImages] = useState<HTMLImageElement[]>([])
   const [dragStartX, setDragStartX] = useState(0)
   const [originalStart, setOriginalStart] = useState(0)
+  const [dragTargetTrackId, setDragTargetTrackId] = useState<string | null>(null)
+
+  // Helper function to calculate which track the mouse is over
+  const calculateTargetTrack = (mouseY: number): string | null => {
+    for (const trackPos of allTrackPositions) {
+      if (mouseY >= trackPos.y && mouseY < trackPos.y + trackPos.height) {
+        return trackPos.track.id
+      }
+    }
+    return null
+  }
 
   // Load thumbnails from data URLs (like KonvaClipItem)
   useEffect(() => {
@@ -187,6 +205,15 @@ const ClipRect = ({
   const handleDragMove = (e: KonvaEventObject<DragEvent>) => {
     const node = e.target
     const newX = node.x()
+    const newY = node.y()
+
+    // Get absolute Y position from stage
+    const stage = node.getStage()
+    const pointerPos = stage?.getPointerPosition()
+
+    // Calculate which track the cursor is over
+    const targetTrack = pointerPos ? calculateTargetTrack(pointerPos.y) : null
+    setDragTargetTrackId(targetTrack)
 
     // Convert pixel position to time
     const gapOffset = clipIndex * TIMELINE_LAYOUT.clipGap
@@ -206,13 +233,15 @@ const ClipRect = ({
       onSnapGuideShow?.(null)
     }
 
-    // Calculate drop zone info
-    const dropSlotIndex = getDropSlotIndex(newStart, clip.id, allClips)
+    // Calculate drop zone info for the TARGET track
+    const targetTrackPosition = allTrackPositions.find(tp => tp.track.id === (targetTrack || trackId))
+    const targetTrackClips = targetTrackPosition?.track.clips || allClips
+    const dropSlotIndex = getDropSlotIndex(newStart, clip.id, targetTrackClips)
 
     // Get the sorted clips (excluding dragged clip)
-    const sortedClips = allClips
-      .filter((c) => c.id !== clip.id)
-      .sort((a, b) => a.start - b.start)
+    const sortedClips = targetTrackClips
+      .filter((c: Clip) => c.id !== clip.id)
+      .sort((a: Clip, b: Clip) => a.start - b.start)
 
     // Calculate where the drop zone should be displayed
     let dropZoneX = 0
@@ -229,17 +258,20 @@ const ClipRect = ({
       dropZoneX = (prevClip.start + prevClip.duration) * pixelsPerSecond
     }
 
+    const targetTrackY = targetTrackPosition?.y || trackY
+    const targetHeight = targetTrackPosition?.height || trackHeight
+
     onDropZoneChange?.({
       slotIndex: dropSlotIndex,
       x: dropZoneX,
-      y: trackY + TIMELINE_LAYOUT.clipPadding,
+      y: targetTrackY + TIMELINE_LAYOUT.clipPadding,
       width,
-      height,
+      height: targetHeight - TIMELINE_LAYOUT.clipPadding * 2,
       draggedClipId: clip.id
     })
 
-    // Constrain Y position (no vertical movement)
-    node.y(y)
+    // Allow vertical movement to follow cursor (no constraint)
+    // The clip will visually move to show which track it's over
   }
 
   const handleDragEnd = (e: KonvaEventObject<DragEvent>) => {
@@ -267,12 +299,27 @@ const ClipRect = ({
     const snapResult = checkSnap(newStart, snapPoints, snapThreshold)
     const finalStart = snapResult.snapped ? snapResult.position : newStart
 
+    // Determine if track changed
+    const finalTrackId = dragTargetTrackId || trackId
+    const trackChanged = finalTrackId !== trackId
+
     // Calculate swap logic for all affected clips
-    const updates = calculateClipSwap(clip.id, finalStart, trackId, allClips)
+    // If track changed, use target track's clips, otherwise use current track's clips
+    const targetTrackPosition = allTrackPositions.find(tp => tp.track.id === finalTrackId)
+    const targetClips = trackChanged ? (targetTrackPosition?.track.clips || []) : allClips
+    const updates = calculateClipSwap(clip.id, finalStart, finalTrackId, targetClips)
+
+    // Add track change info to the update
+    if (trackChanged && updates.length > 0) {
+      updates[0].newTrackId = finalTrackId
+    }
 
     // Reset position to original (parent will update via props)
     node.x(x)
     node.y(y)
+
+    // Clear drag target
+    setDragTargetTrackId(null)
 
     // Fire callback to update state
     if (updates.length > 0) {
@@ -283,7 +330,7 @@ const ClipRect = ({
   // Calculate position and size
   const width = clip.duration * pixelsPerSecond
   const y = trackY + TIMELINE_LAYOUT.clipPadding
-  const height = TIMELINE_LAYOUT.trackHeight - TIMELINE_LAYOUT.clipPadding * 2
+  const height = trackHeight - TIMELINE_LAYOUT.clipPadding * 2
 
   // Check if this clip is being dragged
   const isBeingDragged = dropZone && dropZone.draggedClipId === clip.id
@@ -428,6 +475,19 @@ const ClipRect = ({
         </Group>
       )}
 
+      {/* Waveform visualization for audio clips */}
+      {clip.kind === 'audio' && mediaAsset?.waveform && (
+        <WaveformRenderer
+          waveform={mediaAsset.waveform}
+          clipDuration={clip.duration}
+          clipTrimStart={clip.trimStart}
+          width={width}
+          height={height}
+          color={TIMELINE_THEME.waveform}
+          opacity={isDragging ? 0.6 : 0.8}
+        />
+      )}
+
       {/* Selection border (CapCut-style blue border) */}
       {isSelected && (
         <Rect
@@ -486,6 +546,29 @@ const ClipRect = ({
           />
         </>
       )}
+
+      {/* Link indicator (top right) - shows if clip is linked to another clip */}
+      {clip.linkedClipId && width > 40 && (
+        <Group x={width - 24} y={6}>
+          {/* Chain link icon */}
+          <Circle
+            x={0}
+            y={0}
+            radius={8}
+            fill="rgba(59, 130, 246, 0.9)"
+            stroke="#ffffff"
+            strokeWidth={1}
+          />
+          {/* Link symbol (two small circles connected) */}
+          <Circle x={-2} y={-1} radius={2} fill="#ffffff" />
+          <Circle x={2} y={1} radius={2} fill="#ffffff" />
+          <Line
+            points={[-1, -1, 1, 1]}
+            stroke="#ffffff"
+            strokeWidth={1.5}
+          />
+        </Group>
+      )}
     </Group>
   )
 }
@@ -513,4 +596,68 @@ const getClipColor = (kind: string): string => {
 const getClipLabel = (clip: Clip): string => {
   // Prefer clip name, fallback to media ID
   return clip.mediaId || 'Unnamed Clip'
+}
+
+/**
+ * Waveform Renderer Component
+ * Renders audio waveform visualization using Konva Shape
+ */
+interface WaveformRendererProps {
+  waveform: Float32Array
+  clipDuration: number
+  clipTrimStart: number
+  width: number
+  height: number
+  color: string
+  opacity?: number
+}
+
+const WaveformRenderer = ({
+  waveform,
+  clipDuration,
+  clipTrimStart,
+  width,
+  height,
+  color,
+  opacity = 0.8
+}: WaveformRendererProps) => {
+  return (
+    <Shape
+      sceneFunc={(context, shape) => {
+        // Calculate which portion of the waveform to display based on trim
+        const totalDuration = waveform.length / 100 // Assuming 100 samples per second
+        const trimEndTime = clipTrimStart + clipDuration
+
+        // Calculate sample range
+        const startSample = Math.floor((clipTrimStart / totalDuration) * waveform.length)
+        const endSample = Math.ceil((trimEndTime / totalDuration) * waveform.length)
+        const visibleSamples = waveform.slice(startSample, Math.min(endSample, waveform.length))
+
+        if (visibleSamples.length === 0) return
+
+        // Calculate how many pixels per sample
+        const pixelsPerSample = width / visibleSamples.length
+
+        // Draw waveform as vertical bars
+        context.beginPath()
+        context.fillStyle = color
+        context.globalAlpha = opacity
+
+        const centerY = height / 2
+        const maxBarHeight = height * 0.8 // Leave some padding
+
+        for (let i = 0; i < visibleSamples.length; i++) {
+          const amplitude = visibleSamples[i]
+          const barHeight = amplitude * maxBarHeight / 2
+          const x = i * pixelsPerSample
+          const y = centerY - barHeight
+
+          // Draw vertical bar (both positive and negative for symmetric waveform)
+          context.fillRect(x, y, Math.max(1, pixelsPerSample * 0.8), barHeight * 2)
+        }
+
+        context.fillStrokeShape(shape)
+      }}
+    />
+  )
 }

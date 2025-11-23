@@ -9,12 +9,17 @@
 
 'use client'
 
-import { Play, Pause } from 'lucide-react'
+import { useState } from 'react'
+import { Play, Pause, Plus } from 'lucide-react'
 import { useTimelineZoom } from './hooks/useTimelineZoom'
 import { usePixelConversion } from './hooks/usePixelConversion'
 import { TimelineCanvas } from './TimelineCanvas'
+import { TrackHeader } from './TrackHeader'
+import { ClipContextMenu } from './ClipContextMenu'
 import { formatTime } from './utils/time-formatting'
 import type { TimelineProps } from './types'
+import type { Clip } from '@/lib/editor/types'
+import { TIMELINE_LAYOUT } from './types'
 
 export const Timeline = ({
   sequence,
@@ -30,6 +35,12 @@ export const Timeline = ({
   onClipTrim,
   onClipSelect,
   onClipDelete,
+  onClipDuplicate,
+  onClipAdd,
+  onTrackAdd,
+  onTrackRemove,
+  onTrackUpdate,
+  onClipContextMenu,
   magneticSnapEnabled = true,
   showBeatMarkers = false,
   beatMarkers = [],
@@ -49,6 +60,70 @@ export const Timeline = ({
   // Handle background click to seek
   const handleBackgroundClick = (time: number) => {
     onSeek(Math.max(0, time))
+  }
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ clip: Clip; x: number; y: number } | null>(null)
+
+  // Handler functions for track management
+  const handleVolumeChange = (trackId: string, volume: number) => {
+    onTrackUpdate?.(trackId, { volume })
+  }
+
+  const handleToggleMute = (trackId: string) => {
+    const track = sequence.tracks.find(t => t.id === trackId)
+    if (track) {
+      onTrackUpdate?.(trackId, { muted: !track.muted })
+    }
+  }
+
+  const handleToggleSolo = (trackId: string) => {
+    const track = sequence.tracks.find(t => t.id === trackId)
+    if (track) {
+      onTrackUpdate?.(trackId, { solo: !track.solo })
+    }
+  }
+
+  const handleToggleLock = (trackId: string) => {
+    const track = sequence.tracks.find(t => t.id === trackId)
+    if (track) {
+      onTrackUpdate?.(trackId, { locked: !track.locked })
+    }
+  }
+
+  const handleToggleVisible = (trackId: string) => {
+    const track = sequence.tracks.find(t => t.id === trackId)
+    if (track) {
+      onTrackUpdate?.(trackId, { visible: !track.visible })
+    }
+  }
+
+  // Context menu handlers
+  const handleClipContextMenu = (clip: Clip, x: number, y: number) => {
+    setContextMenu({ clip, x, y })
+  }
+
+  const handleSplitClipFromMenu = (clipId: string) => {
+    console.log('Split clip:', clipId)
+    // TODO: Implement split clip at playhead
+  }
+
+  const handleDetachAudio = (clipId: string) => {
+    console.log('Detach audio:', clipId)
+    // TODO: Implement detach audio
+  }
+
+  const handleUnlinkClip = (clipId: string) => {
+    console.log('Unlink clip:', clipId)
+    // TODO: Implement unlink clip
+  }
+
+  const handleDuplicateClip = (clipId: string) => {
+    onClipDuplicate?.(clipId)
+  }
+
+  const handleDeleteClipFromMenu = (clipId: string) => {
+    onClipDelete?.([clipId])
   }
 
   return (
@@ -94,30 +169,100 @@ export const Timeline = ({
         </div>
       </div>
 
-      {/* Canvas */}
-      <div className="flex-1 relative">
-        <TimelineCanvas
-          sequence={sequence}
-          mediaAssets={mediaAssets}
-          currentTime={currentTime}
-          isPlaying={isPlaying}
-          selectedClipIds={selectedClipIds}
-          onSeek={onSeek}
-          onClipMove={onClipMove}
-          onClipTrim={onClipTrim}
-          onClipSelect={onClipSelect}
-          onClipDelete={onClipDelete}
-          magneticSnapEnabled={magneticSnapEnabled}
-          showBeatMarkers={showBeatMarkers}
-          beatMarkers={beatMarkers}
-          zoomLevel={zoomLevel}
-          pixelsPerSecond={pixelsPerSecond}
-          timelineWidth={timelineWidth}
-          timelineSectionRef={timelineSectionRef}
-          onWheel={handleWheel}
-          onBackgroundClick={handleBackgroundClick}
-        />
+      {/* Timeline Content: Track Headers (left) + Canvas (right) */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar: Track Headers */}
+        <div
+          className="w-[200px] bg-[#181818] border-r border-[#3a3a3a] overflow-y-auto flex-shrink-0"
+          style={{ width: `${TIMELINE_LAYOUT.trackLabelWidth + 80}px` }}
+        >
+          {/* Ruler spacer */}
+          <div style={{ height: `${TIMELINE_LAYOUT.rulerHeight}px` }} className="bg-[#0a0a0a] border-b border-[#3a3a3a]" />
+
+          {/* Top margin spacer */}
+          <div
+            style={{ height: `${TIMELINE_LAYOUT.tracksTopMargin}px` }}
+            className="bg-[#181818] flex items-center justify-center gap-1 px-2"
+          >
+            {onTrackAdd && (
+              <>
+                <button
+                  onClick={() => onTrackAdd('video')}
+                  className="flex-1 px-2 py-1 text-xs text-gray-300 hover:text-white hover:bg-[#2a2a2a] rounded transition-colors flex items-center justify-center gap-1"
+                  title="Add Video Track"
+                >
+                  <Plus className="w-3 h-3" />
+                  Video
+                </button>
+                <button
+                  onClick={() => onTrackAdd('audio')}
+                  className="flex-1 px-2 py-1 text-xs text-gray-300 hover:text-white hover:bg-[#2a2a2a] rounded transition-colors flex items-center justify-center gap-1"
+                  title="Add Audio Track"
+                >
+                  <Plus className="w-3 h-3" />
+                  Audio
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Track Headers */}
+          {sequence.tracks.map((track) => (
+            <TrackHeader
+              key={track.id}
+              track={track}
+              onVolumeChange={handleVolumeChange}
+              onToggleMute={handleToggleMute}
+              onToggleSolo={handleToggleSolo}
+              onToggleLock={handleToggleLock}
+              onToggleVisible={handleToggleVisible}
+              onDelete={onTrackRemove}
+            />
+          ))}
+        </div>
+
+        {/* Right: Timeline Canvas */}
+        <div className="flex-1 relative">
+          <TimelineCanvas
+            sequence={sequence}
+            mediaAssets={mediaAssets}
+            currentTime={currentTime}
+            isPlaying={isPlaying}
+            selectedClipIds={selectedClipIds}
+            onSeek={onSeek}
+            onClipMove={onClipMove}
+            onClipTrim={onClipTrim}
+            onClipSelect={onClipSelect}
+            onClipDelete={onClipDelete}
+            onClipAdd={onClipAdd}
+            onClipContextMenu={onClipContextMenu || handleClipContextMenu}
+            magneticSnapEnabled={magneticSnapEnabled}
+            showBeatMarkers={showBeatMarkers}
+            beatMarkers={beatMarkers}
+            zoomLevel={zoomLevel}
+            pixelsPerSecond={pixelsPerSecond}
+            timelineWidth={timelineWidth}
+            timelineSectionRef={timelineSectionRef}
+            onWheel={handleWheel}
+            onBackgroundClick={handleBackgroundClick}
+          />
+        </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ClipContextMenu
+          clip={contextMenu.clip}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onSplitClip={handleSplitClipFromMenu}
+          onDetachAudio={handleDetachAudio}
+          onUnlinkClip={handleUnlinkClip}
+          onDuplicate={handleDuplicateClip}
+          onDelete={handleDeleteClipFromMenu}
+        />
+      )}
     </div>
   )
 }

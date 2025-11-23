@@ -17,21 +17,22 @@ interface TracksLayerProps {
 export const TracksLayer = ({ sequence, timelineWidth, viewportHeight }: TracksLayerProps) => {
   const tracks = sequence.tracks || []
 
-  // Calculate vertical centering for tracks within the visible viewport
-  const CONTROL_BAR_HEIGHT = 48 // Control bar height (fixed)
-  const tracksTotalHeight = tracks.length * TIMELINE_LAYOUT.trackHeight
-  const availableHeight = viewportHeight - TIMELINE_LAYOUT.rulerHeight - CONTROL_BAR_HEIGHT
-  const centeredOffset = (availableHeight - tracksTotalHeight) / 2
+  // Calculate total height of all tracks and positions
+  const trackPositions: Array<{ track: typeof tracks[0]; y: number; height: number }> = []
+  let currentY = TIMELINE_LAYOUT.rulerHeight + TIMELINE_LAYOUT.tracksTopMargin
+
+  tracks.forEach((track) => {
+    trackPositions.push({
+      track,
+      y: currentY,
+      height: track.height,
+    })
+    currentY += track.height
+  })
 
   return (
     <Layer>
-      {tracks.map((track, index) => {
-        // Position track with centering, but ensure minimum top margin
-        const trackY =
-          TIMELINE_LAYOUT.rulerHeight +
-          Math.max(TIMELINE_LAYOUT.tracksTopMargin, centeredOffset) +
-          index * TIMELINE_LAYOUT.trackHeight
-
+      {trackPositions.map(({ track, y, height }, index) => {
         const isAlternate = index % 2 === 1
 
         return (
@@ -39,37 +40,17 @@ export const TracksLayer = ({ sequence, timelineWidth, viewportHeight }: TracksL
             {/* Track background */}
             <Rect
               x={0}
-              y={trackY}
+              y={y}
               width={timelineWidth}
-              height={TIMELINE_LAYOUT.trackHeight}
+              height={height}
               fill={isAlternate ? TIMELINE_THEME.trackAltRow : TIMELINE_THEME.background}
-            />
-
-            {/* Track label area */}
-            <Rect
-              x={0}
-              y={trackY}
-              width={TIMELINE_LAYOUT.trackLabelWidth}
-              height={TIMELINE_LAYOUT.trackHeight}
-              fill={isAlternate ? TIMELINE_THEME.trackAltRow : TIMELINE_THEME.background}
-              opacity={1}
-            />
-
-            {/* Track label text */}
-            <Text
-              x={TIMELINE_LAYOUT.trackPadding * 2}
-              y={trackY + TIMELINE_LAYOUT.trackHeight / 2 - 8}
-              text={getTrackLabel(track.kind, index)}
-              fontSize={14}
-              fill={TIMELINE_THEME.textSecondary}
-              fontFamily="system-ui, -apple-system, sans-serif"
             />
 
             {/* Track separator line (subtle) */}
             {index < tracks.length - 1 && (
               <Rect
                 x={0}
-                y={trackY + TIMELINE_LAYOUT.trackHeight}
+                y={y + height}
                 width={timelineWidth}
                 height={1}
                 fill={TIMELINE_THEME.clipBorder}
@@ -83,20 +64,3 @@ export const TracksLayer = ({ sequence, timelineWidth, viewportHeight }: TracksL
   )
 }
 
-/**
- * Get track label based on kind and index
- */
-const getTrackLabel = (kind: string, index: number): string => {
-  switch (kind) {
-    case 'video':
-      return `Video ${index + 1}`
-    case 'audio':
-      return `Audio ${index + 1}`
-    case 'overlay':
-      return `Overlay ${index + 1}`
-    case 'fx':
-      return `FX ${index + 1}`
-    default:
-      return `Track ${index + 1}`
-  }
-}
