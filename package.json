@@ -71,11 +71,12 @@
     "react-konva": "^19.2.0",
     "react-resizable-panels": "^3.0.6",
     "recharts": "^3.4.1",
-    "replicate": "^1.3.1",
+    "replicate": "^1.4.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "three": "^0.172.0",
     "vaul": "^1.1.2",
+    "web-audio-beat-detector": "^8.2.31",
     "zod": "^4.1.12",
     "zustand": "^5.0.8"
   },

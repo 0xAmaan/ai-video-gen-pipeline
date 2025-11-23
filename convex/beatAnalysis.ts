@@ -15,7 +15,7 @@
  * @module beatAnalysis
  */
 
-import { mutation, internalAction, internalMutation } from "./_generated/server";
+import { mutation, query, internalAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
@@ -213,6 +213,34 @@ export const analyzeBeatsMutation = mutation({
     });
 
     console.log(`[analyzeBeatsMutation] Analysis action scheduled for asset ${assetId}`);
+  },
+});
+
+/**
+ * Query to get beat analysis status for an audio asset
+ *
+ * @param assetId - The ID of the audio asset
+ * @returns Analysis status information
+ */
+export const getAnalysisStatus = query({
+  args: {
+    assetId: v.id("audioAssets"),
+  },
+  handler: async (ctx, args) => {
+    const asset = await ctx.db.get(args.assetId);
+
+    if (!asset) {
+      return null;
+    }
+
+    return {
+      status: asset.beatAnalysisStatus,
+      error: asset.analysisError,
+      bpm: asset.bpm,
+      beatCount: asset.beatMarkers?.length ?? 0,
+      analysisMethod: asset.analysisMethod,
+      hasMarkers: (asset.beatMarkers?.length ?? 0) > 0,
+    };
   },
 });
 

@@ -12,6 +12,7 @@ import {
   ALL_FORMATS,
   AudioBufferSink,
   Input,
+  InputAudioTrack,
   UrlSource,
   BlobSource,
 } from "mediabunny";
@@ -40,11 +41,20 @@ export interface AudioExtractionResult {
 
 /**
  * Options for audio extraction
+ *
+ * Note: Currently only WAV format is implemented. The `format` and `bitrate`
+ * options are reserved for future enhancements.
  */
 export interface AudioExtractionOptions {
-  /** Preferred audio format (default: "wav") */
+  /**
+   * Preferred audio format (default: "wav")
+   * @remarks Currently only "wav" is supported. Other formats are reserved for future implementation.
+   */
   format?: "aac" | "wav" | "webm";
-  /** Target bitrate for compressed formats in bps (default: 128000) */
+  /**
+   * Target bitrate for compressed formats in bps (default: 128000)
+   * @remarks Currently unused as only WAV (uncompressed) format is supported.
+   */
   bitrate?: number;
   /** Whether to prefer URL passthrough over client extraction */
   preferUrlPassthrough?: boolean;
@@ -67,6 +77,15 @@ interface BrowserCapabilities {
  * Check browser capabilities for audio extraction using mediabunny + Web Audio API
  */
 export function checkBrowserCapabilities(): BrowserCapabilities {
+  // SSR check - return early if not in browser environment
+  if (typeof window === "undefined") {
+    return {
+      hasAudioContext: false,
+      hasWebCodecs: false,
+      supportedMimeTypes: [],
+    };
+  }
+
   const capabilities: BrowserCapabilities = {
     hasAudioContext:
       typeof AudioContext !== "undefined" ||
@@ -104,18 +123,20 @@ export async function extractAudioClient(
   videoSource: string | Blob,
   options: AudioExtractionOptions = {}
 ): Promise<AudioExtractionResult> {
-  try {
-    // Check browser capabilities
-    if (!isBrowserSupported()) {
-      return {
-        method: "failed",
-        error:
-          "Browser does not support WebCodecs API required for audio extraction",
-      };
-    }
+  // Check browser capabilities before creating any resources
+  if (!isBrowserSupported()) {
+    return {
+      method: "failed",
+      error:
+        "Browser does not support WebCodecs API required for audio extraction",
+    };
+  }
 
+  let input: Input | undefined;
+
+  try {
     // Create mediabunny Input from source
-    const input = new Input({
+    input = new Input({
       source:
         typeof videoSource === "string"
           ? new UrlSource(videoSource)
@@ -126,7 +147,6 @@ export async function extractAudioClient(
     // Get audio track and metadata
     const audioTrack = await input.getPrimaryAudioTrack();
     if (!audioTrack) {
-      input.dispose();
       return {
         method: "failed",
         error: "No audio track found in video file",
@@ -143,9 +163,6 @@ export async function extractAudioClient(
       options
     );
 
-    // Cleanup
-    input.dispose();
-
     return {
       audioBlob,
       method: "client",
@@ -157,6 +174,9 @@ export async function extractAudioClient(
       method: "failed",
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    // Always cleanup input resource, even if an error occurred
+    input?.dispose();
   }
 }
 
@@ -217,12 +237,12 @@ export async function extractAudioFromVideo(
  * then encodes to WAV format.
  *
  * @param audioTrack - Audio track from mediabunny Input
- * @param duration - Total duration in seconds
- * @param options - Encoding options
+ * @param duration - Total duration in seconds (currently unused, reserved for future optimizations)
+ * @param options - Encoding options (currently unused, only WAV format supported)
  * @returns Encoded audio Blob
  */
 async function extractAudioBuffersToBlob(
-  audioTrack: any,
+  audioTrack: InputAudioTrack,
   duration: number,
   options: AudioExtractionOptions
 ): Promise<Blob> {
@@ -269,14 +289,15 @@ async function encodeAudioBuffersToWav(
     sampleRate
   );
 
-  // Merge all buffers
-  let offset = 0;
+  // Merge all buffers sequentially
+  // Note: source.start() takes time in seconds, so we track currentTime in seconds
+  let currentTime = 0;
   for (const buffer of buffers) {
     const source = offlineContext.createBufferSource();
     source.buffer = buffer;
     source.connect(offlineContext.destination);
-    source.start(offset / sampleRate);
-    offset += buffer.length;
+    source.start(currentTime);
+    currentTime += buffer.duration; // duration is already in seconds
   }
 
   // Render to final buffer
@@ -369,16 +390,37 @@ function writeString(view: DataView, offset: number, string: string): void {
 }
 
 /**
- * Validate video/audio URL accessibility
+ * Validate video/audio URL accessibility via HEAD request
+ *
+ * **Important Limitations:**
+ * - May return `false` for CORS-protected resources that are otherwise valid
+ * - Some servers may block HEAD requests while allowing GET
+ * - This is a preflight check, not a definitive validation
+ *
+ * **Recommended Usage:**
+ * Use this as an optional validation step before extraction, but don't rely
+ * on it exclusively. The extraction process itself will provide more accurate
+ * error information if the URL is truly inaccessible.
  *
  * @param url - URL to validate
- * @returns Whether the URL is accessible
+ * @returns `true` if the URL responds with HTTP 2xx, `false` otherwise (including CORS errors)
+ *
+ * @example
+ * ```typescript
+ * const isValid = await validateAudioUrl('https://example.com/video.mp4');
+ * if (!isValid) {
+ *   console.warn('URL may not be accessible (could be CORS-related)');
+ * }
+ * // Proceed with extraction anyway - it will provide better error details
+ * const result = await extractAudioFromVideo(url);
+ * ```
  */
 export async function validateAudioUrl(url: string): Promise<boolean> {
   try {
     const response = await fetch(url, { method: "HEAD" });
     return response.ok;
   } catch {
+    // Returns false for CORS errors, network errors, or invalid URLs
     return false;
   }
 }
