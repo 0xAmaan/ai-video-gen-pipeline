@@ -5,7 +5,7 @@ import { useRouter, useParams, usePathname } from "next/navigation";
 import { useProjectData } from "./useProjectData";
 import type { Id } from "@/convex/_generated/dataModel";
 
-type Phase = "prompt" | "storyboard" | "video" | "editor";
+type Phase = "prompt" | "storyboard" | "video" | "audio" | "editor";
 
 interface PhaseGuardProps {
   requiredPhase: Phase;
@@ -24,7 +24,13 @@ interface PhaseGuardProps {
 }
 
 const getPhaseOrder = (phase: Phase): number => {
-  const order = { prompt: 0, storyboard: 1, video: 2, editor: 3 };
+  const order = {
+    prompt: 0,
+    storyboard: 1,
+    video: 2,
+    audio: 3,
+    editor: 4,
+  };
   return order[phase];
 };
 
@@ -62,6 +68,8 @@ export const PhaseGuard = ({
         return hasAnswers || hasScenes;
       case "video":
         return hasScenes;
+      case "audio":
+        return hasClips && allClipsComplete;
       case "editor":
         return hasClips && allClipsComplete;
       default:
@@ -70,7 +78,7 @@ export const PhaseGuard = ({
   };
 
   const furthestUnlockedPhase = (): Phase => {
-    if (allClipsComplete) return "editor";
+    if (allClipsComplete) return "audio";
     if (hasScenes) return "video";
     if (hasAnswers) return "storyboard";
     return "prompt";

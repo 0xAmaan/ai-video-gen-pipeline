@@ -284,7 +284,20 @@ export const adaptConvexProjectToStandalone = ({
     cursor += asset.duration;
   });
 
-  if (project.backgroundMusicUrl && !hasProjectLevelBgmAsset) {
+  if (project.soundtrackUrl && !hasProjectLevelBgmAsset) {
+    addAudioClip({
+      assetId: `${project._id}-soundtrack`,
+      name: "Project Soundtrack",
+      url: project.soundtrackUrl,
+      trackId: BGM_TRACK_ID,
+      start: 0,
+      duration:
+        typeof project.soundtrackDuration === "number"
+          ? Math.max(project.soundtrackDuration, 0.1)
+          : Math.max(cursor, 1),
+      volume: getDefaultVolumeForTrack(BGM_TRACK_ID),
+    });
+  } else if (project.backgroundMusicUrl && !hasProjectLevelBgmAsset) {
     addAudioClip({
       assetId: `${project._id}-project-bgm`,
       name: "Project Background Music",
