@@ -17,10 +17,11 @@ export class VideoLoader {
   private decoder?: VideoDecoder;
   private decoderConfig: VideoDecoderConfig | null = null;
   private readonly cache: FrameCache<VideoFrame>;
-  private readonly lookahead: number;
+  private lookahead: number;
   private readonly requestInit?: RequestInit;
   private lastAnchor = 0;
   private disableTrimming = false; // For export mode - keep all frames
+  private decodeInProgress = false; // Prevent concurrent decode operations
 
   private async buildInput(url: string) {
     return new Input({
@@ -36,7 +37,7 @@ export class VideoLoader {
     private readonly asset: MediaAssetMeta,
     options?: VideoLoaderOptions,
   ) {
-    this.lookahead = options?.lookaheadSeconds ?? 0.75;
+    this.lookahead = options?.lookaheadSeconds ?? 3.0; // Increased from 0.75s to 3.0s
     this.cache = new FrameCache<VideoFrame>(options?.cacheSize ?? 48);
     this.requestInit = options?.requestInit;
   }
@@ -83,62 +84,54 @@ export class VideoLoader {
     this.reconfigureDecoder();
   }
 
+  async getVideoDimensions(): Promise<{ width: number; height: number }> {
+    await this.init();
+
+    // Decode first frame to get dimensions
+    const firstFrame = await this.getFrameAt(0);
+    if (!firstFrame) {
+      throw new Error("Could not decode first frame to get dimensions");
+    }
+
+    const dimensions = {
+      width: firstFrame.displayWidth,
+      height: firstFrame.displayHeight,
+    };
+
+    firstFrame.close();
+    return dimensions;
+  }
+
   async getFrameAt(timeSeconds: number): Promise<VideoFrame | null> {
     await this.init();
     const cacheKey = this.keyFor(timeSeconds);
+
+    // Check exact cache hit first
     const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached.clone();
     }
 
-    // If trimming disabled (export mode), try to find nearest frame instead of seeking
-    if (this.disableTrimming) {
-      const nearestFrame = this.cache.findNearest(timeSeconds);
-      if (nearestFrame) {
-        console.log(
-          `[VideoLoader] Using nearest frame for ${timeSeconds.toFixed(3)}s`,
-        );
-        return nearestFrame.clone();
-      }
+    // Decide if we need to decode more frames
+    const shouldDecode = this.shouldDecodeAround(timeSeconds);
+
+    if (shouldDecode && !this.decodeInProgress) {
+      await this.decodeAround(timeSeconds);
     }
 
-    await this.decodeAround(timeSeconds);
-    const decoded = this.cache.get(cacheKey);
-    if (decoded) {
-      return decoded.clone();
+    // After potential decode, try exact match again
+    const decodedExact = this.cache.get(cacheKey);
+    if (decodedExact) {
+      return decodedExact.clone();
     }
-    
-    // Fallback: Find nearest frame within tolerance (50ms)
-    // This handles timestamp precision mismatches
-    const nearestFrame = this.getNearestFrame(timeSeconds, 0.05);
-    if (nearestFrame) {
-      // Only log occasionally to avoid spam
-      if (Math.random() < 0.05) {
-        console.log('[VideoLoader] Using nearest frame for', timeSeconds.toFixed(6), '- exact match not found, cache size:', this.cache.size);
-      }
-      return nearestFrame;
+
+    // Fall back to nearest available frame
+    const nearest = this.cache.findNearest(timeSeconds);
+    if (nearest) {
+      return nearest.clone();
     }
-    
-    console.error('[VideoLoader] No frame found near', timeSeconds.toFixed(6), 's - cache size:', this.cache.size, 'cache keys:', Array.from(this.cache.entries()).slice(0, 5).map(([k]) => k));
+
     return null;
-  }
-  
-  private getNearestFrame(timeSeconds: number, toleranceSeconds: number): VideoFrame | null {
-    let nearestFrame: VideoFrame | null = null;
-    let nearestDelta = Infinity;
-    
-    for (const [key, frame] of this.cache.entries()) {
-      const frameTime = Number.parseFloat(key);
-      if (!Number.isFinite(frameTime)) continue;
-      
-      const delta = Math.abs(frameTime - timeSeconds);
-      if (delta <= toleranceSeconds && delta < nearestDelta) {
-        nearestDelta = delta;
-        nearestFrame = frame;
-      }
-    }
-    
-    return nearestFrame ? nearestFrame.clone() : null;
   }
 
   async decodeSequential(
@@ -173,8 +166,18 @@ export class VideoLoader {
     }
 
     await this.decoder.flush();
+
+    // CRITICAL FIX: Set lastAnchor to cover the entire decoded range
+    // This prevents shouldDecodeAround() from triggering re-decode
+    this.lastAnchor = (startSeconds + endSeconds) / 2;
+    // Set lookahead to cover entire range so shouldDecodeAround never triggers
+    this.lookahead = Math.max(
+      this.lookahead,
+      (endSeconds - startSeconds) / 2 + 1,
+    );
+
     console.log(
-      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size}`,
+      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size()}, anchor: ${this.lastAnchor}, lookahead: ${this.lookahead}`,
     );
   }
 
@@ -183,9 +186,16 @@ export class VideoLoader {
     this.lastAnchor = timeSeconds;
     await this.decoder?.flush().catch(() => undefined);
     this.decoder?.reset();
-    this.reconfigureDecoder();
+    // Don't reconfigure here - decodeAround() will handle it with proper keyframe
     this.cache.clear();
     await this.decodeAround(timeSeconds);
+  }
+
+  setPlaybackMode(isPlaying: boolean): void {
+    this.disableTrimming = isPlaying;
+    console.log(
+      `[VideoLoader] Playback mode: ${isPlaying}, trimming: ${!isPlaying}`,
+    );
   }
 
   dispose() {
@@ -194,52 +204,140 @@ export class VideoLoader {
     this.input?.dispose();
   }
 
-  private async decodeAround(timeSeconds: number) {
-    if (!this.decoder || !this.sink) return;
-    this.lastAnchor = timeSeconds;
-
-    await this.decoder.flush().catch(() => undefined);
-    const keyPacket = await this.sink.getKeyPacket(timeSeconds, {
-      verifyKeyPackets: true,
-    });
-    if (!keyPacket) return;
-
-    let packet: any | null = keyPacket;
-    const endTimestamp = timeSeconds + this.lookahead;
-    while (packet && packet.timestamp <= endTimestamp) {
-      // Skip metadata-only packets
-      if (!packet.isMetadataOnly && packet.byteLength > 0) {
-        this.decoder.decode(packet.toEncodedVideoChunk());
-      }
-      packet = await this.sink.getNextPacket(packet);
+  private shouldDecodeAround(timeSeconds: number): boolean {
+    // CRITICAL FIX: In export mode (disableTrimming = true), NEVER re-decode
+    // The sequential decode has already loaded all frames
+    if (this.disableTrimming) {
+      return false;
     }
 
-    await this.decoder.flush();
-    this.trimCache(timeSeconds);
+    // If cache is empty, definitely need to decode
+    if (this.cache.size() === 0) return true;
+
+    // If time is far from last anchor, need to decode new window
+    // Using 0.3 (30%) instead of 0.5 (50%) for more preemptive decoding
+    const distanceFromAnchor = Math.abs(timeSeconds - this.lastAnchor);
+    if (distanceFromAnchor > this.lookahead * 0.3) {
+      console.log(
+        `[VideoLoader] Time ${timeSeconds.toFixed(3)}s is ${distanceFromAnchor.toFixed(3)}s from anchor ${this.lastAnchor.toFixed(3)}s, re-decoding`,
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  private async decodeAround(timeSeconds: number) {
+    if (!this.decoder || !this.sink) return;
+
+    // Don't skip concurrent requests - they're queued in getFrameAt()
+    if (this.decodeInProgress) {
+      return;
+    }
+
+    this.decodeInProgress = true;
+    try {
+      this.lastAnchor = timeSeconds;
+
+      await this.decoder.flush().catch(() => undefined);
+
+      // Only reconfigure if decoder is closed or not configured
+      if (
+        this.decoder.state === "closed" ||
+        this.decoder.state === "unconfigured"
+      ) {
+        this.reconfigureDecoder();
+      }
+
+      // Try to get keyframe at requested time
+      let keyPacket = await this.sink.getKeyPacket(timeSeconds, {
+        verifyKeyPackets: true,
+      });
+
+      // If no keyframe found at requested time and we're near the beginning, try time 0
+      if (!keyPacket && timeSeconds < 1.0) {
+        console.log(
+          "[VideoLoader] No keyframe at",
+          timeSeconds,
+          "trying from start",
+        );
+        keyPacket = await this.sink.getKeyPacket(0, {
+          verifyKeyPackets: true,
+        });
+      }
+
+      if (!keyPacket) {
+        console.error("[VideoLoader] No keyframe found at", timeSeconds);
+        return;
+      }
+
+      // Verify it's actually a keyframe
+      if (keyPacket.type !== "key") {
+        console.error(
+          "[VideoLoader] Packet is not a keyframe:",
+          keyPacket.type,
+        );
+        return;
+      }
+
+      let packet: any | null = keyPacket;
+      const endTimestamp = timeSeconds + this.lookahead;
+      let isFirstPacket = true;
+
+      while (packet && packet.timestamp <= endTimestamp) {
+        // Skip metadata-only packets
+        if (!packet.isMetadataOnly && packet.byteLength > 0) {
+          // Extra safety: verify first packet is keyframe
+          if (isFirstPacket) {
+            if (packet.type !== "key") {
+              console.error(
+                "[VideoLoader] First packet after config/flush is not a keyframe, skipping decode",
+                { type: packet.type, timestamp: packet.timestamp },
+              );
+              break;
+            }
+            console.log(
+              "[VideoLoader] Starting decode with keyframe at",
+              packet.timestamp,
+            );
+          }
+
+          // Only decode if decoder is in configured state
+          if (this.decoder.state !== "configured") {
+            console.error(
+              "[VideoLoader] Decoder not in configured state:",
+              this.decoder.state,
+              "packet type:",
+              packet.type,
+            );
+            break;
+          }
+
+          this.decoder.decode(packet.toEncodedVideoChunk());
+          isFirstPacket = false;
+        }
+        packet = await this.sink.getNextPacket(packet);
+      }
+
+      await this.decoder.flush();
+      this.trimCache(timeSeconds);
+    } finally {
+      this.decodeInProgress = false;
+    }
   }
 
   private handleDecodedFrame(frame: VideoFrame) {
     const seconds = (frame.timestamp ?? 0) / MICROSECONDS;
     const key = this.keyFor(seconds);
-    console.log(
-      `[VideoLoader] Decoded frame at ${seconds.toFixed(3)}s, cacheKey=${key}`,
-    );
     // Close any existing frame at the same timestamp before replacing.
     void this.cache.put(key, frame);
 
     // Skip trimming if disabled (export mode)
     if (this.disableTrimming) {
-      console.log(
-        `[VideoLoader] Trimming disabled, cache size: ${this.cache.size}`,
-      );
       return;
     }
 
-    console.log(`[VideoLoader] Cache size before trim: ${this.cache.size}`);
     this.trimCache(this.lastAnchor);
-    console.log(
-      `[VideoLoader] Cache size after trim: ${this.cache.size}, lastAnchor=${this.lastAnchor.toFixed(3)}s, lookahead=${this.lookahead.toFixed(3)}s`,
-    );
   }
 
   private trimCache(anchorSeconds: number) {
@@ -259,13 +357,32 @@ export class VideoLoader {
 
   private reconfigureDecoder() {
     const config = this.decoderConfig;
-    if (!config) return;
+    if (!config) {
+      console.error(
+        "[VideoLoader] Cannot reconfigure decoder: no decoder config",
+      );
+      return;
+    }
+
     if (!this.decoder || this.decoder.state === "closed") {
       this.decoder = new VideoDecoder({
         output: (frame) => this.handleDecodedFrame(frame),
-        error: (error) => console.error("VideoDecoder error", error),
+        error: (error) => {
+          console.error("VideoDecoder error", error);
+          console.error("Asset URL:", this.asset.url);
+          console.error("Decoder state:", this.decoder?.state);
+        },
       });
     }
-    this.decoder.configure(config);
+
+    try {
+      this.decoder.configure(config);
+      console.log("[VideoLoader] Decoder configured for asset:", this.asset.id);
+    } catch (error) {
+      console.error("[VideoLoader] Failed to configure decoder:", error);
+      console.error("Config:", config);
+      console.error("Asset:", this.asset);
+      throw error;
+    }
   }
 }

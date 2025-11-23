@@ -85,3 +85,62 @@ export const calculateTrackDuration = (clips: Clip[]): number => {
   );
   return maxEnd;
 };
+
+/**
+ * Splits a clip at the specified timeline time
+ * @param clip The clip to split
+ * @param splitTime The timeline time at which to split
+ * @returns Tuple of [leftClip, rightClip] or null if split is invalid
+ */
+export const splitClipAtTime = (
+  clip: Clip,
+  splitTime: number,
+): [Clip, Clip] | null => {
+  const EPSILON = 0.01; // 10ms tolerance for boundary detection
+  const MIN_CLIP_DURATION = 0.1; // Minimum 100ms clip duration
+
+  // Calculate split offset from clip start
+  const splitOffset = splitTime - clip.start;
+
+  // Validate split point is within clip
+  if (splitOffset < 0 || splitOffset > clip.duration) {
+    console.warn("Split time outside clip bounds");
+    return null;
+  }
+
+  // Don't split if too close to boundaries
+  if (splitOffset < EPSILON || splitOffset > clip.duration - EPSILON) {
+    console.warn("Split time too close to clip boundary");
+    return null;
+  }
+
+  // Ensure both resulting clips meet minimum duration
+  if (
+    splitOffset < MIN_CLIP_DURATION ||
+    clip.duration - splitOffset < MIN_CLIP_DURATION
+  ) {
+    console.warn("Split would create clips that are too short");
+    return null;
+  }
+
+  // Create left clip (keeps effects/transitions)
+  const leftClip: Clip = {
+    ...clip,
+    id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+    duration: splitOffset,
+    trimEnd: clip.trimStart + splitOffset,
+  };
+
+  // Create right clip (no effects/transitions)
+  const rightClip: Clip = {
+    ...clip,
+    id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
+    start: splitTime,
+    duration: clip.duration - splitOffset,
+    trimStart: clip.trimStart + splitOffset,
+    effects: [],
+    transitions: [],
+  };
+
+  return [leftClip, rightClip];
+};

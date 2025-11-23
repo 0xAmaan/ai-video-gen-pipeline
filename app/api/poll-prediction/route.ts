@@ -9,9 +9,7 @@ const replicate = new Replicate({
 });
 
 const rawWorkerBase =
-  process.env.R2_INGEST_URL ||
-  process.env.NEXT_PUBLIC_R2_PROXY_BASE ||
-  "";
+  process.env.R2_INGEST_URL || process.env.NEXT_PUBLIC_R2_PROXY_BASE || "";
 const workerAuth = process.env.R2_INGEST_TOKEN || process.env.AUTH_TOKEN || "";
 
 const normalizeWorkerBase = (value: string) => {
@@ -119,6 +117,14 @@ export async function POST(req: Request) {
       prediction.status === "failed" ||
       prediction.status === "canceled"
     ) {
+      // Log detailed error information
+      console.error("[poll-prediction] Prediction failed:", {
+        predictionId,
+        status: prediction.status,
+        error: prediction.error,
+        logs: prediction.logs,
+      });
+
       return apiResponse({
         status: "failed",
         errorMessage: prediction.error || "Prediction failed",

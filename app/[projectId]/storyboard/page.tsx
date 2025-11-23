@@ -467,23 +467,24 @@ const StoryboardPage = () => {
         }
 
         if (result.status === "failed") {
-          const failureMessage =
-            result.errorMessage ||
-            "Video generation failed. Please try again.";
+          const errorMessage = result.errorMessage || "Video generation failed. Please try again.";
           await updateVideoClip({
             clipId,
             status: "failed",
-            errorMessage: failureMessage,
+            errorMessage,
           });
           activeVideoPolls.current.delete(clipId);
           toast.error("Video generation failed", {
-            description: failureMessage,
+            description: errorMessage,
           });
           console.error("[StoryboardPage] Clip failed while polling", {
             clipId,
             predictionId,
-            error: failureMessage,
+            error: errorMessage,
+            fullResult: result, // Log full result to see what Replicate returned
           });
+          // Show user-friendly alert with the error
+          alert(`Video generation failed: ${errorMessage}\n\nPrediction ID: ${predictionId}`);
           return;
         }
 

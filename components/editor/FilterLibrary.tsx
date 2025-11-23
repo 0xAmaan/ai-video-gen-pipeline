@@ -57,21 +57,21 @@ const FilterCard = ({
       onClick={onSelect}
       className={`group w-full rounded-lg border overflow-hidden text-left transition-all hover:shadow-md cursor-pointer ${
         isSelected
-          ? "border-primary bg-primary/5 shadow-md"
-          : "border-border bg-card hover:border-primary"
+          ? "border-blue-500 bg-blue-500/10 shadow-md"
+          : "border-zinc-800 bg-zinc-900 hover:border-zinc-700"
       }`}
     >
       {/* Preview area */}
       <div
-        className={`relative aspect-video bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center transition-colors ${
-          isSelected ? "bg-primary/10" : "group-hover:bg-muted/80"
+        className={`relative aspect-video bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center transition-colors ${
+          isSelected ? "bg-blue-500/10" : "group-hover:bg-zinc-800"
         }`}
       >
         <Icon
           className={`h-12 w-12 transition-all ${
             isSelected
-              ? "text-primary"
-              : "text-muted-foreground group-hover:text-foreground group-hover:scale-110"
+              ? "text-blue-400"
+              : "text-zinc-500 group-hover:text-zinc-300 group-hover:scale-110"
           }`}
         />
         {/* Category badge */}
@@ -86,14 +86,14 @@ const FilterCard = ({
           <p
             className={`text-xs font-semibold truncate transition-colors ${
               isSelected
-                ? "text-primary"
-                : "text-foreground group-hover:text-primary"
+                ? "text-blue-400"
+                : "text-zinc-200 group-hover:text-blue-400"
             }`}
           >
             {preset.name}
           </p>
         </div>
-        <p className="text-[10px] text-muted-foreground line-clamp-2">
+        <p className="text-[10px] text-zinc-500 line-clamp-2">
           {preset.description}
         </p>
       </div>
@@ -138,7 +138,7 @@ export const FilterLibrary = ({
   );
 
   return (
-    <div className="flex h-full flex-col bg-muted/20">
+    <div className="flex h-full flex-col">
       {/* Category Tabs */}
       <Tabs
         value={activeCategory}

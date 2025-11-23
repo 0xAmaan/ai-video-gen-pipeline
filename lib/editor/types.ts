@@ -61,6 +61,20 @@ export interface Effect {
 
 export type EasingFunction = "linear" | "ease-in" | "ease-out" | "ease-in-out";
 
+export type BlendMode =
+  | "normal"
+  | "multiply"
+  | "screen"
+  | "overlay"
+  | "darken"
+  | "lighten"
+  | "color-dodge"
+  | "color-burn"
+  | "hard-light"
+  | "soft-light"
+  | "difference"
+  | "exclusion";
+
 export interface TransitionSpec {
   id: string;
   type: string; // TransitionType from transitions/presets
@@ -94,16 +108,24 @@ export interface Clip {
   transitions: TransitionSpec[];
   speedCurve: SpeedCurve | null; // null = normal speed (1x), otherwise custom speed curve
   preservePitch: boolean; // When true, attempt to preserve audio pitch during speed changes (default: true)
+  blendMode: BlendMode; // How this clip blends with layers below (default: "normal")
+  linkedClipId?: string; // ID of linked clip (for A/V sync after detaching audio)
+  originalMediaId?: string; // Original media source (useful after audio split to track origin)
 }
 
 export interface Track {
   id: string;
+  name: string; // Display name for the track
   kind: TrackKind;
   allowOverlap: boolean;
   clips: Clip[];
   locked: boolean;
   muted: boolean;
+  solo: boolean; // When true, only this track (and other solo tracks) play
   volume: number;
+  zIndex: number; // Render order for video tracks (higher = on top)
+  height: number; // UI height in pixels (allows collapsing tracks)
+  visible: boolean; // Show/hide track in timeline and output
 }
 
 export interface Sequence {
@@ -132,7 +154,7 @@ export interface MediaAssetMeta {
   waveformUrl?: string;
   r2Key?: string;
   proxyUrl?: string;
-   proxyR2Key?: string;
+  proxyR2Key?: string;
   sourceUrl?: string;
   predictionId?: string;
   thumbnails?: string[]; // R2 URLs for timeline thumbnails (or data URLs as fallback)
