@@ -84,6 +84,9 @@ const buildMediaAsset = (
     proxyUrl,
     proxyR2Key: proxyUrl ? clip.r2Key ?? undefined : undefined,
     sourceUrl: originalUrl,
+    // Map beat analysis fields from videoClip
+    beatMarkers: clip.beatMarkers,
+    bpm: clip.bpm,
   };
 };
 

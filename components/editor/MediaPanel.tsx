@@ -2,17 +2,7 @@
 
 import { ScrollArea } from "../ui/scroll-area";
 import type { MediaAssetMeta } from "@/lib/editor/types";
-import { UploadCloud, Clock, Music } from "lucide-react";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { toast } from "sonner";
-import type { Id } from "@/convex/_generated/dataModel";
+import { UploadCloud, Clock } from "lucide-react";
 
 
 interface MediaPanelProps {
@@ -36,32 +26,7 @@ const formatTime = (seconds: number) => {
 };
 
 function AssetCard({ asset, onAddToTimeline }: AssetCardProps) {
-  // Show "Analyze Beats" only for audio/video assets
-  const canAnalyzeBeats = asset.type === "audio" || asset.type === "video";
-  
-  const analyzeBeatsMutation = useMutation(api.beatAnalysis.analyzeBeatsMutation);
-  // Only query status for audio/video assets to avoid unnecessary API calls
-  const beatAnalysisStatus = useQuery(
-    api.beatAnalysis.getAnalysisStatus,
-    canAnalyzeBeats ? { assetId: asset.id as Id<"audioAssets"> } : "skip"
-  );
-  const isAnalyzing = beatAnalysisStatus?.status === "analyzing";
-
-  const handleAnalyzeBeats = async () => {
-    try {
-      await analyzeBeatsMutation({ assetId: asset.id as Id<"audioAssets"> });
-      toast.success("Beat analysis started! This may take a moment...");
-    } catch (error) {
-      console.error("Beat analysis failed:", error);
-      toast.error(
-        error instanceof Error
-          ? `Failed to analyze beats: ${error.message}`
-          : "Failed to analyze beats. Please try again."
-      );
-    }
-  };
-
-  const cardContent = (
+  return (
     <button
       onClick={() => onAddToTimeline(asset.id)}
       className="group w-full rounded-lg border border-border bg-card overflow-hidden text-left hover:border-primary transition-all hover:shadow-md cursor-pointer"
@@ -92,31 +57,6 @@ function AssetCard({ asset, onAddToTimeline }: AssetCardProps) {
         </p>
       </div>
     </button>
-  );
-
-  // Wrap with context menu only for audio/video assets
-  if (!canAnalyzeBeats) {
-    return cardContent;
-  }
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        {cardContent}
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
-        <ContextMenuItem
-          onClick={(e) => {
-            e.stopPropagation();
-            handleAnalyzeBeats();
-          }}
-          disabled={isAnalyzing}
-        >
-          <Music className="mr-2 h-4 w-4" />
-          {isAnalyzing ? "Analyzing Beats..." : "Analyze Beats"}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
   );
 }
 

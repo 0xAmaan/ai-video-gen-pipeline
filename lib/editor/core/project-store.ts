@@ -166,6 +166,7 @@ export interface ProjectStoreState {
 
   // Editor modes
   rippleEditEnabled: boolean;
+  multiTrackRipple: boolean; // When true, ripple affects all unlocked tracks
 
   actions: {
     hydrate: (projectId?: string) => Promise<void>;
@@ -193,6 +194,7 @@ export interface ProjectStoreState {
     save: () => Promise<void>; // Explicit save to Convex (PRD Tri-State)
     markDirty: () => void; // Mark session as dirty without persisting
     toggleRippleEdit: () => void;
+    toggleMultiTrackRipple: () => void;
   };
 }
 
@@ -217,6 +219,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
   // Editor modes
   rippleEditEnabled: false,
+  multiTrackRipple: false, // Default to single-track ripple
 
   actions: {
     hydrate: async (projectId?: string) => {
@@ -532,7 +535,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     },
     rippleDelete: (clipId) => {
       const state = get();
-      const { historyManager } = state;
+      const { historyManager, multiTrackRipple } = state;
 
       const command = new RippleDeleteCommand(
         () => get().project,
@@ -541,6 +544,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           void timelineService.setSequence(getSequence(project));
         },
         clipId,
+        multiTrackRipple, // Pass multi-track ripple setting
       );
 
       const success = historyManager.execute(command);
@@ -579,6 +583,9 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
     // Toggle ripple edit mode
     toggleRippleEdit: () => set((state) => ({ rippleEditEnabled: !state.rippleEditEnabled })),
+    
+    // Toggle multi-track ripple mode
+    toggleMultiTrackRipple: () => set((state) => ({ multiTrackRipple: !state.multiTrackRipple })),
   },
 }));
 

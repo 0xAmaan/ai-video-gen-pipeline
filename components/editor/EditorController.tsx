@@ -78,9 +78,11 @@ import { HistoryDebugPanel } from "./HistoryDebugPanel";
  *
  * ### Keyboard Shortcuts:
  *
- * - `S` - Split clip at playhead
+ * - `Cmd+B` (Mac) / `Ctrl+B` (Windows) - Split clip at playhead
+ * - `S` - Split clip at playhead (legacy)
  * - `Delete/Backspace` - Delete selected clip (ripple if enabled)
  * - `R` - Toggle ripple edit mode
+ * - `Escape` - Cancel slip/slide editing
  *
  * @component
  * @internal
@@ -247,7 +249,19 @@ const EditorBridge = () => {
         return;
       }
 
-      // S key: Split clip at playhead
+      // Cmd+B (Mac) or Ctrl+B (Windows): Split clip at playhead
+      if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
+        event.preventDefault();
+        const selectedClipId = selection.clipIds[0];
+        if (selectedClipId) {
+          console.log('[EditorController] Splitting clip at playhead (Cmd+B):', selectedClipId);
+          actions.splitAtPlayhead(selectedClipId);
+        } else {
+          console.log('[EditorController] No clip selected for split operation');
+        }
+      }
+
+      // S key: Split clip at playhead (legacy shortcut)
       if (event.key === 's' || event.key === 'S') {
         event.preventDefault();
         const selectedClipId = selection.clipIds[0];

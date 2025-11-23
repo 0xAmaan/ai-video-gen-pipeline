@@ -41,19 +41,39 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
       title: "Clip Operations",
       shortcuts: [
         {
-          keys: "S",
+          keys: `${modKey}+B`,
           description: "Split clip at playhead",
-          note: "Requires selected clip",
+          note: "Frame-accurate split with property preservation",
+        },
+        {
+          keys: "S",
+          description: "Split clip at playhead (legacy)",
+          note: "Alternative shortcut for clip splitting",
         },
         {
           keys: "Delete / Backspace",
           description: "Delete selected clip",
-          note: "Ripple delete if enabled",
+          note: "Uses ripple delete when ripple mode is enabled",
         },
+      ],
+    },
+    {
+      title: "Ripple Edit Mode",
+      shortcuts: [
         {
           keys: "R",
           description: "Toggle Ripple Edit mode",
-          note: "When enabled, deletes close gaps",
+          note: "When enabled, deleting clips automatically closes gaps",
+        },
+        {
+          keys: "Click '1' / 'ALL' button",
+          description: "Toggle single-track / multi-track ripple",
+          note: "'1' affects only the clip's track, 'ALL' affects all unlocked tracks",
+        },
+        {
+          keys: "Locked tracks",
+          description: "Automatically skipped during ripple",
+          note: "Lock a track to prevent it from being affected by ripple operations",
         },
       ],
     },

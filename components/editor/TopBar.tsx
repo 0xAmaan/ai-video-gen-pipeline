@@ -39,6 +39,8 @@ interface TopBarProps {
   onTitleChange?: (newTitle: string) => void;
   rippleEditEnabled?: boolean;
   onToggleRippleEdit?: () => void;
+  multiTrackRipple?: boolean;
+  onToggleMultiTrackRipple?: () => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -70,6 +72,8 @@ const TopBarComponent = ({
   onTitleChange,
   rippleEditEnabled,
   onToggleRippleEdit,
+  multiTrackRipple,
+  onToggleMultiTrackRipple,
 }: TopBarProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(title);
@@ -187,7 +191,7 @@ const TopBarComponent = ({
             <Redo2 className="h-4 w-4" />
           </Button>
           {onToggleRippleEdit && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Button
                 variant={rippleEditEnabled ? "default" : "outline"}
                 size="sm"
@@ -201,6 +205,18 @@ const TopBarComponent = ({
                   <span className="hidden sm:inline text-xs">RIPPLE</span>
                 )}
               </Button>
+              {rippleEditEnabled && onToggleMultiTrackRipple && (
+                <Button
+                  variant={multiTrackRipple ? "default" : "outline"}
+                  size="sm"
+                  onClick={onToggleMultiTrackRipple}
+                  aria-label="Toggle multi-track ripple"
+                  title="Multi-Track Ripple: Affects all unlocked tracks"
+                  className="gap-1 px-2"
+                >
+                  <span className="text-xs font-mono">{multiTrackRipple ? "ALL" : "1"}</span>
+                </Button>
+              )}
             </div>
           )}
           {onToggleTimelineMode && timelineMode && (
@@ -294,7 +310,9 @@ export const TopBar = memo(TopBarComponent, (prevProps, nextProps) => {
     prevProps.onToggleTimelineMode === nextProps.onToggleTimelineMode &&
     prevProps.onTitleChange === nextProps.onTitleChange &&
     prevProps.rippleEditEnabled === nextProps.rippleEditEnabled &&
-    prevProps.onToggleRippleEdit === nextProps.onToggleRippleEdit
+    prevProps.onToggleRippleEdit === nextProps.onToggleRippleEdit &&
+    prevProps.multiTrackRipple === nextProps.multiTrackRipple &&
+    prevProps.onToggleMultiTrackRipple === nextProps.onToggleMultiTrackRipple
     // Note: currentTime intentionally excluded to reduce re-renders
   );
 });

@@ -35,6 +35,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
   const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
+  const multiTrackRipple = useProjectStore((state) => state.multiTrackRipple);
   const actions = useProjectStore((state) => state.actions);
   const thumbnailInflight = useRef<Set<string>>(new Set());
   const thumbnailsCompletedRef = useRef<Set<string>>(new Set());
@@ -358,6 +359,8 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         onToggleAudioTrack={() => setAudioTrackMuted((prev) => !prev)}
         rippleEditEnabled={rippleEditEnabled}
         onToggleRippleEdit={() => actions.toggleRippleEdit()}
+        multiTrackRipple={multiTrackRipple}
+        onToggleMultiTrackRipple={() => actions.toggleMultiTrackRipple()}
       />
       
       <div className="flex flex-1 flex-col min-h-0">

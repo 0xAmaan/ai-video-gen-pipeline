@@ -192,6 +192,21 @@ export default defineSchema({
     hasLipsync: v.optional(v.boolean()),
     cancelledAt: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
+    // Beat analysis fields
+    beatMarkers: v.optional(v.array(beatMarkerValidator)),
+    bpm: v.optional(v.number()),
+    beatAnalysisStatus: v.optional(
+      v.union(
+        v.literal("not_analyzed"),
+        v.literal("analyzing"),
+        v.literal("completed"),
+        v.literal("failed"),
+      ),
+    ),
+    analysisMethod: v.optional(
+      v.union(v.literal("replicate"), v.literal("client")),
+    ),
+    analysisError: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -201,12 +216,65 @@ export default defineSchema({
   editorProjects: defineTable({
     userId: v.string(),
     title: v.optional(v.string()),
-    projectData: v.any(),
+    projectData: v.optional(v.any()), // Being deprecated in favor of normalized storage
+    sequences: v.optional(v.any()),
+    settings: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_user_updated", ["userId", "updatedAt"]),
+
+  editorAssets: defineTable({
+    projectId: v.id("editorProjects"),
+    type: v.union(
+      v.literal("video"),
+      v.literal("audio"),
+      v.literal("image")
+    ),
+    name: v.string(),
+    url: v.string(),
+    r2Key: v.optional(v.string()),
+    proxyUrl: v.optional(v.string()),
+    
+    // Media dimensions and properties
+    duration: v.number(),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    fps: v.optional(v.number()),
+    
+    // Visual/audio data
+    thumbnails: v.optional(v.array(v.string())),
+    waveform: v.optional(v.any()), // Binary data for audio waveform visualization
+    sampleRate: v.optional(v.number()),
+    
+    // Beat analysis fields (compatible with audioAssets table)
+    beatMarkers: v.optional(v.array(beatMarkerValidator)),
+    bpm: v.optional(v.number()),
+    beatAnalysisStatus: v.optional(
+      v.union(
+        v.literal("not_analyzed"),
+        v.literal("analyzing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("rate_limited")
+      )
+    ),
+    analysisError: v.optional(v.string()),
+    analysisMethod: v.optional(
+      v.union(
+        v.literal("replicate"),
+        v.literal("client"),
+        v.literal("manual")
+      )
+    ),
+    
+    metadata: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_type", ["projectId", "type"]),
 
   projectHistory: defineTable({
     projectId: v.string(),

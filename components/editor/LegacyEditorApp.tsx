@@ -45,6 +45,7 @@ export const LegacyEditorApp = ({
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
   const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
+  const multiTrackRipple = useProjectStore((state) => state.multiTrackRipple);
   const actions = useProjectStore((state) => state.actions);
   
   // Get beat markers and snap settings from audio analysis
@@ -255,6 +256,8 @@ export const LegacyEditorApp = ({
         onToggleAudioTrack={() => undefined}
         rippleEditEnabled={rippleEditEnabled}
         onToggleRippleEdit={() => actions.toggleRippleEdit()}
+        multiTrackRipple={multiTrackRipple}
+        onToggleMultiTrackRipple={() => actions.toggleMultiTrackRipple()}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
