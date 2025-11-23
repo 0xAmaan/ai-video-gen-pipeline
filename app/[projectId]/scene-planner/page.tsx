@@ -750,6 +750,25 @@ const PromptPlannerPage = () => {
 
   const handleGeneratePreview = async (shot: SceneShot) => {
     if (!projectId) return;
+
+    // Flush any pending prompt edits before generating so the API uses the latest text
+    if (shotUpdateTimers.current[shot._id]) {
+      clearTimeout(shotUpdateTimers.current[shot._id]);
+      delete shotUpdateTimers.current[shot._id];
+    }
+
+    try {
+      await updateShot({
+        shotId: shot._id,
+        description: shot.description,
+        initialPrompt: shot.initialPrompt ?? shot.description,
+      });
+    } catch (error) {
+      console.error("Failed to sync latest prompt before generation", error);
+      toast.error("Could not save the latest prompt. Try again.");
+      return;
+    }
+
     try {
       const response = await fetch("/api/generate-shot-images", {
         method: "POST",
@@ -781,8 +800,6 @@ const PromptPlannerPage = () => {
           existingShot._id === shot._id
             ? {
                 ...existingShot,
-                description: "",
-                initialPrompt: "",
                 selectedImageId: undefined,
                 lastImageStatus: undefined,
                 lastImageGenerationAt: undefined,
@@ -849,6 +866,25 @@ const PromptPlannerPage = () => {
   const hasScenes = plannerScenes.length > 0;
   const selectionComplete = (projectProgress?.selectionProgress ?? 0) >= 100;
   const isLinkModalOpen = !!linkModalState;
+
+  const shotLabelMap = useMemo(() => {
+    const map = new Map<Id<"sceneShots">, string>();
+    plannerScenes.forEach((scene) => {
+      scene.shots.forEach((shot, idx) => {
+        const shotNumber =
+          shot.shotNumber !== undefined ? shot.shotNumber : idx + 1;
+        map.set(shot._id, `${scene.sceneNumber}.${shotNumber}`);
+      });
+    });
+    return map;
+  }, [plannerScenes]);
+
+  const getLinkedShotLabel = useCallback(
+    (linkedShotId: Id<"sceneShots">) => {
+      return shotLabelMap.get(linkedShotId) ?? null;
+    },
+    [shotLabelMap],
+  );
 
   const getActiveDragItem = () => {
     if (!activeDragId || !activeDragType) return null;
@@ -1022,6 +1058,7 @@ const PromptPlannerPage = () => {
                               onOpenLinkModal={(shot) =>
                                 handleOpenLinkModal(shot, scene)
                               }
+                              getLinkedShotLabel={getLinkedShotLabel}
                             />
                           </SortableContext>
 
