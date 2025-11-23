@@ -43,6 +43,9 @@ export interface ThumbnailProgressMessage {
   progress: number;
   current: number;
   total: number;
+  phase?: 'generation' | 'upload'; // Which phase of thumbnail creation
+  thumbnails?: string[]; // Partial thumbnails for progressive rendering
+  indices?: number[]; // Indices of available thumbnails
 }
 
 export interface ThumbnailResponseMessage {

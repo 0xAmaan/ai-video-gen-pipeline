@@ -1,14 +1,18 @@
 "use client";
 
 import {
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-} from "@/components/ui/context-menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+} from "@/components/ui/dropdown-menu";
 import { Activity } from "lucide-react";
 
 interface ClipContextMenuProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  position: { x: number; y: number };
   clipId: string;
   selectedClipIds: string[];
   playheadTime: number;
@@ -16,16 +20,22 @@ interface ClipContextMenuProps {
   clipEnd: number;
   hasClipboard: boolean;
   hasBeatAnalysis?: boolean;
+  isAnalyzing?: boolean;
+  canAnalyze?: boolean;
   onCut: () => void;
   onCopy: () => void;
   onPaste: () => void;
   onDuplicate: () => void;
   onSplit: () => void;
+  onAnalyzeBeats?: () => void;
   onAutoSplice?: () => void;
   onDelete: () => void;
 }
 
 export function ClipContextMenu({
+  open,
+  onOpenChange,
+  position,
   clipId,
   selectedClipIds,
   playheadTime,
@@ -33,11 +43,14 @@ export function ClipContextMenu({
   clipEnd,
   hasClipboard,
   hasBeatAnalysis = false,
+  isAnalyzing = false,
+  canAnalyze = false,
   onCut,
   onCopy,
   onPaste,
   onDuplicate,
   onSplit,
+  onAnalyzeBeats,
   onAutoSplice,
   onDelete,
 }: ClipContextMenuProps) {
@@ -49,44 +62,55 @@ export function ClipContextMenu({
   const isMultiSelect = selectedClipIds.length > 1;
 
   return (
-    <ContextMenuContent className="w-44">
-      <ContextMenuItem onClick={onCut}>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      {/* Hidden trigger - menu is controlled manually */}
+      <div style={{ position: 'fixed', left: position.x, top: position.y, width: 0, height: 0 }} />
+      <DropdownMenuContent className="w-44" style={{ position: 'fixed', left: position.x, top: position.y }}>
+      <DropdownMenuItem onClick={onCut}>
         Cut
-        <ContextMenuShortcut>⌘X</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuItem onClick={onCopy}>
+        <DropdownMenuShortcut>⌘X</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={onCopy}>
         Copy
-        <ContextMenuShortcut>⌘C</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuItem onClick={onPaste} disabled={!hasClipboard}>
+        <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={onPaste} disabled={!hasClipboard}>
         Paste
-        <ContextMenuShortcut>⌘V</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuItem onClick={onDuplicate}>
+        <DropdownMenuShortcut>⌘V</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={onDuplicate}>
         Duplicate{isMultiSelect ? ` (${selectedClipIds.length})` : ""}
-        <ContextMenuShortcut>⌘D</ContextMenuShortcut>
-      </ContextMenuItem>
+        <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
+      </DropdownMenuItem>
 
-      <ContextMenuSeparator />
+      <DropdownMenuSeparator />
 
-      <ContextMenuItem onClick={onSplit} disabled={!canSplit}>
+      <DropdownMenuItem onClick={onSplit} disabled={!canSplit}>
         Split at Playhead
-        <ContextMenuShortcut>⌘B</ContextMenuShortcut>
-      </ContextMenuItem>
+        <DropdownMenuShortcut>⌘B</DropdownMenuShortcut>
+      </DropdownMenuItem>
 
-      {hasBeatAnalysis && onAutoSplice && (
-        <ContextMenuItem onClick={onAutoSplice}>
+      {canAnalyze && onAnalyzeBeats && (
+        <DropdownMenuItem onClick={onAnalyzeBeats} disabled={isAnalyzing}>
           <Activity className="mr-2 h-4 w-4" />
-          Auto-Splice on Beats...
-        </ContextMenuItem>
+          {isAnalyzing ? "Analyzing Beats..." : "Analyze Beats"}
+        </DropdownMenuItem>
       )}
 
-      <ContextMenuSeparator />
+      {hasBeatAnalysis && onAutoSplice && (
+        <DropdownMenuItem onClick={onAutoSplice}>
+          <Activity className="mr-2 h-4 w-4" />
+          Auto-Splice on Beats...
+        </DropdownMenuItem>
+      )}
 
-      <ContextMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+      <DropdownMenuSeparator />
+
+      <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
         Delete{isMultiSelect ? ` (${selectedClipIds.length})` : ""}
-        <ContextMenuShortcut>⌫</ContextMenuShortcut>
-      </ContextMenuItem>
-    </ContextMenuContent>
+        <DropdownMenuShortcut>⌫</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

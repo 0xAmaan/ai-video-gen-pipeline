@@ -124,10 +124,10 @@ export const SlipSlideDragInterceptor = () => {
           }
         };
 
-        htmlElement.addEventListener('mousedown', handleMouseDown, { capture: true });
+        htmlElement.addEventListener('mousedown', handleMouseDown, { capture: false });
 
         cleanupFunctions.push(() => {
-          htmlElement.removeEventListener('mousedown', handleMouseDown, { capture: true });
+          htmlElement.removeEventListener('mousedown', handleMouseDown, { capture: false });
         });
       });
     };

@@ -10,23 +10,11 @@ import { getExportPipeline } from "@/lib/editor/export/export-pipeline";
 import { saveBlob } from "@/lib/editor/export/save-file";
 import { TopBar } from "@/components/editor/TopBar";
 import { MediaPanel } from "@/components/editor/MediaPanel";
-import { VoiceGenerationPanel } from "@/components/editor/VoiceGenerationPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
 import { EditorController } from "@/components/editor/EditorController";
 import LegacyEditorApp from "@/components/editor/LegacyEditorApp";
-import { AutoSpliceDialog } from "@/components/editor/AutoSpliceDialog";
-import { autoSpliceOnBeats, getClipBeatAnalysisStatus } from "@/lib/editor/utils/auto-splice";
-import { useQuery } from "convex/react";
-import { Button } from "@/components/ui/button";
-import { Activity } from "lucide-react";
-import { toast } from "sonner";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { useEditorProjectSync } from "@/lib/editor/hooks/useEditorProjectSync";
-import { useConvexAuth } from "convex/react";
 
 interface StandaloneEditorAppProps {
   autoHydrate?: boolean;
@@ -41,82 +29,14 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const [masterVolume, setMasterVolume] = useState(1);
   const [audioTrackMuted, setAudioTrackMuted] = useState(false);
   const [timelineMode, setTimelineMode] = useState<"twick" | "legacy">("twick");
-  const [autoSpliceDialogOpen, setAutoSpliceDialogOpen] = useState(false);
-  const [autoSpliceClipId, setAutoSpliceClipId] = useState<string | null>(null);
-  const [leftPanelTab, setLeftPanelTab] = useState<"media" | "voice">("media");
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
-  const rippleEditEnabled = useProjectStore((state) => state.rippleEditEnabled);
-  const multiTrackRipple = useProjectStore((state) => state.multiTrackRipple);
   const actions = useProjectStore((state) => state.actions);
   const thumbnailInflight = useRef<Set<string>>(new Set());
-  const thumbnailsCompletedRef = useRef<Set<string>>(new Set());
   const webGpuFailed = useRef(false);
-  
-  // Track previous analysis status for reactive notifications
-  const prevAnalysisStatusRef = useRef<string | undefined>(undefined);
-
-  // Automatically sync local project to Convex and get Convex project ID
-  const { isAuthenticated } = useConvexAuth();
-  const convexProjectId = useEditorProjectSync(project, isAuthenticated);
-
-  // Convex mutations for asset management
-  const createConvexAsset = useMutation(api.editorAssets.createAsset);
-  const analyzeBeatMutation = useMutation(api.editorAssets.analyzeBeat);
-  
-  // Get the currently selected clip's asset ID for beat analysis subscription
-  const selectedClipAssetId = useMemo(() => {
-    if (selection.clipIds.length !== 1 || !project) return null;
-    
-    const clipId = selection.clipIds[0];
-    for (const sequence of project.sequences) {
-      for (const track of sequence.tracks) {
-        const clip = track.clips.find(c => c.id === clipId);
-        if (clip) {
-          const asset = project.mediaAssets[clip.mediaId];
-          return asset?.convexAssetId ?? null;
-        }
-      }
-    }
-    return null;
-  }, [selection.clipIds, project]);
-  
-  // Subscribe to beat analysis status for selected clip's asset
-  const beatAnalysisStatus = useQuery(
-    api.editorAssets.getAssetAnalysisStatus,
-    selectedClipAssetId ? { assetId: selectedClipAssetId } : "skip"
-  );
-  
-  // Show reactive toast notifications when analysis status changes
-  useEffect(() => {
-    if (!beatAnalysisStatus) {
-      prevAnalysisStatusRef.current = undefined;
-      return;
-    }
-    
-    const currentStatus = beatAnalysisStatus.status;
-    const prevStatus = prevAnalysisStatusRef.current;
-    
-    // Only show toast if status actually changed (not on initial mount)
-    if (prevStatus && prevStatus !== currentStatus) {
-      if (currentStatus === 'completed') {
-        const beatCount = beatAnalysisStatus.beatCount;
-        const bpm = beatAnalysisStatus.bpm;
-        toast.success(
-          `Beat analysis complete! ${beatCount} beat${beatCount !== 1 ? 's' : ''} detected` +
-          (bpm ? ` at ${Math.round(bpm)} BPM` : '')
-        );
-      } else if (currentStatus === 'failed') {
-        const errorMsg = beatAnalysisStatus.error || 'Unknown error';
-        toast.error(`Beat analysis failed: ${errorMsg}`);
-      }
-    }
-    
-    prevAnalysisStatusRef.current = currentStatus;
-  }, [beatAnalysisStatus]);
 
   // STABILITY FIX: Use WebGL in legacy mode; allow Twick mode to use WebGPU when available.
   const forceWebGL = timelineMode === "legacy";
@@ -234,11 +154,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         try {
           rendererRef.current = new WebGpuPreviewRenderer(getSequence, getAsset);
         } catch (error) {
-          console.warn("[WebGPU] Renderer creation failed, falling back to WebGL", {
-            error,
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-          });
+          console.warn("WebGPU preview unavailable, falling back to 2D renderer", error);
           webGpuFailed.current = true;
           rendererRef.current = new PreviewRenderer(getSequence, getAsset);
         }
@@ -249,24 +165,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         .attach(canvasRef.current)
         .then(() => rendererRef.current?.setTimeUpdateHandler((time) => actions.setCurrentTime(time)))
         .catch((error) => {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-
-          // Enhanced error logging with context
-          console.error("[Renderer] Attach failed:", {
-            error: errorMessage,
-            rendererType: rendererRef.current instanceof WebGpuPreviewRenderer ? "WebGPU" : "WebGL",
-            canvasSize: canvasRef.current ? {
-              width: canvasRef.current.width,
-              height: canvasRef.current.height,
-            } : null,
-          });
-
-          // Mark WebGPU as failed if that was the issue
-          if (rendererRef.current instanceof WebGpuPreviewRenderer) {
-            console.warn("[WebGPU] Adapter attach failed, marking WebGPU as unavailable and falling back");
-            webGpuFailed.current = true;
-          }
-
+          console.warn("preview attach failed", error);
           swapToFallbackRenderer();
         });
     }
@@ -274,21 +173,15 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
 
   useEffect(() => {
     const renderer = rendererRef.current;
-    console.log('[StandaloneEditorApp] isPlaying changed:', isPlaying, 'renderer exists:', !!renderer);
-    if (!renderer) {
-      console.warn('[StandaloneEditorApp] Cannot play/pause - renderer not initialized');
-      return;
-    }
+    if (!renderer) return;
     if (isPlaying) {
-      console.log('[StandaloneEditorApp] Calling renderer.play()');
       renderer
         .play()
         .catch((error) => {
-          console.error('[StandaloneEditorApp] Playback failed:', error);
+          console.warn("playback failed", error);
           swapToFallbackRenderer();
         });
     } else {
-      console.log('[StandaloneEditorApp] Calling renderer.pause()');
       renderer.pause();
     }
   }, [isPlaying]);
@@ -304,61 +197,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
       imports.push(mediaManager.importFile(file));
     });
     const results = await Promise.all(imports);
-    
-    // Add assets to local state
     results.forEach((asset) => actions.addMediaAsset(asset));
-    
-    // Optionally sync to Convex if authenticated and have project ID
-    if (isAuthenticated && convexProjectId) {
-      // Create Convex asset records in parallel
-      try {
-        const syncResults = await Promise.allSettled(
-          results.map(async (asset) => {
-            const convexAssetId = await createConvexAsset({
-              projectId: convexProjectId,
-              type: asset.type,
-              name: asset.name,
-              url: asset.url,
-              duration: asset.duration,
-              r2Key: asset.r2Key,
-              proxyUrl: asset.proxyUrl,
-              width: asset.width,
-              height: asset.height,
-              fps: asset.fps,
-              thumbnails: asset.thumbnails,
-              waveform: asset.waveform ? Array.from(asset.waveform) : undefined,
-              sampleRate: asset.sampleRate,
-            });
-            
-            // Update local asset with Convex ID (keep local id intact)
-            actions.updateMediaAsset(asset.id, {
-              convexAssetId: convexAssetId
-            });
-            
-            return { success: true, assetName: asset.name };
-          })
-        );
-        
-        // Check for failures
-        const failures = syncResults.filter(r => r.status === 'rejected');
-        if (failures.length > 0) {
-          console.error('Some assets failed to sync:', failures);
-          toast.error(`Failed to sync ${failures.length} asset(s) to cloud`);
-        } else if (results.length > 1) {
-          toast.success(`${results.length} assets synced to cloud`);
-        }
-      } catch (err) {
-        const error = err as Error;
-        if (error.message?.includes('Not authenticated')) {
-          toast.info('Assets saved locally. Sign in to sync to cloud.');
-        } else {
-          console.error('Asset sync error:', err);
-          toast.error('Failed to sync assets to cloud');
-        }
-      }
-    } else if (!isAuthenticated && results.length > 0) {
-      toast.info('Assets saved locally. Sign in to enable cloud sync.');
-    }
   };
 
   const handleExport = async (options: { resolution: string; quality: string; format: string; aspectRatio: string }) => {
@@ -390,66 +229,35 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   };
 
   const assets = useMemo(() => (project ? Object.values(project.mediaAssets) : []), [project]);
-  
-  // Memoize video asset IDs that need thumbnails to prevent excessive re-renders
-  const videoAssetIdsNeedingThumbnails = useMemo(() => {
-    if (!project) return [];
-    return Object.values(project.mediaAssets)
-      .filter(asset =>
-        asset.type === 'video' &&
-        (!asset.thumbnails || asset.thumbnails.length === 0)
-      )
-      .map(asset => asset.id);
-  }, [project]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
-  
-  // Calculate audio track and clip counts for export modal
-  const audioStats = useMemo(() => {
-    if (!sequence) return { trackCount: 0, clipCount: 0 };
-    const audioTracks = sequence.tracks.filter(track => track.kind === 'audio');
-    const audioClipCount = audioTracks.reduce((total, track) => total + track.clips.length, 0);
-    return {
-      trackCount: audioTracks.length,
-      clipCount: audioClipCount
-    };
-  }, [sequence]);
 
   useEffect(() => {
-    if (!mediaManager || !project) return;
-    
-    // Only process assets that need thumbnails and haven't been completed yet
-    videoAssetIdsNeedingThumbnails.forEach((assetId) => {
-      // Skip if already completed (persists across renders)
-      if (thumbnailsCompletedRef.current.has(assetId)) return;
-      // Skip if currently processing
-      if (thumbnailInflight.current.has(assetId)) return;
-      
-      const asset = project.mediaAssets[assetId];
-      if (!asset) return;
-      
+    if (!mediaManager) return;
+    assets.forEach((asset) => {
+      if (asset.type !== "video") return;
+      if (asset.thumbnails && asset.thumbnails.length > 0) return;
       const url = playbackUrlForAsset(asset);
       if (!url) return;
-      
-      thumbnailInflight.current.add(assetId);
+      if (thumbnailInflight.current.has(asset.id)) return;
+      thumbnailInflight.current.add(asset.id);
       void mediaManager
-        // Reduced from 12 to 6 thumbnails to prevent Convex document size limit
-        // TODO: Move thumbnails to R2 storage for proper solution
-        .generateThumbnails(assetId, url, asset.duration, 6)
+        .generateThumbnails(asset.id, url, asset.duration, 12)
         .then((thumbs) => {
           if (!thumbs?.length) return;
-          actions.updateMediaAsset(assetId, {
+          actions.updateMediaAsset(asset.id, {
             thumbnails: thumbs,
             thumbnailCount: thumbs.length,
           });
-          // Mark as completed to prevent re-generation on future renders
-          thumbnailsCompletedRef.current.add(assetId);
         })
-        .catch((error) => console.warn("thumbnail generation failed", assetId, error))
+        .catch((error) => console.warn("thumbnail generation failed", asset.id, error))
         .finally(() => {
-          thumbnailInflight.current.delete(assetId);
+          thumbnailInflight.current.delete(asset.id);
         });
     });
-  }, [videoAssetIdsNeedingThumbnails, mediaManager, project, actions]);
+    return () => {
+      thumbnailInflight.current.clear();
+    };
+  }, [assets, mediaManager, actions]);
 
   if (!ready || !project || !sequence) {
     return (
@@ -488,62 +296,19 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         onMasterVolumeChange={(value) => setMasterVolume(value)}
         audioTrackMuted={audioTrackMuted}
         onToggleAudioTrack={() => setAudioTrackMuted((prev) => !prev)}
-        rippleEditEnabled={rippleEditEnabled}
-        onToggleRippleEdit={() => actions.toggleRippleEdit()}
-        multiTrackRipple={multiTrackRipple}
-        onToggleMultiTrackRipple={() => actions.toggleMultiTrackRipple()}
       />
       
       <div className="flex flex-1 flex-col min-h-0">
         {/* Top Section: Media, Preview, Properties */}
         <div className="flex flex-1 min-h-0 border-b border-border">
           
-          {/* Left: Media/Voice Panel */}
+          {/* Left: Media Panel */}
           <div className="w-[320px] flex-none border-r border-border flex flex-col bg-card/30">
-            {/* Tab Switcher */}
-            <div className="flex border-b border-border">
-              <button
-                onClick={() => setLeftPanelTab("media")}
-                className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-                  leftPanelTab === "media"
-                    ? "bg-muted text-foreground border-b-2 border-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Media
-              </button>
-              <button
-                onClick={() => setLeftPanelTab("voice")}
-                className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
-                  leftPanelTab === "voice"
-                    ? "bg-muted text-foreground border-b-2 border-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Voice
-              </button>
-            </div>
-            
-            {/* Panel Content */}
-            <div className="flex-1 min-h-0">
-              {leftPanelTab === "media" ? (
-                <MediaPanel
-                  assets={assets}
-                  onImport={handleImport}
-                  onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
-                  convexProjectId={convexProjectId}
-                />
-              ) : (
-                <VoiceGenerationPanel
-                  onAssetCreated={(asset) => {
-                    actions.addMediaAsset(asset);
-                    actions.appendClipFromAsset(asset.id);
-                    toast.success("Voice added to timeline!");
-                  }}
-                  autoAddToTimeline={true}
-                />
-              )}
-            </div>
+            <MediaPanel
+              assets={assets}
+              onImport={handleImport}
+              onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
+            />
           </div>
 
           {/* Center: Preview Panel */}
@@ -567,132 +332,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
                 {selection.clipIds.length > 0 ? (
                   <div>
                     <div className="mb-2">Selected: {selection.clipIds.length} clip(s)</div>
-                    {/* Beat Analysis Section */}
-                    {selection.clipIds.length === 1 && (() => {
-                      const clipId = selection.clipIds[0];
-                      console.log('[Properties Panel] Clip ID:', clipId);
-                      if (!project) {
-                        console.log('[Properties Panel] No project');
-                        return null;
-                      }
-                      
-                      // Find the clip and its asset
-                      let clip = null;
-                      for (const sequence of project.sequences) {
-                        for (const track of sequence.tracks) {
-                          const found = track.clips.find(c => c.id === clipId);
-                          if (found) {
-                            clip = found;
-                            break;
-                          }
-                        }
-                        if (clip) break;
-                      }
-                      
-                      if (!clip) {
-                        console.log('[Properties Panel] Clip not found with ID:', clipId);
-                        return null;
-                      }
-                      console.log('[Properties Panel] Found clip:', clip.id, 'mediaId:', clip.mediaId);
-                      const asset = project.mediaAssets[clip.mediaId];
-                      if (!asset) {
-                        console.log('[Properties Panel] Asset not found with mediaId:', clip.mediaId);
-                        return null;
-                      }
-                      console.log('[Properties Panel] Found asset:', asset.id, 'type:', asset.type, 'convexAssetId:', asset.convexAssetId);
-                      if (asset.type !== 'audio' && asset.type !== 'video') {
-                        console.log('[Properties Panel] Asset is not audio/video:', asset.type);
-                        return null;
-                      }
-                      
-                      const beatStatus = getClipBeatAnalysisStatus(project, clipId);
-                      const hasBeats = beatStatus?.hasBeats ?? false;
-                      const isAnalyzing = beatAnalysisStatus?.status === 'analyzing';
-                      
-                      // Only show if asset has convexAssetId (synced to Convex)
-                      if (!asset.convexAssetId) {
-                        console.log('[Properties Panel] Asset not synced to Convex (no convexAssetId)');
-                        return null;
-                      }
-                      console.log('[Properties Panel] Rendering beat analysis UI for asset:', asset.convexAssetId);
-                      
-                      return (
-                        <div className="mb-4 p-3 rounded-md border bg-card">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Activity className={`h-4 w-4 ${
-                              isAnalyzing ? 'text-blue-600 animate-pulse' :
-                              hasBeats ? 'text-green-600' :
-                              'text-muted-foreground'
-                            }`} />
-                            <span className="font-medium text-sm">
-                              {isAnalyzing ? 'Analyzing Beats...' : 'Beat Analysis'}
-                            </span>
-                          </div>
-                          
-                          {hasBeats ? (
-                            <>
-                              <div className="text-xs text-muted-foreground mb-3">
-                                {beatStatus?.beatCount ?? 0} beats detected
-                                {beatStatus?.bpm && ` • ${Math.round(beatStatus.bpm)} BPM`}
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full mb-2"
-                                onClick={() => {
-                                  setAutoSpliceClipId(clipId);
-                                  setAutoSpliceDialogOpen(true);
-                                }}
-                              >
-                                <Activity className="mr-2 h-4 w-4" />
-                                Auto-Splice on Beats...
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="w-full text-xs"
-                                disabled={isAnalyzing}
-                                onClick={async () => {
-                                  try {
-                                    await analyzeBeatMutation({ assetId: asset.convexAssetId! });
-                                    toast.info('Re-analyzing beats...');
-                                  } catch (error) {
-                                    console.error('Beat analysis failed:', error);
-                                    toast.error(error instanceof Error ? error.message : 'Failed to analyze beats');
-                                  }
-                                }}
-                              >
-                                {isAnalyzing ? 'Analyzing...' : 'Re-analyze Beats'}
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-xs text-muted-foreground mb-3">
-                                No beats detected yet
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full"
-                                disabled={isAnalyzing}
-                                onClick={async () => {
-                                  try {
-                                    await analyzeBeatMutation({ assetId: asset.convexAssetId! });
-                                    toast.info('Beat analysis started! This may take a moment...');
-                                  } catch (error) {
-                                    console.error('Beat analysis failed:', error);
-                                    toast.error(error instanceof Error ? error.message : 'Failed to analyze beats');
-                                  }
-                                }}
-                              >
-                                <Activity className={`mr-2 h-4 w-4 ${isAnalyzing ? 'animate-pulse' : ''}`} />
-                                {isAnalyzing ? 'Analyzing...' : 'Analyze Beats'}
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
                     {/* TODO: Add property editors here */}
                     <div className="text-xs opacity-50">Transform, Speed, Audio settings will appear here.</div>
                   </div>
@@ -717,27 +356,6 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         duration={sequence.duration}
         onExport={handleExport}
         status={exportStatus}
-        audioTrackCount={audioStats.trackCount}
-        audioClipCount={audioStats.clipCount}
-      />
-
-      <AutoSpliceDialog
-        open={autoSpliceDialogOpen}
-        onOpenChange={setAutoSpliceDialogOpen}
-        project={project}
-        clipId={autoSpliceClipId ?? ""}
-        onConfirm={(options) => {
-          if (!project || !autoSpliceClipId) return;
-          
-          const result = autoSpliceOnBeats(project, autoSpliceClipId, options);
-          
-          if (result.success && result.project) {
-            actions.loadProject(result.project);
-            toast.success(`Spliced clip into ${result.cutCount + 1} clips at beat markers`);
-          } else {
-            toast.error(result.error ?? "Failed to splice clip");
-          }
-        }}
       />
     </div>
   );

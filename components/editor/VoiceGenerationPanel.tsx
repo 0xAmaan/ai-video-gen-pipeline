@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Mic, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { MINIMAX_VOICES, MINIMAX_EMOTIONS, type MiniMaxVoiceId } from "@/lib/voice-selection";
@@ -244,15 +243,15 @@ export const VoiceGenerationPanel = ({
 
   return (
     <div className="flex h-full flex-col bg-muted/20">
-      <div className="border-b border-border px-3 py-2">
+      <div className="border-b border-border px-3 py-2 flex-none">
         <div className="flex items-center gap-2">
           <Mic className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium">Voice Generation</span>
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="p-3 space-y-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:h-0 hover:[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+        <div className="px-4 py-3 space-y-4">
           {/* Text Input */}
           <div className="space-y-2">
             <Label htmlFor="voice-text" className="text-sm font-medium">
@@ -313,15 +312,15 @@ export const VoiceGenerationPanel = ({
               <SelectTrigger id="voice-model">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="w-[320px]">
                 {(voiceProvider === "replicate"
                   ? REPLICATE_MODELS
                   : ELEVENLABS_MODELS
                 ).map((model) => (
                   <SelectItem key={model.value} value={model.value}>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col gap-0.5">
                       <span className="font-medium">{model.label}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground leading-tight">
                         {model.description}
                       </span>
                     </div>
@@ -345,12 +344,12 @@ export const VoiceGenerationPanel = ({
                 <SelectTrigger id="voice-id">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="w-[320px]">
                   {Object.values(MINIMAX_VOICES).map((voice) => (
                     <SelectItem key={voice.id} value={voice.id}>
-                      <div className="flex flex-col">
+                      <div className="flex flex-col gap-0.5">
                         <span className="font-medium">{voice.name}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground leading-tight">
                           {voice.description}
                         </span>
                       </div>
@@ -476,7 +475,7 @@ export const VoiceGenerationPanel = ({
             </p>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 };

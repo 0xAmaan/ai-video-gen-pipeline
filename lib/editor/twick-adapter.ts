@@ -3,6 +3,13 @@
 import type { ElementJSON, ProjectJSON, TrackJSON } from "@twick/timeline/dist/types";
 import type { Project, Track, Clip, MediaAssetMeta } from "./types";
 
+// Guardrail: ensure clips only live on compatible tracks (audio on audio tracks, everything else on video/overlay)
+const isClipAllowedOnTrack = (clipKind: Clip["kind"], trackKind: Track["kind"]) => {
+  const trackType = trackKind === "audio" ? "audio" : "video";
+  if (clipKind === "audio") return trackType === "audio";
+  return trackType === "video";
+};
+
 const mapTrackType = (type?: string): Track["kind"] => {
   if (type === "audio") return "audio";
   if (type === "overlay") return "video";
@@ -16,11 +23,11 @@ export const projectToTimelineJSON = (project: Project): ProjectJSON => {
   const assets = project.mediaAssets;
 
   const friendlyName = (track: Track) => {
-    if (track.id === "video-1") return "Video";
-    if (track.id === "audio-narration") return "Narration";
-    if (track.id === "audio-bgm") return "Music";
-    if (track.id === "audio-sfx") return "SFX";
-    return track.kind === "audio" ? "Audio" : "Video";
+    if (track.id === "video-1") return "🎬 Video";
+    if (track.id === "audio-narration") return "🔊 Narration";
+    if (track.id === "audio-bgm") return "🎵 Music";
+    if (track.id === "audio-sfx") return "🔊 SFX";
+    return track.kind === "audio" ? "🔊 Audio" : "🎬 Video";
   };
 
   const tracks: TrackJSON[] = activeSequence.tracks.map((track) => ({
@@ -47,7 +54,7 @@ export const timelineToProject = (
     project.sequences[0];
   const timelineTracks = timeline.tracks ?? [];
 
-  sequence.tracks = timelineTracks.map((track) => ({
+  const convertedTracks = timelineTracks.map((track) => ({
     id: track.id,
     kind: mapTrackType(track.type),
     allowOverlap: track.type !== "video",
@@ -56,6 +63,23 @@ export const timelineToProject = (
     volume: 1,
     clips: track.elements.map((element) => elementToClip(element, track.id, assets)),
   }));
+
+  // Validate track/clip compatibility before accepting Twick state
+  for (const track of convertedTracks) {
+    for (const clip of track.clips) {
+      if (!isClipAllowedOnTrack(clip.kind, track.kind)) {
+        console.warn("[TwickAdapter] Rejecting incompatible clip-track pairing", {
+          clipId: clip.id,
+          clipKind: clip.kind,
+          trackId: track.id,
+          trackKind: track.kind,
+        });
+        return base; // Keep existing project unchanged
+      }
+    }
+  }
+
+  sequence.tracks = convertedTracks;
 
   sequence.duration = sequence.tracks.reduce((max, track) => {
     const end = track.clips.reduce((clipMax, clip) => Math.max(clipMax, clip.start + clip.duration), 0);

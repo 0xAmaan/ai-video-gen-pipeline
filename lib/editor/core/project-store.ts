@@ -24,9 +24,11 @@ import {
   RippleDeleteCommand,
   DeleteClipsCommand,
   MoveClipsCommand,
+  DuplicateClipsCommand,
 } from "../history/commands";
 import { CollisionDetector } from "../collision/CollisionDetector";
 import type { CollisionMode } from "../collision/CollisionDetector";
+import { toast } from "sonner";
 
 const MAX_HISTORY = 50;
 
@@ -175,6 +177,9 @@ export interface ProjectStoreState {
   rippleEditEnabled: boolean;
   multiTrackRipple: boolean; // When true, ripple affects all unlocked tracks
   
+  // Clipboard state
+  clipboard: Clip[] | null; // Clips in clipboard for cut/copy/paste operations
+  
   // Collision detection system
   collisionDetector: CollisionDetector; // Spatial index for real-time collision detection
 
@@ -202,6 +207,11 @@ export interface ProjectStoreState {
     // Batch operations for multi-clip selection
     deleteClips: (clipIds: string[]) => void; // Batch delete multiple clips
     moveClips: (clipIds: string[], timeOffset: number, trackOffset?: number) => void; // Batch move multiple clips
+    // Clipboard operations
+    cutClips: (clipIds: string[]) => void; // Cut clips to clipboard and delete them
+    copyClips: (clipIds: string[]) => void; // Copy clips to clipboard
+    pasteClips: (targetTime: number) => void; // Paste clips from clipboard at target time
+    duplicateClips: (clipIds: string[]) => void; // Duplicate clips immediately after originals
     undo: () => void;
     redo: () => void;
     save: () => Promise<void>; // Explicit save to Convex (PRD Tri-State)
@@ -239,6 +249,9 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   // Editor modes
   rippleEditEnabled: false,
   multiTrackRipple: false, // Default to single-track ripple
+  
+  // Clipboard state
+  clipboard: null,
   
   // Collision detection system
   collisionDetector: new CollisionDetector(),
@@ -376,7 +389,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     },
     moveClip: (clipId, trackId, start) => {
       const state = get();
-      const { historyManager } = state;
+      const { historyManager, project } = state;
 
       const command = new ClipMoveCommand(
         () => get().project,
@@ -567,10 +580,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         clipId,
       );
 
-      const success = historyManager.execute(command);
-      if (success) {
-        void timelineService.deleteClip(clipId);
-      }
+      historyManager.execute(command);
     },
     rippleDelete: (clipId) => {
       const state = get();
@@ -588,10 +598,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         multiTrackRipple, // Pass multi-track ripple setting
       );
 
-      const success = historyManager.execute(command);
-      if (success) {
-        void timelineService.rippleDelete(clipId);
-      }
+      historyManager.execute(command);
     },
     deleteClips: (clipIds: string[]) => {
       const state = get();
@@ -613,17 +620,13 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
       const success = historyManager.execute(command);
       if (success) {
-        // Delete all clips from Twick timeline
-        for (const clipId of clipIds) {
-          void timelineService.deleteClip(clipId);
-        }
         // Clear selection after batch delete
         get().actions.setSelection({ clipIds: [], trackIds: [] });
       }
     },
     moveClips: (clipIds: string[], timeOffset: number, trackOffset?: number) => {
       const state = get();
-      const { historyManager } = state;
+      const { historyManager, project } = state;
 
       if (clipIds.length === 0) return;
 
@@ -715,6 +718,150 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         next.updatedAt = Date.now();
         return { ...state, project: next, dirty: true };
       });
+    },
+    
+    // Clipboard operations
+    cutClips: (clipIds: string[]) => {
+      const project = get().project;
+      if (!project || clipIds.length === 0) return;
+      
+      const sequence = getSequence(project);
+      const clips: Clip[] = [];
+      
+      // Collect clips to cut
+      for (const clipId of clipIds) {
+        const clip = findClip(sequence, clipId);
+        if (clip) {
+          clips.push(deepClone(clip));
+        }
+      }
+      
+      if (clips.length === 0) return;
+      
+      // Store in clipboard
+      set({ clipboard: clips });
+      
+      // Delete the clips
+      get().actions.deleteClips(clipIds);
+    },
+    
+    copyClips: (clipIds: string[]) => {
+      const project = get().project;
+      if (!project || clipIds.length === 0) return;
+      
+      const sequence = getSequence(project);
+      const clips: Clip[] = [];
+      
+      // Collect clips to copy
+      for (const clipId of clipIds) {
+        const clip = findClip(sequence, clipId);
+        if (clip) {
+          clips.push(deepClone(clip));
+        }
+      }
+      
+      if (clips.length === 0) return;
+      
+      // Store in clipboard
+      set({ clipboard: clips });
+    },
+    
+    pasteClips: (targetTime: number) => {
+      const { project: initialProject, clipboard, historyManager } = get();
+      if (!initialProject || !clipboard || clipboard.length === 0) return;
+      
+      // Find the earliest start time in the clipboard
+      const minStart = Math.min(...clipboard.map(c => c.start));
+      const timeOffset = targetTime - minStart;
+      
+      const newClipIds: string[] = [];
+      
+      // Create new clips from clipboard
+      for (const clipData of clipboard) {
+        // Get fresh project state before each paste to avoid stale sequence reference
+        const currentProject = get().project;
+        if (!currentProject) continue;
+        
+        const sequence = getSequence(currentProject);
+        const track = sequence.tracks.find(t => t.id === clipData.trackId);
+        if (!track) {
+          console.warn('[pasteClips] Track not found:', clipData.trackId);
+          continue;
+        }
+        
+        const newClip: Clip = {
+          ...deepClone(clipData),
+          id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+          start: clipData.start + timeOffset,
+        };
+        
+        const command = new ClipAddCommand(
+          () => get().project,
+          (project) => {
+            set({ project, dirty: true });
+            void timelineService.setSequence(getSequence(project));
+            get().actions.rebuildCollisionIndex();
+          },
+          newClip,
+          track.id,
+        );
+        
+        const success = historyManager.execute(command);
+        if (success) {
+          void timelineService.upsertClip(newClip);
+          newClipIds.push(newClip.id);
+        }
+      }
+      
+      // Select pasted clips
+      if (newClipIds.length > 0) {
+        get().actions.setSelection({ clipIds: newClipIds, trackIds: [] });
+      }
+    },
+    
+    duplicateClips: (clipIds: string[]) => {
+      const state = get();
+      const { historyManager } = state;
+
+      if (clipIds.length === 0) return;
+
+      console.log('[duplicateClips] Duplicating clips:', clipIds);
+
+      // Use DuplicateClipsCommand for batch duplication with atomic undo/redo
+      const command = new DuplicateClipsCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after duplicating clips
+          get().actions.rebuildCollisionIndex();
+        },
+        clipIds,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        // Get the IDs of newly duplicated clips for selection
+        const newClipIds = command.getDuplicatedClipIds();
+        console.log('[duplicateClips] Successfully duplicated to new clips:', newClipIds);
+        
+        // Sync all duplicated clips with Twick timeline
+        const project = get().project;
+        if (project) {
+          const sequence = getSequence(project);
+          for (const newClipId of newClipIds) {
+            const clip = findClip(sequence, newClipId);
+            if (clip) {
+              void timelineService.upsertClip(clip);
+            }
+          }
+        }
+        
+        // Select duplicated clips
+        get().actions.setSelection({ clipIds: newClipIds, trackIds: [] });
+      } else {
+        console.error('[duplicateClips] Failed to execute DuplicateClipsCommand');
+      }
     },
     
     rebuildCollisionIndex: () => {

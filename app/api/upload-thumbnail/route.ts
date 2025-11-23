@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
 const workerBase = process.env.R2_INGEST_URL || process.env.NEXT_PUBLIC_R2_PROXY_BASE || "";
 const workerAuth = process.env.R2_INGEST_TOKEN || process.env.AUTH_TOKEN || "";
 
@@ -59,13 +61,25 @@ export async function POST(request: NextRequest) {
     uploadFormData.append("file", file);
     uploadFormData.append("key", key);
     
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        ...(workerAuth ? { authorization: `Bearer ${workerAuth}` } : {}),
-      },
-      body: uploadFormData,
-    });
+    const upstreamAbort = new AbortController();
+    const relayAbort = () => {
+      upstreamAbort.abort();
+    };
+    request.signal.addEventListener("abort", relayAbort, { once: true });
+
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          ...(workerAuth ? { authorization: `Bearer ${workerAuth}` } : {}),
+        },
+        body: uploadFormData,
+        signal: upstreamAbort.signal,
+      });
+    } finally {
+      request.signal.removeEventListener("abort", relayAbort);
+    }
 
     if (!response.ok) {
       const text = await response.text();
@@ -81,6 +95,17 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ url });
   } catch (error) {
+    if (
+      (error instanceof DOMException && error.name === "AbortError") ||
+      (error as NodeJS.ErrnoException)?.code === "ABORT_ERR"
+    ) {
+      console.warn("Thumbnail upload aborted by client");
+      return NextResponse.json(
+        { error: "Upload cancelled" },
+        { status: 499 }
+      );
+    }
+
     console.error("Thumbnail upload error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Upload failed" },

@@ -10,6 +10,7 @@ interface BeatGridOverlayProps {
   zoom?: number;
   scrollLeft?: number;
   className?: string;
+  bpm?: number; // BPM for fallback grid when beatMarkers is empty
 }
 
 /**
@@ -25,6 +26,7 @@ export const BeatGridOverlay = ({
   zoom = 1.5, // Twick's default zoom
   scrollLeft = 0,
   className = "",
+  bpm,
 }: BeatGridOverlayProps) => {
   const [timelineHeight, setTimelineHeight] = useState(400); // Default height
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,15 +59,36 @@ export const BeatGridOverlay = ({
     return time * pixelsPerSecond - scrollLeft;
   };
 
+  // Generate BPM grid as fallback when no beat markers available
+  const bpmGridMarkers = useMemo(() => {
+    if (beatMarkers.length > 0 || !bpm || bpm <= 0) return [];
+
+    const beatInterval = 60 / bpm; // seconds per beat
+    const markers: BeatMarker[] = [];
+
+    for (let time = 0; time <= duration; time += beatInterval) {
+      markers.push({
+        time,
+        strength: 0.5,
+        isDownbeat: Math.round(time / beatInterval) % 4 === 0,
+      });
+    }
+
+    return markers;
+  }, [beatMarkers.length, bpm, duration]);
+
+  // Use detected beat markers or fallback to BPM grid
+  const effectiveMarkers = beatMarkers.length > 0 ? beatMarkers : bpmGridMarkers;
+
   // Filter visible beat markers (viewport culling)
   const visibleBeatMarkers = useMemo(() => {
     const viewportStart = scrollLeft / pixelsPerSecond;
     const viewportEnd = (scrollLeft + containerWidth) / pixelsPerSecond;
 
-    return beatMarkers.filter(
+    return effectiveMarkers.filter(
       (marker) => marker.time >= viewportStart - 1 && marker.time <= viewportEnd + 1
     );
-  }, [beatMarkers, scrollLeft, pixelsPerSecond, containerWidth]);
+  }, [effectiveMarkers, scrollLeft, pixelsPerSecond, containerWidth]);
 
   return (
     <div
@@ -85,10 +108,35 @@ export const BeatGridOverlay = ({
           // Skip markers outside visible area
           if (x < -10 || x > containerWidth + 10) return null;
 
+          // Determine beat type: downbeat > strong beat > weak beat
+          const isDownbeat = beat.isDownbeat === true;
           const isStrong =
-            typeof beat.strength === "number"
+            !isDownbeat &&
+            (typeof beat.strength === "number"
               ? beat.strength >= 0.75
-              : index % 4 === 0;
+              : index % 4 === 0);
+
+          // Visual styling based on beat type
+          let stroke: string;
+          let strokeWidth: number;
+          let strokeDasharray: string | undefined;
+
+          if (isDownbeat) {
+            // Downbeats: solid, thicker, brighter green
+            stroke = "#10B981";
+            strokeWidth = 2;
+            strokeDasharray = undefined;
+          } else if (isStrong) {
+            // Strong beats: solid, medium thickness, medium green
+            stroke = "rgba(16,185,129,0.7)";
+            strokeWidth = 1.5;
+            strokeDasharray = undefined;
+          } else {
+            // Weak beats: dashed, thin, faint green
+            stroke = "rgba(16,185,129,0.3)";
+            strokeWidth = 1;
+            strokeDasharray = "4 6";
+          }
 
           return (
             <line
@@ -97,9 +145,9 @@ export const BeatGridOverlay = ({
               y1={0}
               x2={x}
               y2={timelineHeight}
-              stroke={isStrong ? "#10B981" : "rgba(16,185,129,0.4)"}
-              strokeWidth={isStrong ? 1.5 : 1}
-              strokeDasharray={isStrong ? undefined : "4 6"}
+              stroke={stroke}
+              strokeWidth={strokeWidth}
+              strokeDasharray={strokeDasharray}
               opacity={1}
             />
           );

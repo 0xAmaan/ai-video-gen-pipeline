@@ -55,6 +55,9 @@ export type CommandType =
   | "clip:ripple-trim"
   | "clip:slip-edit"
   | "clip:slide-edit"
+  | "clips:delete" // Batch delete multiple clips
+  | "clips:move" // Batch move multiple clips
+  | "clips:duplicate" // Batch duplicate multiple clips
   | "asset:add"
   | "asset:update"
   | "batch"; // For grouping multiple commands

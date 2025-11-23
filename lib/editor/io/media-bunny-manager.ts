@@ -21,7 +21,11 @@ export class MediaBunnyManager {
   >();
   private thumbnailRequests = new Map<
     string,
-    { resolve: (thumbnails: string[]) => void; reject: (error: Error) => void }
+    {
+      resolve: (thumbnails: string[]) => void;
+      reject: (error: Error) => void;
+      onProgress?: (thumbnails: string[], progress: number) => void;
+    }
   >();
 
   constructor() {
@@ -59,7 +63,14 @@ export class MediaBunnyManager {
         return;
       }
       if (message.type === "THUMBNAIL_PROGRESS") {
-        // Handle progress updates (for future progress UI)
+        // Handle progress updates with partial thumbnails
+        const pending = this.thumbnailRequests.get(message.requestId);
+        if (!pending || !pending.onProgress) return;
+        
+        // Progressive rendering: pass partial thumbnails if available
+        if (message.thumbnails && message.thumbnails.length > 0) {
+          pending.onProgress(message.thumbnails, message.progress);
+        }
         return;
       }
       if (message.type === "THUMBNAIL_RESULT") {
@@ -101,11 +112,12 @@ export class MediaBunnyManager {
     mediaUrl: string,
     duration: number,
     count: number = 15,
+    onProgress?: (thumbnails: string[], progress: number) => void,
   ): Promise<string[]> {
     const requestId =
       crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     return new Promise<string[]>((resolve, reject) => {
-      this.thumbnailRequests.set(requestId, { resolve, reject });
+      this.thumbnailRequests.set(requestId, { resolve, reject, onProgress });
       const message: ThumbnailRequestMessage = {
         type: "THUMBNAIL_REQUEST",
         requestId,

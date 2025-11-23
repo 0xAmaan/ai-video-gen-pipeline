@@ -2,13 +2,17 @@
 
 import { ScrollArea } from "../ui/scroll-area";
 import type { MediaAssetMeta } from "@/lib/editor/types";
-import { UploadCloud, Clock } from "lucide-react";
+import { UploadCloud, Clock, Loader2 } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 
 
 interface MediaPanelProps {
-  assets: MediaAssetMeta[];
+  assets: MediaAssetMeta[]; // Fallback for local/legacy mode
   onImport: (files: FileList | null) => void;
   onAddToTimeline: (assetId: string) => void;
+  convexProjectId?: Id<"editorProjects"> | null; // Optional Convex project ID
 }
 
 interface AssetCardProps {
@@ -64,11 +68,48 @@ export const MediaPanel = ({
   assets,
   onImport,
   onAddToTimeline,
+  convexProjectId,
 }: MediaPanelProps) => {
+  // Query Convex for assets if we have a project ID
+  const convexAssets = useQuery(
+    api.editorAssets.getProjectAssets,
+    convexProjectId ? { projectId: convexProjectId } : "skip"
+  );
+
+  // Determine which assets to display:
+  // - If Convex is connected and has data, use convexAssets
+  // - Otherwise fall back to local assets prop
+  const isLoadingConvex = convexProjectId && convexAssets === undefined;
+  const displayAssets = convexProjectId && convexAssets ? convexAssets : assets;
+
+  // Map Convex asset format to MediaAssetMeta format
+  const mappedAssets: MediaAssetMeta[] = displayAssets.map((asset: any) => {
+    // Check if this is already a MediaAssetMeta (local) or needs mapping (Convex)
+    if ('id' in asset && typeof asset.id === 'string' && !asset._id) {
+      // Already in MediaAssetMeta format
+      return asset as MediaAssetMeta;
+    }
+    // Map Convex document to MediaAssetMeta
+    return {
+      id: asset._id,
+      name: asset.name,
+      type: asset.type,
+      url: asset.url,
+      duration: asset.duration,
+      thumbnails: asset.thumbnails || [],
+      width: asset.width,
+      height: asset.height,
+      fps: asset.fps,
+      waveform: asset.waveform,
+      sampleRate: asset.sampleRate,
+    };
+  });
   return (
     <div className="flex h-full flex-col bg-muted/20">
       <div className="border-b border-border px-3 py-2 flex items-center justify-between">
-        <span className="text-sm font-medium">Media Library ({assets.length})</span>
+        <span className="text-sm font-medium">
+          Media Library ({isLoadingConvex ? '...' : mappedAssets.length})
+        </span>
         <label className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors">
           <UploadCloud className="h-3 w-3" />
           Import
@@ -83,13 +124,17 @@ export const MediaPanel = ({
       </div>
       <ScrollArea className="flex-1">
         <div className="p-3">
-          {assets.length === 0 && (
+          {isLoadingConvex ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : mappedAssets.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-8">
               Import files to start editing.
             </p>
-          )}
+          ) : null}
           <div className="grid grid-cols-3 gap-2">
-            {assets.map((asset) => (
+            {mappedAssets.map((asset) => (
               <AssetCard
                 key={asset.id}
                 asset={asset}

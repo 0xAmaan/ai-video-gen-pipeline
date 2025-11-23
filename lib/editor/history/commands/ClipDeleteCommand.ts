@@ -47,6 +47,9 @@ export class ClipDeleteCommand extends BaseCommand {
           track.clips.sort((a, b) => a.start - b.start);
           recalculateSequenceDuration(sequence);
 
+          // Update timestamp to trigger EditorController sync
+          clone.updatedAt = Date.now();
+
           this.setProject(clone);
           return true;
         }
@@ -72,6 +75,9 @@ export class ClipDeleteCommand extends BaseCommand {
       track.clips.splice(this.insertionIndex, 0, this.fullClip);
       track.clips.sort((a, b) => a.start - b.start);
       recalculateSequenceDuration(sequence);
+
+      // Update timestamp to trigger EditorController sync
+      clone.updatedAt = Date.now();
 
       this.setProject(clone);
       return true;

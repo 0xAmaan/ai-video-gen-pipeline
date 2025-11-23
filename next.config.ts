@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["convex"],
+  experimental: {
+    // Allow multiple dev servers by skipping the default dist lock.
+    lockDistDir: false,
+    // Permit importing code from external/OpenCut without Next.js refusing to bundle it.
+    externalDir: true,
+  },
   turbopack: {
     // Ensure Turbopack roots the build in this workspace (avoids parent lockfiles).
     root: __dirname,

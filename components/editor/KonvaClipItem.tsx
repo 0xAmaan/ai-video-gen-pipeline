@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * @deprecated This component is part of the deprecated Konva timeline.
+ * Use the Twick timeline instead (see EditorController.tsx).
+ */
+
 import React, { useRef, useEffect, useState, useMemo, memo } from "react";
 import { Rect, Text, Group, Image as KonvaImage } from "react-konva";
 import type { Clip, MediaAssetMeta } from "@/lib/editor/types";

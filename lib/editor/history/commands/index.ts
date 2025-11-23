@@ -11,3 +11,8 @@ export { RippleTrimCommand } from "./RippleTrimCommand";
 export { SlipEditCommand } from "./SlipEditCommand";
 export { SlideEditCommand } from "./SlideEditCommand";
 export { RippleDeleteCommand } from "./RippleDeleteCommand";
+
+// Batch operations for multi-clip selection
+export { DeleteClipsCommand } from "./DeleteClipsCommand";
+export { MoveClipsCommand } from "./MoveClipsCommand";
+export { DuplicateClipsCommand } from "./DuplicateClipsCommand";

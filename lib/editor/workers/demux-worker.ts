@@ -204,9 +204,10 @@ async function handleThumbnailRequest(
       }
     }
 
-    // Extract thumbnails and upload to R2
-    const thumbnails: string[] = [];
-    let current = 0;
+    // Extract thumbnails and upload to R2 in parallel
+    // Phase 1: Generate all thumbnail blobs first
+    const blobs: Blob[] = [];
+    let blobIndex = 0;
 
     for await (const result of sink.canvasesAtTimestamps(timestamps)) {
       if (!result) {
@@ -219,28 +220,81 @@ async function handleThumbnailRequest(
         quality: 0.7, // Restored quality since we're not storing in project state
       });
 
-      // Upload to R2 via API endpoint
-      try {
-        const thumbnailUrl = await uploadThumbnailToR2(blob, assetId, current);
-        thumbnails.push(thumbnailUrl);
-      } catch (error) {
-        console.error(`Failed to upload thumbnail ${current} for asset ${assetId}:`, error);
-        // Fallback to data URL if R2 upload fails
-        const dataUrl = await blobToDataUrl(blob);
-        thumbnails.push(dataUrl);
-      }
+      blobs.push(blob);
+      blobIndex++;
 
-      current++;
-
-      // Send progress update
+      // Send generation progress update
       ctx.postMessage({
         type: "THUMBNAIL_PROGRESS",
         requestId,
-        progress: current / count,
-        current,
+        progress: (blobIndex / count) * 0.5, // 0-50% for generation
+        current: blobIndex,
         total: count,
+        phase: 'generation',
       });
     }
+
+    // Phase 2: Upload all blobs in parallel with progressive updates
+    const results: Array<{ success: boolean; url: string; index: number }> = [];
+    let completedUploads = 0;
+
+    const uploadPromises = blobs.map((blob, index) =>
+      uploadThumbnailToR2(blob, assetId, index)
+        .then(url => {
+          const result = { success: true as const, url, index };
+          results.push(result);
+          completedUploads++;
+          
+          // Send progressive update with partial results
+          const sortedResults = [...results].sort((a, b) => a.index - b.index);
+          const partialThumbnails = sortedResults.map(r => r.url);
+          
+          ctx.postMessage({
+            type: "THUMBNAIL_PROGRESS",
+            requestId,
+            progress: 0.5 + (completedUploads / count) * 0.5, // 50-100%
+            current: completedUploads,
+            total: count,
+            phase: 'upload',
+            thumbnails: partialThumbnails, // Include partial results for progressive rendering
+            indices: sortedResults.map(r => r.index),
+          });
+          
+          return result;
+        })
+        .catch(async (error) => {
+          console.error(`Failed to upload thumbnail ${index} for asset ${assetId}:`, error);
+          // Fallback to data URL if R2 upload fails
+          const dataUrl = await blobToDataUrl(blob);
+          const result = { success: false as const, url: dataUrl, index };
+          results.push(result);
+          completedUploads++;
+          
+          // Send progressive update even for fallback
+          const sortedResults = [...results].sort((a, b) => a.index - b.index);
+          const partialThumbnails = sortedResults.map(r => r.url);
+          
+          ctx.postMessage({
+            type: "THUMBNAIL_PROGRESS",
+            requestId,
+            progress: 0.5 + (completedUploads / count) * 0.5,
+            current: completedUploads,
+            total: count,
+            phase: 'upload',
+            thumbnails: partialThumbnails,
+            indices: sortedResults.map(r => r.index),
+          });
+          
+          return result;
+        })
+    );
+
+    // Wait for all uploads to complete
+    await Promise.all(uploadPromises);
+    
+    // Sort by index to maintain correct order
+    results.sort((a, b) => a.index - b.index);
+    const thumbnails = results.map(r => r.url);
 
     // Send result
     const payload: ThumbnailResponseMessage = {

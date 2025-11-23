@@ -18,6 +18,9 @@ import type { TimelineEditor, TrackElement, Track } from "@twick/timeline";
 export interface TwickEditorAPI {
   editor: TimelineEditor;
   togglePlayback: () => void;
+  play: () => void;
+  pause: () => void;
+  seek: (time: number) => void;
   addElement: (element: TrackElement) => Promise<void>;
   updateElement: (element: TrackElement) => void;
   splitElement: (element: TrackElement, currentTime: number) => void;

@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * @deprecated This Konva-based timeline is deprecated. Use the Twick timeline instead.
+ * The Twick timeline is integrated via EditorController.tsx and provides better performance
+ * and more features. This file is kept for reference only.
+ */
+
 import { useRef, useState, useEffect, useCallback, useMemo, memo } from "react";
 import { Stage, Layer, Rect, Line, Text, Group } from "react-konva";
 import { ChevronsDown } from "lucide-react";
@@ -260,9 +266,10 @@ const KonvaTimelineComponent = ({
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
 
-      if (!containerRef.current) return;
+      if (!containerRef.current || !containerRef.current.isConnected) return;
 
       const rect = containerRef.current.getBoundingClientRect();
+      if (!rect) return;
       const mouseX = e.clientX - rect.left;
       const scrollLeft = containerRef.current.scrollLeft;
 
