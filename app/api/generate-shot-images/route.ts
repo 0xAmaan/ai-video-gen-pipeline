@@ -321,9 +321,9 @@ export async function POST(req: Request) {
       }
     }
 
-    const referencedAssetsWithImages = referencedAssets
-      .filter((asset) => !!asset.imageUrl)
-      .slice(0, 3);
+    const referencedAssetsWithImages = referencedAssets.filter(
+      (asset) => !!asset.imageUrl,
+    );
 
     const brandAssetPrompt = buildBrandAssetsPrompt(
       referencedAssetsWithImages,
@@ -341,7 +341,7 @@ export async function POST(req: Request) {
 
     const fullPromptForGeneration = buildIterationPrompt(
       shotData.scene.description,
-      shotData.shot.initialPrompt ?? "",
+      shotData.shot.initialPrompt ?? shotData.shot.description ?? "",
       brandAssetPrompt,
       fixPrompt,
       linkedReference
