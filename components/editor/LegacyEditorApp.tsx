@@ -16,6 +16,12 @@ import { PreviewRenderer } from "@/lib/editor/playback/preview-renderer";
 import { getExportPipeline } from "@/lib/editor/export/export-pipeline";
 import { saveBlob } from "@/lib/editor/export/save-file";
 import type { MediaAssetMeta } from "@/lib/editor/types";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { toast } from "sonner";
+import { useEditorProjectSync } from "@/lib/editor/hooks/useEditorProjectSync";
+import { useConvexAuth } from "convex/react";
 
 interface LegacyEditorAppProps {
   autoHydrate?: boolean;
@@ -32,6 +38,7 @@ export const LegacyEditorApp = ({
   const rendererRef = useRef<PreviewRenderer | null>(null);
   const thumbnailInflight = useRef<Set<string>>(new Set());
   const thumbnailsCompletedRef = useRef<Set<string>>(new Set());
+  
   const [timelineWidth, setTimelineWidth] = useState(1200);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(
@@ -41,6 +48,13 @@ export const LegacyEditorApp = ({
 
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
+  
+  // Automatically sync local project to Convex and get Convex project ID
+  const { isAuthenticated } = useConvexAuth();
+  const convexProjectId = useEditorProjectSync(project, isAuthenticated);
+  
+  // Convex mutations for asset management
+  const createConvexAsset = useMutation(api.editorAssets.createAsset);
   const selection = useProjectStore((state) => state.selection);
   const isPlaying = useProjectStore((state) => state.isPlaying);
   const currentTime = useProjectStore((state) => state.currentTime);
@@ -136,7 +150,61 @@ export const LegacyEditorApp = ({
     const imports: Promise<MediaAssetMeta>[] = [];
     Array.from(files).forEach((file) => imports.push(mediaManager.importFile(file)));
     const results = await Promise.all(imports);
+    
+    // Add assets to local state
     results.forEach((asset) => actions.addMediaAsset(asset));
+    
+    // Optionally sync to Convex if authenticated and have project ID
+    if (isAuthenticated && convexProjectId) {
+      // Create Convex asset records in parallel
+      try {
+        const syncResults = await Promise.allSettled(
+          results.map(async (asset) => {
+            const convexAssetId = await createConvexAsset({
+              projectId: convexProjectId,
+              type: asset.type,
+              name: asset.name,
+              url: asset.url,
+              duration: asset.duration,
+              r2Key: asset.r2Key,
+              proxyUrl: asset.proxyUrl,
+              width: asset.width,
+              height: asset.height,
+              fps: asset.fps,
+              thumbnails: asset.thumbnails,
+              waveform: asset.waveform ? Array.from(asset.waveform) : undefined,
+              sampleRate: asset.sampleRate,
+            });
+            
+            // Update local asset with Convex ID (keep local id intact)
+            actions.updateMediaAsset(asset.id, {
+              convexAssetId: convexAssetId
+            });
+            
+            return { success: true, assetName: asset.name };
+          })
+        );
+        
+        // Check for failures
+        const failures = syncResults.filter(r => r.status === 'rejected');
+        if (failures.length > 0) {
+          console.error('Some assets failed to sync:', failures);
+          toast.error(`Failed to sync ${failures.length} asset(s) to cloud`);
+        } else if (results.length > 1) {
+          toast.success(`${results.length} assets synced to cloud`);
+        }
+      } catch (err) {
+        const error = err as Error;
+        if (error.message?.includes('Not authenticated')) {
+          toast.info('Assets saved locally. Sign in to sync to cloud.');
+        } else {
+          console.error('Asset sync error:', err);
+          toast.error('Failed to sync assets to cloud');
+        }
+      }
+    } else if (!isAuthenticated && results.length > 0) {
+      toast.info('Assets saved locally. Sign in to enable cloud sync.');
+    }
   };
 
   const handleExport = async (options: { resolution: string; quality: string; format: string }) => {

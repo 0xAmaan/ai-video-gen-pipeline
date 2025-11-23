@@ -9,6 +9,7 @@ import { KonvaClipItem } from "./KonvaClipItem";
 import type Konva from "konva";
 import { snapTimeToBeatMarkers } from "@/lib/editor/audio-beat-helpers";
 import type { BeatMarker } from "@/types/audio";
+import { useCollisionDetection } from "@/lib/editor/hooks/useCollisionDetection";
 
 interface KonvaTimelineProps {
   sequence: Sequence;
@@ -142,6 +143,20 @@ const KonvaTimelineComponent = ({
   const audioClips = audioTrack?.clips ?? [];
   const hasAudioTrack = audioClips.length > 0;
   const snapEnabled = snapToBeats && beatMarkers.length > 0;
+  
+  // Collision detection hook
+  const {
+    checkCollision,
+    applyCollisionResolution,
+    collisionMode,
+  } = useCollisionDetection();
+  
+  // Track collision state during drag
+  const [currentCollision, setCurrentCollision] = useState<{
+    hasCollision: boolean;
+    collidingClipIds: string[];
+    collisionZones: Array<{ start: number; end: number }>;
+  } | null>(null);
 
   // Helper to check if a clip is selected (either in single or multi mode)
   const isClipSelected = useCallback(
@@ -586,14 +601,40 @@ const KonvaTimelineComponent = ({
       const draggedClip = clips.find((c) => c.id === clipId);
       if (draggedClip) {
         // Convert pixel position to time
-        const dragTime = pixelsToTime(currentX);
+        let dragTime = pixelsToTime(currentX);
 
         // Apply snap logic if enabled
-        const snappedTime = calculateSnapPoints(
+        let snappedTime = calculateSnapPoints(
           clipId,
           dragTime,
           draggedClip.duration
         );
+        
+        // Check for collisions at the snapped position
+        const trackId = videoTrack?.id;
+        if (trackId && collisionMode === 'block') {
+          const collision = checkCollision(
+            clipId,
+            trackId,
+            snappedTime,
+            draggedClip.duration,
+          );
+          
+          // Store collision state for visual feedback
+          setCurrentCollision({
+            hasCollision: collision.hasCollision,
+            collidingClipIds: collision.collidingClips.map(c => c.clipId),
+            collisionZones: collision.collisionZones,
+          });
+          
+          // In Block mode: snap to nearest valid position if collision detected
+          if (collision.hasCollision && collision.suggestedPosition !== undefined) {
+            snappedTime = collision.suggestedPosition;
+          }
+        } else {
+          // Clear collision state when not in block mode or no track
+          setCurrentCollision(null);
+        }
 
         // Convert back to pixels for rendering
         const snappedX = timeToPixels(snappedTime);
@@ -631,7 +672,7 @@ const KonvaTimelineComponent = ({
         return newOrder;
       });
     },
-    [PIXELS_PER_SECOND, clips, pixelsToTime, timeToPixels, calculateSnapPoints],
+    [PIXELS_PER_SECOND, clips, pixelsToTime, timeToPixels, calculateSnapPoints, checkCollision, collisionMode, videoTrack],
   );
 
   const handleClipDragEnd = useCallback(
@@ -661,6 +702,7 @@ const KonvaTimelineComponent = ({
       setDraggedClipX(0);
       setVirtualClipOrder([]);
       setSnapGuides([]); // Clear snap guides when drag ends
+      setCurrentCollision(null); // Clear collision state when drag ends
     },
     [draggingClipId, onClipReorder],
   );
@@ -879,6 +921,8 @@ const KonvaTimelineComponent = ({
             {/* Clips */}
             {clipsToRender.map((clip) => {
               const isDragging = clip.id === draggingClipId;
+              // TODO: Add visual feedback for colliding clips (red border)
+              // const isColliding = currentCollision?.collidingClipIds.includes(clip.id) ?? false;
               const asset = assetMap.get(clip.mediaId);
               return (
                 <KonvaClipItem
@@ -899,6 +943,25 @@ const KonvaTimelineComponent = ({
                   onTrim={(newTrimStart, newTrimEnd) =>
                     onClipTrim(clip.id, newTrimStart, newTrimEnd)
                   }
+                />
+              );
+            })}
+            
+            {/* Collision zone overlays (red semi-transparent rectangles) */}
+            {currentCollision?.hasCollision && currentCollision.collisionZones.map((zone, index) => {
+              const x = timeToPixels(zone.start) + X_OFFSET;
+              const width = timeToPixels(zone.end - zone.start);
+              return (
+                <Rect
+                  key={`collision-zone-${index}`}
+                  x={x}
+                  y={CLIP_Y}
+                  width={width}
+                  height={CLIP_HEIGHT}
+                  fill="rgba(239, 68, 68, 0.2)" // Red with 20% opacity
+                  stroke="#EF4444" // Solid red border
+                  strokeWidth={2}
+                  listening={false}
                 />
               );
             })}

@@ -87,6 +87,7 @@ const clipToElement = (clip: Clip, asset?: MediaAssetMeta): ElementJSON => {
   return {
     id: clip.id,
     type: clip.kind,
+    name: asset?.name ?? `Clip ${clip.id.slice(0, 8)}`,
     s: start,
     e: start + duration,
     props: {

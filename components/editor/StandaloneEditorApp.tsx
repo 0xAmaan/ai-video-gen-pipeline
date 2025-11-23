@@ -15,6 +15,16 @@ import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
 import { EditorController } from "@/components/editor/EditorController";
 import LegacyEditorApp from "@/components/editor/LegacyEditorApp";
+import { AutoSpliceDialog } from "@/components/editor/AutoSpliceDialog";
+import { autoSpliceOnBeats, getClipBeatAnalysisStatus } from "@/lib/editor/utils/auto-splice";
+import { Button } from "@/components/ui/button";
+import { Activity } from "lucide-react";
+import { toast } from "sonner";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useEditorProjectSync } from "@/lib/editor/hooks/useEditorProjectSync";
+import { useConvexAuth } from "convex/react";
 
 interface StandaloneEditorAppProps {
   autoHydrate?: boolean;
@@ -28,7 +38,9 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const [exportStatus, setExportStatus] = useState<{ progress: number; status: string } | null>(null);
   const [masterVolume, setMasterVolume] = useState(1);
   const [audioTrackMuted, setAudioTrackMuted] = useState(false);
-  const [timelineMode, setTimelineMode] = useState<"twick" | "legacy">("legacy");
+  const [timelineMode, setTimelineMode] = useState<"twick" | "legacy">("twick");
+  const [autoSpliceDialogOpen, setAutoSpliceDialogOpen] = useState(false);
+  const [autoSpliceClipId, setAutoSpliceClipId] = useState<string | null>(null);
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);
@@ -40,6 +52,13 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const thumbnailInflight = useRef<Set<string>>(new Set());
   const thumbnailsCompletedRef = useRef<Set<string>>(new Set());
   const webGpuFailed = useRef(false);
+
+  // Automatically sync local project to Convex and get Convex project ID
+  const { isAuthenticated } = useConvexAuth();
+  const convexProjectId = useEditorProjectSync(project, isAuthenticated);
+
+  // Convex mutations for asset management
+  const createConvexAsset = useMutation(api.editorAssets.createAsset);
 
   // STABILITY FIX: Use WebGL in legacy mode; allow Twick mode to use WebGPU when available.
   const forceWebGL = timelineMode === "legacy";
@@ -227,7 +246,61 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
       imports.push(mediaManager.importFile(file));
     });
     const results = await Promise.all(imports);
+    
+    // Add assets to local state
     results.forEach((asset) => actions.addMediaAsset(asset));
+    
+    // Optionally sync to Convex if authenticated and have project ID
+    if (isAuthenticated && convexProjectId) {
+      // Create Convex asset records in parallel
+      try {
+        const syncResults = await Promise.allSettled(
+          results.map(async (asset) => {
+            const convexAssetId = await createConvexAsset({
+              projectId: convexProjectId,
+              type: asset.type,
+              name: asset.name,
+              url: asset.url,
+              duration: asset.duration,
+              r2Key: asset.r2Key,
+              proxyUrl: asset.proxyUrl,
+              width: asset.width,
+              height: asset.height,
+              fps: asset.fps,
+              thumbnails: asset.thumbnails,
+              waveform: asset.waveform ? Array.from(asset.waveform) : undefined,
+              sampleRate: asset.sampleRate,
+            });
+            
+            // Update local asset with Convex ID (keep local id intact)
+            actions.updateMediaAsset(asset.id, {
+              convexAssetId: convexAssetId
+            });
+            
+            return { success: true, assetName: asset.name };
+          })
+        );
+        
+        // Check for failures
+        const failures = syncResults.filter(r => r.status === 'rejected');
+        if (failures.length > 0) {
+          console.error('Some assets failed to sync:', failures);
+          toast.error(`Failed to sync ${failures.length} asset(s) to cloud`);
+        } else if (results.length > 1) {
+          toast.success(`${results.length} assets synced to cloud`);
+        }
+      } catch (err) {
+        const error = err as Error;
+        if (error.message?.includes('Not authenticated')) {
+          toast.info('Assets saved locally. Sign in to sync to cloud.');
+        } else {
+          console.error('Asset sync error:', err);
+          toast.error('Failed to sync assets to cloud');
+        }
+      }
+    } else if (!isAuthenticated && results.length > 0) {
+      toast.info('Assets saved locally. Sign in to enable cloud sync.');
+    }
   };
 
   const handleExport = async (options: { resolution: string; quality: string; format: string; aspectRatio: string }) => {
@@ -397,6 +470,38 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
                 {selection.clipIds.length > 0 ? (
                   <div>
                     <div className="mb-2">Selected: {selection.clipIds.length} clip(s)</div>
+                    {/* Beat Analysis Auto-Splice */}
+                    {selection.clipIds.length === 1 && (() => {
+                      const clipId = selection.clipIds[0];
+                      const beatStatus = project ? getClipBeatAnalysisStatus(project, clipId) : null;
+                      if (beatStatus?.hasBeats) {
+                        return (
+                          <div className="mb-4 p-3 rounded-md border bg-card">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Activity className="h-4 w-4 text-green-600" />
+                              <span className="font-medium text-sm">Beat Analysis</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mb-3">
+                              {beatStatus.beatCount} beats detected
+                              {beatStatus.bpm && ` • ${Math.round(beatStatus.bpm)} BPM`}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => {
+                                setAutoSpliceClipId(clipId);
+                                setAutoSpliceDialogOpen(true);
+                              }}
+                            >
+                              <Activity className="mr-2 h-4 w-4" />
+                              Auto-Splice on Beats...
+                            </Button>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     {/* TODO: Add property editors here */}
                     <div className="text-xs opacity-50">Transform, Speed, Audio settings will appear here.</div>
                   </div>
@@ -423,6 +528,25 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         status={exportStatus}
         audioTrackCount={audioStats.trackCount}
         audioClipCount={audioStats.clipCount}
+      />
+
+      <AutoSpliceDialog
+        open={autoSpliceDialogOpen}
+        onOpenChange={setAutoSpliceDialogOpen}
+        project={project}
+        clipId={autoSpliceClipId ?? ""}
+        onConfirm={(options) => {
+          if (!project || !autoSpliceClipId) return;
+          
+          const result = autoSpliceOnBeats(project, autoSpliceClipId, options);
+          
+          if (result.success && result.project) {
+            actions.loadProject(result.project);
+            toast.success(`Spliced clip into ${result.cutCount + 1} clips at beat markers`);
+          } else {
+            toast.error(result.error ?? "Failed to splice clip");
+          }
+        }}
       />
     </div>
   );

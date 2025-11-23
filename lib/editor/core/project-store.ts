@@ -23,6 +23,8 @@ import {
   SlideEditCommand,
   RippleDeleteCommand,
 } from "../history/commands";
+import { CollisionDetector } from "../collision/CollisionDetector";
+import type { CollisionMode } from "../collision/CollisionDetector";
 
 const MAX_HISTORY = 50;
 
@@ -105,6 +107,9 @@ const createProject = (): Project => {
       snap: true,
       snapToBeats: true,
       snapThreshold: 0.1,
+      magneticSnap: true,
+      magneticSnapThreshold: 0.1,
+      collisionMode: 'block' as CollisionMode,
       zoom: 1,
       activeSequenceId: sequence.id,
     },
@@ -167,6 +172,9 @@ export interface ProjectStoreState {
   // Editor modes
   rippleEditEnabled: boolean;
   multiTrackRipple: boolean; // When true, ripple affects all unlocked tracks
+  
+  // Collision detection system
+  collisionDetector: CollisionDetector; // Spatial index for real-time collision detection
 
   actions: {
     hydrate: (projectId?: string) => Promise<void>;
@@ -195,6 +203,12 @@ export interface ProjectStoreState {
     markDirty: () => void; // Mark session as dirty without persisting
     toggleRippleEdit: () => void;
     toggleMultiTrackRipple: () => void;
+    
+    // Collision detection settings
+    setCollisionMode: (mode: CollisionMode) => void;
+    toggleMagneticSnap: () => void;
+    setMagneticSnapThreshold: (threshold: number) => void;
+    rebuildCollisionIndex: () => void;
   };
 }
 
@@ -220,6 +234,9 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   // Editor modes
   rippleEditEnabled: false,
   multiTrackRipple: false, // Default to single-track ripple
+  
+  // Collision detection system
+  collisionDetector: new CollisionDetector(),
 
   actions: {
     hydrate: async (projectId?: string) => {
@@ -228,6 +245,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const history = snapshot?.history ?? { past: [], future: [] };
       await timelineService.setSequence(getSequence(project));
       set({ project, ready: true, history });
+      // Rebuild collision index after hydration
+      get().actions.rebuildCollisionIndex();
     },
     reset: () =>
       set({
@@ -254,6 +273,9 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         dirty: false, // Fresh load is not dirty
         lastSavedSignature: signature,
       });
+      
+      // Rebuild collision index after loading project
+      get().actions.rebuildCollisionIndex();
       
       // Optionally persist immediately on load
       if (options?.persist !== false) {
@@ -335,6 +357,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         (project) => {
           set({ project, dirty: true });
           void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after adding clip
+          get().actions.rebuildCollisionIndex();
         },
         clip,
         track.id,
@@ -354,6 +378,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         (project) => {
           set({ project, dirty: true });
           void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after moving clip
+          get().actions.rebuildCollisionIndex();
         },
         clipId,
         trackId,
@@ -374,6 +400,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         (project) => {
           set({ project, dirty: true });
           void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after trimming clip
+          get().actions.rebuildCollisionIndex();
         },
         clipId,
         trimStart,
@@ -394,6 +422,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         (project) => {
           set({ project, dirty: true });
           void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after ripple trim
+          get().actions.rebuildCollisionIndex();
         },
         clipId,
         trimStart,
@@ -467,6 +497,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         (project) => {
           set({ project, dirty: true });
           void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after splitting clip
+          get().actions.rebuildCollisionIndex();
         },
         clipId,
         offset,
@@ -524,6 +556,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         (project) => {
           set({ project, dirty: true });
           void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after deleting clip
+          get().actions.rebuildCollisionIndex();
         },
         clipId,
       );
@@ -542,6 +576,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         (project) => {
           set({ project, dirty: true });
           void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after ripple delete
+          get().actions.rebuildCollisionIndex();
         },
         clipId,
         multiTrackRipple, // Pass multi-track ripple setting
@@ -556,6 +592,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const { historyManager } = get();
       const success = historyManager.undo();
       if (success) {
+        // Rebuild collision index after undo to ensure consistency
+        get().actions.rebuildCollisionIndex();
         console.log("[History] Undo:", historyManager.getUndoDescription());
       }
     },
@@ -563,6 +601,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const { historyManager } = get();
       const success = historyManager.redo();
       if (success) {
+        // Rebuild collision index after redo to ensure consistency
+        get().actions.rebuildCollisionIndex();
         console.log("[History] Redo:", historyManager.getRedoDescription());
       }
     },
@@ -586,6 +626,44 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     
     // Toggle multi-track ripple mode
     toggleMultiTrackRipple: () => set((state) => ({ multiTrackRipple: !state.multiTrackRipple })),
+    
+    // Collision detection settings
+    setCollisionMode: (mode: CollisionMode) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        next.settings.collisionMode = mode;
+        next.updatedAt = Date.now();
+        return { ...state, project: next, dirty: true };
+      });
+    },
+    
+    toggleMagneticSnap: () => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        next.settings.magneticSnap = !next.settings.magneticSnap;
+        next.updatedAt = Date.now();
+        return { ...state, project: next, dirty: true };
+      });
+    },
+    
+    setMagneticSnapThreshold: (threshold: number) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        next.settings.magneticSnapThreshold = threshold;
+        next.updatedAt = Date.now();
+        return { ...state, project: next, dirty: true };
+      });
+    },
+    
+    rebuildCollisionIndex: () => {
+      const { project, collisionDetector } = get();
+      if (!project) return;
+      const sequence = getSequence(project);
+      collisionDetector.rebuildIndex(sequence.tracks);
+    },
   },
 }));
 

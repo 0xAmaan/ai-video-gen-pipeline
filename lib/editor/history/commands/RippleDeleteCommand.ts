@@ -98,7 +98,7 @@ export class RippleDeleteCommand extends BaseCommand {
           }
         });
 
-        track.clips.sort((a, b) => a.start - b.start);
+        track.clips.sort((a: Clip, b: Clip) => a.start - b.start);
       }
 
       recalculateSequenceDuration(sequence);

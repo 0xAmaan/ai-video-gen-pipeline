@@ -6,6 +6,7 @@ import {
   ContextMenuSeparator,
   ContextMenuShortcut,
 } from "@/components/ui/context-menu";
+import { Activity } from "lucide-react";
 
 interface ClipContextMenuProps {
   clipId: string;
@@ -14,11 +15,13 @@ interface ClipContextMenuProps {
   clipStart: number;
   clipEnd: number;
   hasClipboard: boolean;
+  hasBeatAnalysis?: boolean;
   onCut: () => void;
   onCopy: () => void;
   onPaste: () => void;
   onDuplicate: () => void;
   onSplit: () => void;
+  onAutoSplice?: () => void;
   onDelete: () => void;
 }
 
@@ -29,11 +32,13 @@ export function ClipContextMenu({
   clipStart,
   clipEnd,
   hasClipboard,
+  hasBeatAnalysis = false,
   onCut,
   onCopy,
   onPaste,
   onDuplicate,
   onSplit,
+  onAutoSplice,
   onDelete,
 }: ClipContextMenuProps) {
   // Always allow split if clips are selected (matches industry standard behavior)
@@ -68,6 +73,13 @@ export function ClipContextMenu({
         Split at Playhead
         <ContextMenuShortcut>⌘B</ContextMenuShortcut>
       </ContextMenuItem>
+
+      {hasBeatAnalysis && onAutoSplice && (
+        <ContextMenuItem onClick={onAutoSplice}>
+          <Activity className="mr-2 h-4 w-4" />
+          Auto-Splice on Beats...
+        </ContextMenuItem>
+      )}
 
       <ContextMenuSeparator />
 

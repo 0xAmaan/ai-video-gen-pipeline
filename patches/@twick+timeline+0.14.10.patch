@@ -1,0 +1,12 @@
+diff --git a/node_modules/@twick/timeline/dist/index.mjs b/node_modules/@twick/timeline/dist/index.mjs
+index 1feaaf9..5dcd780 100644
+--- a/node_modules/@twick/timeline/dist/index.mjs
++++ b/node_modules/@twick/timeline/dist/index.mjs
+@@ -1394,6 +1394,7 @@ class ElementDeserializer {
+     if (json.s !== void 0) element.setStart(json.s);
+     if (json.e !== void 0) element.setEnd(json.e);
+     if (json.props) element.setProps(json.props);
++    if (json.name) element.setName(json.name);
+     if (json.animation) element.setAnimation(ElementAnimation.fromJSON(json.animation));
+   }
+   static deserializeVideoElement(json) {

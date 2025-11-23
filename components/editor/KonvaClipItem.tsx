@@ -267,7 +267,7 @@ const KonvaClipItemComponent = ({
             x={clipX + 10}
             y={CLIP_Y + 10}
             text={
-              clip.mediaId?.substring(0, Math.floor(clipWidth / 8)) || "Clip"
+              (asset?.name ?? `Clip ${clip.id.slice(0, 8)}`).substring(0, Math.floor(clipWidth / 8))
             }
             fontSize={13}
             fontStyle="bold"

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 /**
  * Create a new editor asset
@@ -264,5 +265,113 @@ export const deleteProjectAssets = mutation({
     }
 
     // TODO: In future, trigger R2 cleanup for all r2Keys
+  },
+});
+
+/**
+ * Trigger beat analysis for an editor asset
+ *
+ * Convenience wrapper that validates the asset and triggers beat analysis.
+ * This provides editor-specific context and validation before delegating
+ * to the core beat analysis system.
+ *
+ * @param assetId - The editor asset ID to analyze
+ */
+export const analyzeBeat = mutation({
+  args: {
+    assetId: v.id("editorAssets"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const userId = identity.subject;
+    const asset = await ctx.db.get(args.assetId);
+    
+    if (!asset) {
+      throw new Error("Asset not found");
+    }
+
+    // Verify the project belongs to this user
+    const project = await ctx.db.get(asset.projectId);
+    if (!project || project.userId !== userId) {
+      throw new Error("Not authorized to analyze this asset");
+    }
+
+    // Only analyze audio and video assets
+    if (asset.type !== "audio" && asset.type !== "video") {
+      throw new Error("Beat analysis only supports audio and video assets");
+    }
+
+    // Validate that the asset has a URL
+    if (!asset.url) {
+      throw new Error("Asset has no URL for analysis");
+    }
+
+    // Check if analysis is already in progress
+    if (asset.beatAnalysisStatus === "analyzing") {
+      throw new Error("Beat analysis is already in progress for this asset");
+    }
+
+    // Update status to analyzing
+    await ctx.db.patch(args.assetId, {
+      beatAnalysisStatus: "analyzing",
+      analysisError: undefined,
+      updatedAt: Date.now(),
+    });
+
+    // Use proxyUrl if available, otherwise use url
+    const mediaUrl = asset.proxyUrl ?? asset.url;
+
+    // Schedule the analysis action
+    await ctx.scheduler.runAfter(0, internal.beatAnalysis.performEditorAssetAnalysis, {
+      assetId: args.assetId,
+      mediaUrl,
+    });
+  },
+});
+
+/**
+ * Get beat analysis status for an editor asset
+ *
+ * Returns the current analysis status, BPM, beat count, and other metadata.
+ * This is optimized for real-time UI updates via Convex subscriptions.
+ *
+ * @param assetId - The editor asset ID
+ * @returns Analysis status or null if not found
+ */
+export const getAssetAnalysisStatus = query({
+  args: {
+    assetId: v.id("editorAssets"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return null;
+    }
+
+    const userId = identity.subject;
+    const asset = await ctx.db.get(args.assetId);
+    
+    if (!asset) {
+      return null;
+    }
+
+    // Verify the project belongs to this user
+    const project = await ctx.db.get(asset.projectId);
+    if (!project || project.userId !== userId) {
+      return null;
+    }
+
+    return {
+      status: asset.beatAnalysisStatus,
+      error: asset.analysisError,
+      bpm: asset.bpm,
+      beatCount: asset.beatMarkers?.length ?? 0,
+      analysisMethod: asset.analysisMethod,
+      hasMarkers: (asset.beatMarkers?.length ?? 0) > 0,
+    };
   },
 });

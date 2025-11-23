@@ -1,3 +1,5 @@
+import type { Id } from "../../convex/_generated/dataModel";
+
 export type TrackKind = "video" | "audio" | "overlay" | "fx";
 
 export type EffectType =
@@ -116,7 +118,8 @@ export interface Sequence {
 }
 
 export interface MediaAssetMeta {
-  id: string;
+  id: string; // Local UUID identifier
+  convexAssetId?: Id<"editorAssets">; // Optional Convex database ID
   name: string;
   type: "video" | "audio" | "image";
   duration: number;
@@ -142,6 +145,9 @@ export interface ProjectSettings {
   snap: boolean;
   snapToBeats?: boolean; // Enable/disable beat-based snapping (default: true)
   snapThreshold: number; // Distance in seconds within which snapping occurs
+  magneticSnap?: boolean; // Enable magnetic snapping to clip edges (default: true)
+  magneticSnapThreshold?: number; // Magnetic snap distance in seconds (default: 0.1)
+  collisionMode?: 'block' | 'insert' | 'overwrite'; // How to handle clip collisions during drag (default: 'block')
   zoom: number;
   activeSequenceId: string;
 }
