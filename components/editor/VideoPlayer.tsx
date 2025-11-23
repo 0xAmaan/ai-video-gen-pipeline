@@ -159,7 +159,7 @@ export const VideoPlayer = ({
         className="w-full h-full object-contain"
         style={{
           display: "block",
-          imageRendering: "high-quality",
+          imageRendering: "auto",
         }}
       />
 

@@ -17,7 +17,7 @@ export class VideoLoader {
   private decoder?: VideoDecoder;
   private decoderConfig: VideoDecoderConfig | null = null;
   private readonly cache: FrameCache<VideoFrame>;
-  private readonly lookahead: number;
+  private lookahead: number;
   private readonly requestInit?: RequestInit;
   private lastAnchor = 0;
   private disableTrimming = false; // For export mode - keep all frames

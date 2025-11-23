@@ -307,12 +307,13 @@ const ClipRect = ({
     // If track changed, use target track's clips, otherwise use current track's clips
     const targetTrackPosition = allTrackPositions.find(tp => tp.track.id === finalTrackId)
     const targetClips = trackChanged ? (targetTrackPosition?.track.clips || []) : allClips
-    const updates = calculateClipSwap(clip.id, finalStart, finalTrackId, targetClips)
+    const swapUpdates = calculateClipSwap(clip.id, finalStart, finalTrackId, targetClips)
 
     // Add track change info to the update
-    if (trackChanged && updates.length > 0) {
-      updates[0].newTrackId = finalTrackId
-    }
+    const updates = swapUpdates.map((update, index) => ({
+      ...update,
+      ...(trackChanged && index === 0 ? { newTrackId: finalTrackId } : {}),
+    }))
 
     // Reset position to original (parent will update via props)
     node.x(x)
@@ -336,7 +337,7 @@ const ClipRect = ({
   const isBeingDragged = dropZone && dropZone.draggedClipId === clip.id
 
   // Calculate base position (cumulative layout, not time-based during drag)
-  let x: number
+  let x: number = clip.start * pixelsPerSecond + clipIndex * TIMELINE_LAYOUT.clipGap
 
   if (dropZone) {
     // During drag: Layout clips WITHOUT the dragged clip, with drop zone as placeholder

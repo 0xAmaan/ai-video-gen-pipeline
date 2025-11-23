@@ -1,6 +1,10 @@
 "use client";
 
-import type { ElementJSON, ProjectJSON, TrackJSON } from "@twick/timeline/dist/types";
+import type {
+  ElementJSON,
+  ProjectJSON,
+  TrackJSON,
+} from "@twick/timeline/dist/types";
 import type { Project, Track, Clip, MediaAssetMeta } from "./types";
 
 const mapTrackType = (type?: string): Track["kind"] => {
@@ -11,8 +15,9 @@ const mapTrackType = (type?: string): Track["kind"] => {
 
 export const projectToTimelineJSON = (project: Project): ProjectJSON => {
   const activeSequence =
-    project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ??
-    project.sequences[0];
+    project.sequences.find(
+      (seq) => seq.id === project.settings.activeSequenceId,
+    ) ?? project.sequences[0];
   const assets = project.mediaAssets;
 
   const friendlyName = (track: Track) => {
@@ -27,7 +32,9 @@ export const projectToTimelineJSON = (project: Project): ProjectJSON => {
     id: track.id,
     name: friendlyName(track),
     type: track.kind,
-    elements: track.clips.map((clip) => clipToElement(clip, assets[clip.mediaId])),
+    elements: track.clips.map((clip) =>
+      clipToElement(clip, assets[clip.mediaId]),
+    ),
   }));
 
   return {
@@ -43,22 +50,33 @@ export const timelineToProject = (
 ): Project => {
   const project: Project = structuredClone(base);
   const sequence =
-    project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ??
-    project.sequences[0];
+    project.sequences.find(
+      (seq) => seq.id === project.settings.activeSequenceId,
+    ) ?? project.sequences[0];
   const timelineTracks = timeline.tracks ?? [];
 
-  sequence.tracks = timelineTracks.map((track) => ({
+  sequence.tracks = timelineTracks.map((track, index) => ({
     id: track.id,
+    name: track.id,
     kind: mapTrackType(track.type),
     allowOverlap: track.type !== "video",
     locked: false,
     muted: false,
+    solo: false,
     volume: 1,
-    clips: track.elements.map((element) => elementToClip(element, track.id, assets)),
+    zIndex: index,
+    height: 64,
+    visible: true,
+    clips: track.elements.map((element) =>
+      elementToClip(element, track.id, assets),
+    ),
   }));
 
   sequence.duration = sequence.tracks.reduce((max, track) => {
-    const end = track.clips.reduce((clipMax, clip) => Math.max(clipMax, clip.start + clip.duration), 0);
+    const end = track.clips.reduce(
+      (clipMax, clip) => Math.max(clipMax, clip.start + clip.duration),
+      0,
+    );
     return Math.max(max, end);
   }, 0);
 
@@ -90,7 +108,12 @@ const elementToClip = (
   const duration = Math.max(0.1, (element.e ?? element.s) - element.s);
   const assetId = (element as any)?.props?.assetId ?? element.id;
   const asset = assets[assetId];
-  const clipKind: Clip["kind"] = element.type === "audio" ? "audio" : element.type === "image" ? "image" : "video";
+  const clipKind: Clip["kind"] =
+    element.type === "audio"
+      ? "audio"
+      : element.type === "image"
+        ? "image"
+        : "video";
   return {
     id: element.id,
     mediaId: assetId,
@@ -106,5 +129,6 @@ const elementToClip = (
     transitions: [],
     speedCurve: null,
     preservePitch: true,
+    blendMode: "normal",
   };
 };

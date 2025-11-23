@@ -23,6 +23,7 @@ export class AudioMixer {
   private trackNodes: Map<string, AudioTrackNode> = new Map();
   private audioBuffers: Map<string, AudioBuffer> = new Map();
   private audioLoadPromises: Map<string, Promise<void>> = new Map();
+  private audioSources: Map<string, AudioBufferSourceNode> = new Map();
   private currentTime: number = 0;
   private isPlaying: boolean = false;
   private startedPlaybackAt: number = 0;
