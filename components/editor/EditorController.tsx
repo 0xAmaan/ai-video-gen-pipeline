@@ -200,11 +200,20 @@ const EditorBridge = () => {
   }, [livePlayerContext, actions]);
 
   // Track modifier keys for slip/slide mode detection
+  // Fix: Use refs to avoid re-registering listeners on every editingMode change
+  const editingModeRef = useRef(editingMode);
+  const detectModeRef = useRef(detectModeFromModifiers);
+
+  useEffect(() => {
+    editingModeRef.current = editingMode;
+    detectModeRef.current = detectModeFromModifiers;
+  }, [editingMode, detectModeFromModifiers]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Update cursor if modifier keys change during drag
-      const mode = detectModeFromModifiers(event);
-      if (mode !== editingMode) {
+      const mode = detectModeRef.current(event);
+      if (mode !== editingModeRef.current) {
         // Modifier keys changed - update cursor
         const cursor = getCursorForMode(mode);
         document.body.style.cursor = cursor;
@@ -226,7 +235,7 @@ const EditorBridge = () => {
       window.removeEventListener('keyup', handleKeyUp);
       document.body.style.cursor = 'default';
     };
-  }, [editingMode, detectModeFromModifiers]);
+  }, []); // Fix: Empty dependencies - only register once
 
   // Global keyboard shortcuts for editor operations
   useEffect(() => {
