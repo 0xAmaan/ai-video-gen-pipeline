@@ -44,8 +44,6 @@ export const TimelineCanvas = ({
   // Update dimensions by observing the parent timeline section (not our own container)
   useEffect(() => {
     const updateDimensions = () => {
-      // Observe the parent section for height (it's what actually resizes via grid)
-      // But use our own container for width (for scrolling)
       const sectionElement = timelineSectionRef?.current
       const containerElement = containerRef.current
 
@@ -53,12 +51,12 @@ export const TimelineCanvas = ({
         const sectionRect = sectionElement.getBoundingClientRect()
         const containerRect = containerElement.getBoundingClientRect()
 
+        // BACK TO BASELINE: Use sectionRect.height (resize works)
         setDimensions({
           width: containerRect.width,
           height: sectionRect.height
         })
       } else if (containerElement) {
-        // Fallback to container if no section ref provided
         const rect = containerElement.getBoundingClientRect()
         setDimensions({ width: rect.width, height: rect.height })
       }
@@ -68,10 +66,12 @@ export const TimelineCanvas = ({
 
     const resizeObserver = new ResizeObserver(updateDimensions)
 
-    // Observe the parent section element (the one that actually changes size)
-    const observeElement = timelineSectionRef?.current || containerRef.current
-    if (observeElement) {
-      resizeObserver.observe(observeElement)
+    // Observe BOTH section (grid changes) AND container (flex layout changes)
+    if (timelineSectionRef?.current) {
+      resizeObserver.observe(timelineSectionRef.current)
+    }
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current)
     }
 
     return () => resizeObserver.disconnect()

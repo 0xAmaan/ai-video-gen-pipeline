@@ -21,8 +21,9 @@ export const ClipsLayer = ({ sequence, mediaAssets, pixelsPerSecond, selectedCli
   const tracks = sequence.tracks || []
 
   // Calculate vertical centering for tracks within the visible viewport
+  const CONTROL_BAR_HEIGHT = 48 // Control bar height (fixed)
   const tracksTotalHeight = tracks.length * TIMELINE_LAYOUT.trackHeight
-  const availableHeight = viewportHeight - TIMELINE_LAYOUT.rulerHeight
+  const availableHeight = viewportHeight - TIMELINE_LAYOUT.rulerHeight - CONTROL_BAR_HEIGHT
   const centeredOffset = (availableHeight - tracksTotalHeight) / 2
 
   return (
