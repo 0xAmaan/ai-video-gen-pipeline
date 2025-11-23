@@ -22,6 +22,8 @@ import {
   SlipEditCommand,
   SlideEditCommand,
   RippleDeleteCommand,
+  DeleteClipsCommand,
+  MoveClipsCommand,
 } from "../history/commands";
 import { CollisionDetector } from "../collision/CollisionDetector";
 import type { CollisionMode } from "../collision/CollisionDetector";
@@ -197,6 +199,9 @@ export interface ProjectStoreState {
     splitAtPlayhead: (clipId: string) => void;
     deleteClip: (clipId: string) => void;
     rippleDelete: (clipId: string) => void;
+    // Batch operations for multi-clip selection
+    deleteClips: (clipIds: string[]) => void; // Batch delete multiple clips
+    moveClips: (clipIds: string[], timeOffset: number, trackOffset?: number) => void; // Batch move multiple clips
     undo: () => void;
     redo: () => void;
     save: () => Promise<void>; // Explicit save to Convex (PRD Tri-State)
@@ -586,6 +591,60 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const success = historyManager.execute(command);
       if (success) {
         void timelineService.rippleDelete(clipId);
+      }
+    },
+    deleteClips: (clipIds: string[]) => {
+      const state = get();
+      const { historyManager } = state;
+
+      if (clipIds.length === 0) return;
+
+      // Use DeleteClipsCommand for batch deletion with atomic undo/redo
+      const command = new DeleteClipsCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after deleting clips
+          get().actions.rebuildCollisionIndex();
+        },
+        clipIds,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        // Delete all clips from Twick timeline
+        for (const clipId of clipIds) {
+          void timelineService.deleteClip(clipId);
+        }
+        // Clear selection after batch delete
+        get().actions.setSelection({ clipIds: [], trackIds: [] });
+      }
+    },
+    moveClips: (clipIds: string[], timeOffset: number, trackOffset?: number) => {
+      const state = get();
+      const { historyManager } = state;
+
+      if (clipIds.length === 0) return;
+
+      // Use MoveClipsCommand for batch move with atomic undo/redo
+      const command = new MoveClipsCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+          // Rebuild collision index after moving clips
+          get().actions.rebuildCollisionIndex();
+        },
+        clipIds,
+        timeOffset,
+        trackOffset,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        // Refresh Twick timeline to reflect the changes
+        void timelineService.setSequence(getSequence(get().project!));
       }
     },
     undo: () => {

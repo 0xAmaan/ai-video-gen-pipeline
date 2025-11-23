@@ -10,6 +10,7 @@ import { getExportPipeline } from "@/lib/editor/export/export-pipeline";
 import { saveBlob } from "@/lib/editor/export/save-file";
 import { TopBar } from "@/components/editor/TopBar";
 import { MediaPanel } from "@/components/editor/MediaPanel";
+import { VoiceGenerationPanel } from "@/components/editor/VoiceGenerationPanel";
 import { PreviewPanel } from "@/components/editor/PreviewPanel";
 import { ExportModal } from "@/components/ExportModal";
 import type { MediaAssetMeta } from "@/lib/editor/types";
@@ -17,6 +18,7 @@ import { EditorController } from "@/components/editor/EditorController";
 import LegacyEditorApp from "@/components/editor/LegacyEditorApp";
 import { AutoSpliceDialog } from "@/components/editor/AutoSpliceDialog";
 import { autoSpliceOnBeats, getClipBeatAnalysisStatus } from "@/lib/editor/utils/auto-splice";
+import { useQuery } from "convex/react";
 import { Button } from "@/components/ui/button";
 import { Activity } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +43,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
   const [timelineMode, setTimelineMode] = useState<"twick" | "legacy">("twick");
   const [autoSpliceDialogOpen, setAutoSpliceDialogOpen] = useState(false);
   const [autoSpliceClipId, setAutoSpliceClipId] = useState<string | null>(null);
+  const [leftPanelTab, setLeftPanelTab] = useState<"media" | "voice">("media");
   const ready = useProjectStore((state) => state.ready);
   const project = useProjectStore((state) => state.project);
   const selection = useProjectStore((state) => state.selection);
@@ -59,6 +62,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
 
   // Convex mutations for asset management
   const createConvexAsset = useMutation(api.editorAssets.createAsset);
+  const analyzeBeatMutation = useMutation(api.editorAssets.analyzeBeat);
 
   // STABILITY FIX: Use WebGL in legacy mode; allow Twick mode to use WebGPU when available.
   const forceWebGL = timelineMode === "legacy";
@@ -440,13 +444,52 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         {/* Top Section: Media, Preview, Properties */}
         <div className="flex flex-1 min-h-0 border-b border-border">
           
-          {/* Left: Media Panel */}
+          {/* Left: Media/Voice Panel */}
           <div className="w-[320px] flex-none border-r border-border flex flex-col bg-card/30">
-            <MediaPanel
-              assets={assets}
-              onImport={handleImport}
-              onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
-            />
+            {/* Tab Switcher */}
+            <div className="flex border-b border-border">
+              <button
+                onClick={() => setLeftPanelTab("media")}
+                className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                  leftPanelTab === "media"
+                    ? "bg-muted text-foreground border-b-2 border-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Media
+              </button>
+              <button
+                onClick={() => setLeftPanelTab("voice")}
+                className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                  leftPanelTab === "voice"
+                    ? "bg-muted text-foreground border-b-2 border-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Voice
+              </button>
+            </div>
+            
+            {/* Panel Content */}
+            <div className="flex-1 min-h-0">
+              {leftPanelTab === "media" ? (
+                <MediaPanel
+                  assets={assets}
+                  onImport={handleImport}
+                  onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
+                  convexProjectId={convexProjectId}
+                />
+              ) : (
+                <VoiceGenerationPanel
+                  onAssetCreated={(asset) => {
+                    actions.addMediaAsset(asset);
+                    actions.appendClipFromAsset(asset.id);
+                    toast.success("Voice added to timeline!");
+                  }}
+                  autoAddToTimeline={true}
+                />
+              )}
+            </div>
           </div>
 
           {/* Center: Preview Panel */}
@@ -470,37 +513,102 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
                 {selection.clipIds.length > 0 ? (
                   <div>
                     <div className="mb-2">Selected: {selection.clipIds.length} clip(s)</div>
-                    {/* Beat Analysis Auto-Splice */}
+                    {/* Beat Analysis Section */}
                     {selection.clipIds.length === 1 && (() => {
                       const clipId = selection.clipIds[0];
-                      const beatStatus = project ? getClipBeatAnalysisStatus(project, clipId) : null;
-                      if (beatStatus?.hasBeats) {
-                        return (
-                          <div className="mb-4 p-3 rounded-md border bg-card">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Activity className="h-4 w-4 text-green-600" />
-                              <span className="font-medium text-sm">Beat Analysis</span>
-                            </div>
-                            <div className="text-xs text-muted-foreground mb-3">
-                              {beatStatus.beatCount} beats detected
-                              {beatStatus.bpm && ` • ${Math.round(beatStatus.bpm)} BPM`}
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => {
-                                setAutoSpliceClipId(clipId);
-                                setAutoSpliceDialogOpen(true);
-                              }}
-                            >
-                              <Activity className="mr-2 h-4 w-4" />
-                              Auto-Splice on Beats...
-                            </Button>
-                          </div>
-                        );
+                      if (!project) return null;
+                      
+                      // Find the clip and its asset
+                      let clip = null;
+                      for (const sequence of project.sequences) {
+                        for (const track of sequence.tracks) {
+                          const found = track.clips.find(c => c.id === clipId);
+                          if (found) {
+                            clip = found;
+                            break;
+                          }
+                        }
+                        if (clip) break;
                       }
-                      return null;
+                      
+                      if (!clip) return null;
+                      const asset = project.mediaAssets[clip.mediaId];
+                      if (!asset || (asset.type !== 'audio' && asset.type !== 'video')) return null;
+                      
+                      const beatStatus = getClipBeatAnalysisStatus(project, clipId);
+                      const hasBeats = beatStatus?.hasBeats ?? false;
+                      
+                      // Only show if asset has convexAssetId (synced to Convex)
+                      if (!asset.convexAssetId) return null;
+                      
+                      return (
+                        <div className="mb-4 p-3 rounded-md border bg-card">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Activity className={`h-4 w-4 ${hasBeats ? 'text-green-600' : 'text-muted-foreground'}`} />
+                            <span className="font-medium text-sm">Beat Analysis</span>
+                          </div>
+                          
+                          {hasBeats ? (
+                            <>
+                              <div className="text-xs text-muted-foreground mb-3">
+                                {beatStatus?.beatCount ?? 0} beats detected
+                                {beatStatus?.bpm && ` • ${Math.round(beatStatus.bpm)} BPM`}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full mb-2"
+                                onClick={() => {
+                                  setAutoSpliceClipId(clipId);
+                                  setAutoSpliceDialogOpen(true);
+                                }}
+                              >
+                                <Activity className="mr-2 h-4 w-4" />
+                                Auto-Splice on Beats...
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="w-full text-xs"
+                                onClick={async () => {
+                                  try {
+                                    await analyzeBeatMutation({ assetId: asset.convexAssetId! });
+                                    toast.success('Beat analysis started!');
+                                  } catch (error) {
+                                    console.error('Beat analysis failed:', error);
+                                    toast.error(error instanceof Error ? error.message : 'Failed to analyze beats');
+                                  }
+                                }}
+                              >
+                                Re-analyze Beats
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-xs text-muted-foreground mb-3">
+                                No beats detected yet
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full"
+                                onClick={async () => {
+                                  try {
+                                    await analyzeBeatMutation({ assetId: asset.convexAssetId! });
+                                    toast.success('Beat analysis started! This may take a moment...');
+                                  } catch (error) {
+                                    console.error('Beat analysis failed:', error);
+                                    toast.error(error instanceof Error ? error.message : 'Failed to analyze beats');
+                                  }
+                                }}
+                              >
+                                <Activity className="mr-2 h-4 w-4" />
+                                Analyze Beats
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      );
                     })()}
                     {/* TODO: Add property editors here */}
                     <div className="text-xs opacity-50">Transform, Speed, Audio settings will appear here.</div>
