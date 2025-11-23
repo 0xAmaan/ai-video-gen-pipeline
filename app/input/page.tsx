@@ -541,7 +541,7 @@ const RawInputPage = () => {
             }}
           >
           <DialogContent
-            className="relative w-full max-w-5xl bg-[#0e0e0e] border border-white/10 text-white"
+            className="w-full max-w-5xl bg-[#0e0e0e] border border-white/10 text-white"
             onDragEnter={(event) => {
               if (!activeFolderId) return;
               event.preventDefault();

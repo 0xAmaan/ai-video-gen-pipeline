@@ -67,8 +67,7 @@ const RIFFUSION_DEFAULT_MODEL =
   "riffusion/riffusion:8cf61ea6c56afd61d8f5b9ffd14d7c216c0a93844ce2d82ac1c9ecc9c7f24e05";
 const BARK_DEFAULT_MODEL =
   "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787";
-const MINIMAX_SPEECH_DEFAULT_MODEL =
-  "minimax/speech-02-hd:fdd081f807e655246ef42adbcb3ee9334e7fdc710428684771f90d69992cabb3";
+const MINIMAX_SPEECH_DEFAULT_MODEL = "minimax/speech-02-turbo";
 
 export const AUDIO_MODELS: Record<string, AudioModel> = {
   // --- Music generation (Replicate) ---
@@ -235,7 +234,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
         process.env.REPLICATE_MINIMAX_TTS_MODEL_ID,
       MINIMAX_SPEECH_DEFAULT_MODEL,
     ),
-    name: "MiniMax Speech 02 HD",
+    name: "MiniMax Speech 02 Turbo",
     kind: "voice_synthesis",
     vendor: "replicate",
     capabilities: ["voice-cloning", "emotion-control"],
@@ -247,7 +246,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     estimatedCost: 0.012,
     costUnit: "per 1K characters",
     latencySeconds: 6,
-    outputFormats: ["wav"],
+    outputFormats: ["wav", "mp3"],
     defaultParams: {
       sample_rate: 44100,
       audio_format: "wav",
@@ -255,8 +254,8 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
       channel: "mono",
     },
     notes:
-      "Current production narrator. Runs on Replicate using MiniMax Speech HD for neutral English voices.",
-    docsUrl: "https://replicate.com/minimax/speech-02-hd",
+      "Current production narrator. Runs on Replicate using MiniMax Speech Turbo for neutral English voices.",
+    docsUrl: "https://replicate.com/minimax/speech-02-turbo",
   },
   "bark-voice": {
     id: withEnvOverride(

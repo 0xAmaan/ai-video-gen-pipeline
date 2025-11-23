@@ -5,6 +5,7 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from "react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement | null, AudioPlayerProps>
     ref,
   ) => {
     const localRef = useRef<HTMLAudioElement>(null);
+    const [audioError, setAudioError] = useState<string | null>(null);
 
     useImperativeHandle<HTMLAudioElement | null, HTMLAudioElement | null>(
       ref,
@@ -57,6 +59,7 @@ export const AudioPlayer = forwardRef<HTMLAudioElement | null, AudioPlayerProps>
         src,
         context: debugContext,
       });
+      setAudioError(null);
     }, [src, label, debugContext]);
 
     useEffect(() => {
@@ -89,11 +92,23 @@ export const AudioPlayer = forwardRef<HTMLAudioElement | null, AudioPlayerProps>
       };
       const handleError = () => {
         const mediaError = element.error;
-        console.error("[AudioPlayer] Playback error", {
+        const code = mediaError?.code ?? null;
+        const codeMessage =
+          code === 1
+            ? "Loading aborted"
+            : code === 2
+              ? "Network issue"
+              : code === 3
+                ? "Decode issue"
+                : code === 4
+                  ? "Source unsupported"
+                  : "Playback failed";
+        setAudioError(codeMessage);
+        console.warn("[AudioPlayer] Playback error", {
           label,
           src: element.currentSrc || src,
-          code: mediaError?.code,
-          message: mediaError?.message,
+          code,
+          message: mediaError?.message ?? codeMessage,
           context: debugContext,
         });
       };
@@ -114,16 +129,23 @@ export const AudioPlayer = forwardRef<HTMLAudioElement | null, AudioPlayerProps>
     }, [label, src, debugContext]);
 
     return (
-      <audio
-        ref={localRef}
-        className={cn("w-full", className)}
-        src={src ?? undefined}
-        preload={preload}
-        controls={controls}
-        {...rest}
-      >
-        Your browser does not support the audio element.
-      </audio>
+      <div className={cn("w-full space-y-2", className)}>
+        <audio
+          ref={localRef}
+          className="w-full"
+          src={src ?? undefined}
+          preload={preload}
+          controls={controls}
+          {...rest}
+        >
+          Your browser does not support the audio element.
+        </audio>
+        {audioError && (
+          <p className="text-xs text-amber-300" role="status">
+            {audioError}. Try reloading or downloading the file.
+          </p>
+        )}
+      </div>
     );
   },
 );

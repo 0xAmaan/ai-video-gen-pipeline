@@ -3,19 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Sparkles, Layout, Scissors } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Sparkles, Layout, Scissors, Music } from "lucide-react";
 
 interface PageNavigationProps {
   projectId?: string;
   storyboardLocked?: boolean;
   storyboardLockMessage?: string;
+  audioLocked?: boolean;
+  audioLockMessage?: string;
   editorLocked?: boolean;
   editorLockMessage?: string;
 }
 
 interface NavItem {
   name: string;
-  icon: typeof Layout;
+  icon: LucideIcon;
   href: string;
   match: string;
   disabled?: boolean;
@@ -24,19 +27,12 @@ interface NavItem {
 
 const DEFAULT_PATH = "/home";
 
-interface NavItem {
-  name: string;
-  icon: typeof Sparkles;
-  href: string;
-  match: string;
-  disabled?: boolean;
-  disabledMessage?: string;
-}
-
 export const PageNavigation = ({
   projectId,
   storyboardLocked,
   storyboardLockMessage,
+  audioLocked,
+  audioLockMessage,
   editorLocked,
   editorLockMessage,
 }: PageNavigationProps) => {
@@ -65,6 +61,16 @@ export const PageNavigation = ({
           match: "/storyboard",
           disabled: storyboardLocked,
           disabledMessage: storyboardLockMessage,
+        }
+      : false,
+    projectId
+      ? {
+          name: "Audio",
+          icon: Music,
+          href: `/${projectId}/audio`,
+          match: "/audio",
+          disabled: audioLocked ?? editorLocked,
+          disabledMessage: audioLockMessage ?? editorLockMessage,
         }
       : false,
     projectId

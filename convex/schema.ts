@@ -60,6 +60,17 @@ export default defineSchema({
     ),
     backgroundMusicPrompt: v.optional(v.string()),
     backgroundMusicMood: v.optional(v.string()),
+    soundtrackUrl: v.optional(v.string()),
+    soundtrackPrompt: v.optional(v.string()),
+    soundtrackDuration: v.optional(v.number()),
+    soundtrackStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("generating"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
     audioTrackSettings: v.optional(
       v.object({
         audioNarration: v.optional(

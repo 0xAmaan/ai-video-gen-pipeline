@@ -1193,6 +1193,53 @@ export const updateProjectBackgroundMusic = mutation({
   },
 });
 
+export const updateProjectSoundtrack = mutation({
+  args: {
+    projectId: v.id("videoProjects"),
+    soundtrackUrl: v.optional(v.string()),
+    soundtrackPrompt: v.optional(v.string()),
+    soundtrackDuration: v.optional(v.number()),
+    soundtrackStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("generating"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedAt: Date.now(),
+    };
+
+    if (args.soundtrackUrl !== undefined) {
+      updates.soundtrackUrl = args.soundtrackUrl;
+    }
+    if (args.soundtrackPrompt !== undefined) {
+      updates.soundtrackPrompt = args.soundtrackPrompt;
+    }
+    if (args.soundtrackDuration !== undefined) {
+      updates.soundtrackDuration = args.soundtrackDuration;
+    }
+    if (args.soundtrackStatus !== undefined) {
+      updates.soundtrackStatus = args.soundtrackStatus;
+    }
+
+    await ctx.db.patch(args.projectId, updates);
+    return args.projectId;
+  },
+});
+
 export const updateProjectAudioTrackSettings = mutation({
   args: {
     projectId: v.id("videoProjects"),
