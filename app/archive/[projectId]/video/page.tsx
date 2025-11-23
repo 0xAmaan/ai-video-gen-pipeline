@@ -578,7 +578,7 @@ const VideoPage = () => {
     } catch (error) {
       console.error("Failed to update last active phase:", error);
     }
-    router.push(`/${projectId}/editor`);
+    router.push(`/remotion-editor`);
   };
 
   // Convert Convex scenes to component format

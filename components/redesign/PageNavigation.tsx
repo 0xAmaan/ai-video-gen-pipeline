@@ -71,8 +71,8 @@ export const PageNavigation = ({
       ? {
           name: "Video Editor",
           icon: Scissors,
-          href: `/${projectId}/editor`,
-          match: "/editor",
+          href: `/remotion-editor`,
+          match: "/remotion-editor",
           disabled: editorLocked,
           disabledMessage: editorLockMessage,
         }

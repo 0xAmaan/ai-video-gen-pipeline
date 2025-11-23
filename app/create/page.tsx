@@ -51,7 +51,7 @@ const CreateVideoPage = () => {
 
   useEffect(() => {
     if (currentPhase === "editor") {
-      router.push("/editor");
+      router.push("/remotion-editor");
     }
   }, [currentPhase, router]);
 
