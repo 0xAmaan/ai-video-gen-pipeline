@@ -986,7 +986,10 @@ const PromptPlannerPage = () => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex-1 overflow-auto pb-36 relative">
+        <div
+          className="flex-1 overflow-auto pb-36 relative"
+          onClick={() => setHighlightedShotId(null)}
+        >
           <div className="max-w-7xl mx-auto px-8 py-6">
             <div className="max-w-3xl mx-auto">
               <div className="space-y-4">
