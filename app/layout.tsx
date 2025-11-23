@@ -1,5 +1,4 @@
 import "@/app/globals.css";
-import "@twick/video-editor/dist/video-editor.css";
 
 import { Inter } from "next/font/google";
 import { RootProviders } from "./root-providers";
