@@ -177,7 +177,7 @@ export class VideoLoader {
     );
 
     console.log(
-      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size()}, anchor: ${this.lastAnchor}, lookahead: ${this.lookahead}`,
+      `[VideoLoader] decodeSequential complete, cache size: ${this.cache.size}, anchor: ${this.lastAnchor}, lookahead: ${this.lookahead}`,
     );
   }
 
@@ -212,7 +212,7 @@ export class VideoLoader {
     }
 
     // If cache is empty, definitely need to decode
-    if (this.cache.size() === 0) return true;
+    if (this.cache.size === 0) return true;
 
     // If time is far from last anchor, need to decode new window
     // Using 0.3 (30%) instead of 0.5 (50%) for more preemptive decoding
