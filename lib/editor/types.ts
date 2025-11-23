@@ -140,6 +140,7 @@ export interface MediaAssetMeta {
 
 export interface ProjectSettings {
   snap: boolean;
+  snapToBeats?: boolean; // Enable/disable beat-based snapping (default: true)
   snapThreshold: number; // Distance in seconds within which snapping occurs
   zoom: number;
   activeSequenceId: string;

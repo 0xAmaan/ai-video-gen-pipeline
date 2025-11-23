@@ -11,6 +11,18 @@ import type {
   Track,
 } from "../types";
 import { PersistedHistory, ProjectPersistence } from "./persistence";
+import { HistoryManager } from "../history/HistoryManager";
+import {
+  ClipMoveCommand,
+  ClipSplitCommand,
+  ClipDeleteCommand,
+  ClipTrimCommand,
+  ClipAddCommand,
+  RippleTrimCommand,
+  SlipEditCommand,
+  SlideEditCommand,
+  RippleDeleteCommand,
+} from "../history/commands";
 
 const MAX_HISTORY = 50;
 
@@ -91,6 +103,7 @@ const createProject = (): Project => {
     mediaAssets: {},
     settings: {
       snap: true,
+      snapToBeats: true,
       snapThreshold: 0.1,
       zoom: 1,
       activeSequenceId: sequence.id,
@@ -144,7 +157,8 @@ export interface ProjectStoreState {
   selection: TimelineSelection;
   isPlaying: boolean;
   currentTime: number;
-  history: HistoryState;
+  history: HistoryState; // Legacy snapshot-based history (deprecated)
+  historyManager: HistoryManager; // New command-based history system
 
   // Tri-State Architecture (PRD Section 5.2)
   dirty: boolean; // Has unsaved changes in session state
@@ -188,7 +202,14 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   selection: { clipIds: [], trackIds: [] },
   isPlaying: false,
   currentTime: 0,
-  history: { past: [], future: [] },
+  history: { past: [], future: [] }, // Legacy (deprecated)
+  historyManager: new HistoryManager({
+    maxDepth: 50,
+    onChange: (manager) => {
+      // Mark as dirty when history changes
+      set({ dirty: true });
+    },
+  }),
 
   // Tri-State Architecture (PRD Section 5.2)
   dirty: false,
@@ -276,14 +297,16 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       if (!project) return;
       const asset = project.mediaAssets[assetId];
       if (!asset) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
+
+      const sequence = getSequence(project);
       const track = sequence.tracks.find((t) =>
         asset.type === "audio" ? t.kind === "audio" : t.kind === "video",
       );
       if (!track) return;
+
       const clipDuration = asset.duration || 1;
       const start = findTrackInsertionStart(track, clipDuration);
+
       const clip: Clip = {
         id: `clip-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
         mediaId: asset.id,
@@ -300,219 +323,156 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         speedCurve: null,
         preservePitch: true,
       };
-      track.clips.push(clip);
-      sortTrackClips(track);
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
+
       const state = get();
-      const history = historyAfterPush(state, state.project!);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.upsertClip(clip);
+      const { historyManager } = state;
+
+      const command = new ClipAddCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clip,
+        track.id,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        void timelineService.upsertClip(clip);
+      }
     },
     moveClip: (clipId, trackId, start) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      const located = findTrackAndClip(sequence, clipId);
-      if (!located) return;
-      const { track: currentTrack, clip } = located;
-      const targetTrack = sequence.tracks.find((t) => t.id === trackId);
-      if (!targetTrack) return;
-      const nextStart = Math.max(0, start);
-      if (currentTrack.id !== targetTrack.id) {
-        const index = currentTrack.clips.findIndex((c) => c.id === clipId);
-        if (index !== -1) {
-          currentTrack.clips.splice(index, 1);
-        }
-        targetTrack.clips.push(clip);
-      }
-      clip.trackId = trackId;
-      clip.start = nextStart;
-      sortTrackClips(targetTrack);
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.moveClip(clipId, trackId, nextStart);
+      const { historyManager } = state;
+
+      const command = new ClipMoveCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+        trackId,
+        start,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        void timelineService.moveClip(clipId, trackId, start);
+      }
     },
     trimClip: (clipId, trimStart, trimEnd) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      const clip = findClip(sequence, clipId);
-      if (!clip) return;
-      clip.trimStart += trimStart;
-      clip.trimEnd += trimEnd;
-      clip.duration = Math.max(0.1, clip.duration - trimStart - trimEnd);
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.trimClip(clipId, trimStart, trimEnd);
+      const { historyManager } = state;
+
+      const command = new ClipTrimCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+        trimStart,
+        trimEnd,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        void timelineService.trimClip(clipId, trimStart, trimEnd);
+      }
     },
     rippleTrim: (clipId, trimStart, trimEnd) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      
-      // Find the clip and its track
-      let targetTrack = null;
-      let targetClip = null;
-      for (const track of sequence.tracks) {
-        const clip = track.clips.find((c) => c.id === clipId);
-        if (clip) {
-          targetTrack = track;
-          targetClip = clip;
-          break;
-        }
-      }
-      
-      if (!targetClip || !targetTrack) return;
-      
-      // Calculate the original duration
-      const originalDuration = targetClip.duration;
-      
-      // Apply trim to the clip
-      targetClip.trimStart += trimStart;
-      targetClip.trimEnd += trimEnd;
-      targetClip.duration = Math.max(0.1, targetClip.duration - trimStart - trimEnd);
-      
-      // Calculate the change in duration (positive = clip got shorter, negative = clip got longer)
-      const durationDelta = originalDuration - targetClip.duration;
-      
-      // Ripple: shift all subsequent clips on the same track
-      // Use clip.start (after trim) as the reference point, matching rippleDelete logic
-      if (Math.abs(durationDelta) > 0.001) {
-        targetTrack.clips.forEach((clip) => {
-          // Skip the trimmed clip itself and only shift clips that start after it
-          if (clip.id !== clipId && clip.start > targetClip.start) {
-            clip.start = Math.max(0, clip.start - durationDelta);
-          }
-        });
-        sortTrackClips(targetTrack);
-      }
-      
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.trimClip(clipId, trimStart, trimEnd);
+      const { historyManager } = state;
+
+      const command = new RippleTrimCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+        trimStart,
+        trimEnd,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        void timelineService.trimClip(clipId, trimStart, trimEnd);
+      }
     },
     slipEdit: (clipId, offset) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      const clip = findClip(sequence, clipId);
-      if (!clip) return;
-
-      // Slip editing: adjust trim start/end while keeping timeline position fixed
-      // The content "slips" under the fixed timeline position
-      const newTrimStart = clip.trimStart + offset;
-      
-      // Get source media to validate bounds
-      const asset = project.mediaAssets[clip.mediaId];
-      if (!asset) {
-        console.warn('[ProjectStore] slipEdit: asset not found:', clip.mediaId);
-        return;
-      }
-
-      // Ensure we don't slip beyond source media bounds
-      const maxTrimStart = asset.duration - clip.duration;
-      const clampedTrimStart = Math.max(0, Math.min(maxTrimStart, newTrimStart));
-      
-      // Calculate the actual offset applied after clamping
-      const actualOffset = clampedTrimStart - clip.trimStart;
-      
-      // Update trim values
-      clip.trimStart = clampedTrimStart;
-      clip.trimEnd = clip.trimEnd - actualOffset; // Adjust trim end to maintain duration
-      
-      // Timeline position (start) and duration remain unchanged
-      
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.trimClip(clipId, actualOffset, -actualOffset);
+      const { historyManager } = state;
+
+      const command = new SlipEditCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+        offset,
+      );
+
+      const success = historyManager.execute(command);
+      if (success && get().project) {
+        // Calculate actual offset for timeline service sync
+        const project = get().project!;
+        const sequence = getSequence(project);
+        const clip = findClip(sequence, clipId);
+        if (clip) {
+          const asset = project.mediaAssets[clip.mediaId];
+          if (asset) {
+            const newTrimStart = clip.trimStart;
+            void timelineService.trimClip(clipId, offset, -offset);
+          }
+        }
+      }
     },
     slideEdit: (clipId, newStart) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      
-      // Find the clip and its track
-      const result = findTrackAndClip(sequence, clipId);
-      if (!result) return;
-      
-      const { track, clip } = result;
-      const oldStart = clip.start;
-      const delta = newStart - oldStart;
-      
-      // Clamp to non-negative time
-      const clampedStart = Math.max(0, newStart);
-      clip.start = clampedStart;
-      
-      // Slide editing: adjust adjacent clips to preserve gaps
-      // Find clips immediately before and after
-      const sortedClips = [...track.clips].sort((a, b) => a.start - b.start);
-      const clipIndex = sortedClips.findIndex(c => c.id === clipId);
-      
-      if (clipIndex > 0 && delta < 0) {
-        // Moving left: shift previous clip to maintain gap
-        const prevClip = sortedClips[clipIndex - 1];
-        const gap = oldStart - (prevClip.start + prevClip.duration);
-        prevClip.start = Math.max(0, clampedStart - prevClip.duration - gap);
-      } else if (clipIndex < sortedClips.length - 1 && delta > 0) {
-        // Moving right: shift next clip to maintain gap
-        const nextClip = sortedClips[clipIndex + 1];
-        const gap = nextClip.start - (oldStart + clip.duration);
-        nextClip.start = clampedStart + clip.duration + gap;
-      }
-      
-      sortTrackClips(track);
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.moveClip(clipId, track.id, clampedStart);
+      const { historyManager } = state;
+
+      const command = new SlideEditCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+        newStart,
+      );
+
+      const success = historyManager.execute(command);
+      if (success && get().project) {
+        const project = get().project!;
+        const sequence = getSequence(project);
+        const result = findTrackAndClip(sequence, clipId);
+        if (result) {
+          void timelineService.moveClip(clipId, result.track.id, result.clip.start);
+        }
+      }
     },
     splitClip: (clipId, offset) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      const track = sequence.tracks.find((t) => t.clips.some((clip) => clip.id === clipId));
-      if (!track) return;
-      const index = track.clips.findIndex((clip) => clip.id === clipId);
-      if (index === -1) return;
-      const clip = track.clips[index];
-      const right: Clip = {
-        ...clip,
-        id: `${clip.id}_b`,
-        start: clip.start + offset,
-        duration: Math.max(0.1, clip.duration - offset),
-        trimStart: clip.trimStart + offset,
-      };
-      clip.duration = offset;
-      clip.trimEnd = Math.max(0, clip.trimEnd - right.duration);
-      track.clips.splice(index + 1, 0, right);
-      sortTrackClips(track);
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.splitClip(clipId, offset);
+      const { historyManager } = state;
+
+      const command = new ClipSplitCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+        offset,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        void timelineService.splitClip(clipId, offset);
+      }
     },
     splitAtPlayhead: (clipId) => {
       const state = get();
@@ -553,77 +513,55 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       get().actions.splitClip(clipId, offset);
     },
     deleteClip: (clipId) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      for (const track of sequence.tracks) {
-        const index = track.clips.findIndex((clip) => clip.id === clipId);
-        if (index === -1) {
-          continue;
-        }
-        // Remove clip without shifting subsequent clips (non-ripple delete)
-        track.clips.splice(index, 1);
-        sortTrackClips(track);
-        break;
-      }
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.deleteClip(clipId);
+      const { historyManager } = state;
+
+      const command = new ClipDeleteCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        void timelineService.deleteClip(clipId);
+      }
     },
     rippleDelete: (clipId) => {
-      const project = get().project;
-      if (!project) return;
-      const snapshot = deepClone(project);
-      const sequence = getSequence(snapshot);
-      for (const track of sequence.tracks) {
-        const index = track.clips.findIndex((clip) => clip.id === clipId);
-        if (index === -1) {
-          continue;
-        }
-        const removed = track.clips[index];
-        track.clips.splice(index, 1);
-        track.clips.forEach((clip) => {
-          if (clip.start > removed.start) {
-            clip.start = Math.max(0, clip.start - removed.duration);
-          }
-        });
-        sortTrackClips(track);
-        break;
-      }
-      const duration = recalculateSequenceDuration(sequence);
-      snapshot.updatedAt = Date.now();
       const state = get();
-      const history = historyAfterPush(state, project);
-      set((current) => ({ project: snapshot, history, dirty: true, currentTime: Math.min(current.currentTime, duration) }));
-      void timelineService.rippleDelete(clipId);
+      const { historyManager } = state;
+
+      const command = new RippleDeleteCommand(
+        () => get().project,
+        (project) => {
+          set({ project, dirty: true });
+          void timelineService.setSequence(getSequence(project));
+        },
+        clipId,
+      );
+
+      const success = historyManager.execute(command);
+      if (success) {
+        void timelineService.rippleDelete(clipId);
+      }
     },
-    undo: () =>
-      set((state) => {
-        if (!state.history.past.length) return state;
-        const past = [...state.history.past];
-        const previous = past.pop()!;
-        const future = state.project
-          ? [deepClone(state.project), ...state.history.future]
-          : [...state.history.future];
-        const history = { past, future };
-        void timelineService.setSequence(getSequence(previous));
-        return { ...state, project: previous, history, dirty: true };
-      }),
-    redo: () =>
-      set((state) => {
-        if (!state.history.future.length) return state;
-        const [next, ...rest] = state.history.future;
-        const past = state.project
-          ? [...state.history.past, deepClone(state.project)]
-          : [...state.history.past];
-        const history = { past, future: rest };
-        void timelineService.setSequence(getSequence(next));
-        return { ...state, project: next, history, dirty: true };
-      }),
+    undo: () => {
+      const { historyManager } = get();
+      const success = historyManager.undo();
+      if (success) {
+        console.log("[History] Undo:", historyManager.getUndoDescription());
+      }
+    },
+    redo: () => {
+      const { historyManager } = get();
+      const success = historyManager.redo();
+      if (success) {
+        console.log("[History] Redo:", historyManager.getRedoDescription());
+      }
+    },
     
     // Tri-State Architecture: Explicit save (PRD Section 5.2)
     save: async () => {

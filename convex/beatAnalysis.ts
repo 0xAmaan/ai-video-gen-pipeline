@@ -50,7 +50,10 @@ const REPLICATE_MODEL_INPUTS = {
  * @param output - Raw output from Replicate API
  * @returns Parsed beat data with markers and BPM
  */
-async function parseReplicateOutput(output: unknown): Promise<{
+async function parseReplicateOutput(
+  output: unknown,
+  apiToken: string
+): Promise<{
   beatMarkers: BeatMarker[];
   bpm: number | undefined;
 }> {
@@ -101,7 +104,11 @@ async function parseReplicateOutput(output: unknown): Promise<{
       // Output is an array with URL to JSON results file
       console.log("[parseReplicateOutput] Fetching results from URL:", firstElement);
       try {
-        const response = await fetch(firstElement);
+        const response = await fetch(firstElement, {
+          headers: {
+            Authorization: `Token ${apiToken}`,
+          },
+        });
         data = await response.json();
         console.log("[parseReplicateOutput] Fetched data keys:", Object.keys(data || {}));
       } catch (e) {
@@ -134,7 +141,11 @@ async function parseReplicateOutput(output: unknown): Promise<{
     if (typeof value === 'string' && value.startsWith('http')) {
       console.log(`[parseReplicateOutput] Fetching data from URL: ${value}`);
       try {
-        const response = await fetch(value);
+        const response = await fetch(value, {
+          headers: {
+            Authorization: `Token ${apiToken}`,
+          },
+        });
         return await response.json();
       } catch (e) {
         console.error(`[parseReplicateOutput] Failed to fetch from URL:`, e);
@@ -194,6 +205,18 @@ async function parseReplicateOutput(output: unknown): Promise<{
   }
 
   console.log(`[parseReplicateOutput] Extracted ${beats.length} beats, ${downbeats.length} downbeats`);
+  
+  // Debug: Log detailed information if no beats were found
+  if (beats.length === 0 && downbeats.length === 0) {
+    console.error("[parseReplicateOutput] ⚠️ DEBUGGING: No beats or downbeats extracted!");
+    console.error("[parseReplicateOutput] data object:", JSON.stringify(data, null, 2).substring(0, 500));
+    console.error("[parseReplicateOutput] data.beats:", data.beats);
+    console.error("[parseReplicateOutput] data.downbeats:", data.downbeats);
+    console.error("[parseReplicateOutput] data.bpm:", data.bpm);
+  } else {
+    console.log("[parseReplicateOutput] Sample beats:", beats.slice(0, 5));
+    console.log("[parseReplicateOutput] Sample downbeats:", downbeats.slice(0, 5));
+  }
 
   // Create a Set for quick lookup of downbeat times
   const downbeatSet = new Set(downbeats);
@@ -315,12 +338,12 @@ export const performAnalysis = internalAction({
     const { assetId, audioUrl } = args;
 
     // Validate environment variable
-    const apiToken = process.env.REPLICATE_API_TOKEN;
+    const apiToken = process.env.REPLICATE_API_KEY;
     if (!apiToken) {
-      console.error("[performAnalysis] REPLICATE_API_TOKEN not configured");
+      console.error("[performAnalysis] REPLICATE_API_KEY not configured");
       await ctx.runMutation(internal.beatAnalysis.markAnalysisFailed, {
         assetId,
-        error: "REPLICATE_API_TOKEN not configured in environment",
+        error: "REPLICATE_API_KEY not configured in environment",
       });
       return;
     }
@@ -372,7 +395,7 @@ export const performAnalysis = internalAction({
       }
 
       // Parse the output to extract beat markers and BPM
-      const { beatMarkers, bpm } = await parseReplicateOutput(output);
+      const { beatMarkers, bpm } = await parseReplicateOutput(output, apiToken);
 
       if (beatMarkers.length === 0) {
         console.warn("[performAnalysis] No beat markers extracted from output");

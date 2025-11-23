@@ -20,6 +20,7 @@ import { EditingModeIndicator } from "./EditingModeIndicator";
 import { SlipSlideDragInterceptor } from "./SlipSlideDragInterceptor";
 import { TwickMultiSelectInterceptor } from "./TwickMultiSelectInterceptor";
 import { SlipSlidePreviewOverlay } from "./SlipSlidePreviewOverlay";
+import { HistoryDebugPanel } from "./HistoryDebugPanel";
 
 /**
  * EditorBridge Component
@@ -655,6 +656,9 @@ const EditorBridge = () => {
         visible={isSlipMode || isSlideMode}
         position={cursorPosition ?? undefined}
       />
+
+      {/* History Debug Panel - Shows command history and undo/redo state */}
+      <HistoryDebugPanel visible={true} maxItems={10} />
     </div>
   );
 };

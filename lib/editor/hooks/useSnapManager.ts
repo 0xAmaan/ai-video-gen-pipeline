@@ -46,32 +46,66 @@ export interface UseSnapManagerResult {
 export const useSnapManager = (): UseSnapManagerResult => {
   const project = useProjectStore((state) => state.project);
   const snapEnabled = useProjectStore((state) => state.project?.settings.snap ?? true);
+  const snapToBeatsEnabled = useProjectStore((state) => state.project?.settings.snapToBeats ?? true);
 
   // Create SnapManager instance (singleton)
   const manager = useMemo(() => new SnapManager(), []);
 
-  // Extract beat markers from audio assets
+  // Extract beat markers from clips on the timeline
   const beatMarkers = useMemo(() => {
-    if (!project) return [];
+    // If beat snapping is disabled, return empty array to skip processing
+    if (!project || !snapToBeatsEnabled) return [];
 
     const allBeats: BeatMarker[] = [];
     
-    // Collect beat markers from all audio assets
-    Object.values(project.mediaAssets).forEach((asset) => {
-      if (asset.type === "audio" && asset.beatMarkers) {
-        // Adjust beat times if asset has a timeline offset
-        const timeOffset = (asset as any).timelineStart ?? 0;
-        const adjustedBeats = asset.beatMarkers.map((beat) => ({
-          time: beat.time + timeOffset,
-          strength: beat.strength,
-        }));
-        allBeats.push(...adjustedBeats);
-      }
+    // Get the active sequence
+    const activeSequence = project.sequences.find(
+      (seq) => seq.id === project.settings.activeSequenceId
+    );
+    
+    if (!activeSequence) return [];
+    
+    // Iterate through all clips in all tracks
+    activeSequence.tracks.forEach((track) => {
+      track.clips.forEach((clip) => {
+        // Get the associated media asset
+        const asset = project.mediaAssets[clip.mediaId];
+        
+        // Only process audio assets with beat markers
+        if (!asset || asset.type !== "audio" || !asset.beatMarkers) {
+          return;
+        }
+        
+        // Calculate the active range of the clip in source media time
+        const sourceStart = clip.trimStart;
+        const sourceEnd = clip.trimStart + clip.duration;
+        
+        // Filter and transform beat markers for this clip
+        const clipBeats = asset.beatMarkers
+          .filter((beat) => beat.time >= sourceStart && beat.time <= sourceEnd)
+          .map((beat) => ({
+            time: (beat.time - clip.trimStart) + clip.start,
+            strength: beat.strength ?? 1.0,
+          }));
+        
+        allBeats.push(...clipBeats);
+      });
     });
 
-    // Sort by time
-    return allBeats.sort((a, b) => a.time - b.time);
-  }, [project]);
+    // Sort by time and remove duplicates (in case of overlapping clips)
+    const sorted = allBeats.sort((a, b) => a.time - b.time);
+    
+    // Remove near-duplicate beats (within 0.01 seconds)
+    const deduplicated: BeatMarker[] = [];
+    for (const beat of sorted) {
+      if (deduplicated.length === 0 ||
+          Math.abs(beat.time - deduplicated[deduplicated.length - 1].time) > 0.01) {
+        deduplicated.push(beat);
+      }
+    }
+    
+    return deduplicated;
+  }, [project, snapToBeatsEnabled]);
 
   // Calculate BPM from beat markers
   const bpm = useMemo(() => {

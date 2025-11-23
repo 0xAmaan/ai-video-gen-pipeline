@@ -35,6 +35,7 @@ import {
   Volume2,
   Music2,
   Search,
+  Activity,
 } from "lucide-react";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
@@ -49,6 +50,7 @@ import type { MiniMaxVoiceId } from "@/lib/voice-selection";
 import { AudioPlayer } from "@/components/audio/AudioPlayer";
 import { VoiceWaveformPlayer } from "@/components/audio/VoiceWaveformPlayer";
 import type { MusicGenerationOptions } from "@/types/audio";
+import { BeatAnalysisButton } from "@/components/BeatAnalysisButton";
 
 type VoiceProvider = "replicate" | "elevenlabs";
 type MusicGenerationModel = "lyria-2" | "musicgen" | "bark";
@@ -1262,6 +1264,9 @@ export const StoryboardPhase = ({
                     projectId,
                   }}
                 />
+                {projectBgmAsset && (
+                  <BeatAnalysisButton assetId={projectBgmAsset._id} />
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1820,16 +1825,19 @@ export const StoryboardPhase = ({
                             {metadata.attribution}
                           </p>
                         )}
-                        <AudioPlayer
-                          className="w-full"
-                          src={asset.url}
-                          label="SceneSFX"
-                          debugContext={{
-                            assetId: asset._id,
-                            sceneId: scene.id,
-                            role: asset.metadata?.role,
-                          }}
-                        />
+                        <div className="flex items-center gap-2">
+                          <AudioPlayer
+                            className="flex-1"
+                            src={asset.url}
+                            label="SceneSFX"
+                            debugContext={{
+                              assetId: asset._id,
+                              sceneId: scene.id,
+                              role: asset.metadata?.role,
+                            }}
+                          />
+                          <BeatAnalysisButton assetId={asset._id} size="sm" />
+                        </div>
                       </div>
                     );
                   })

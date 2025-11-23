@@ -268,7 +268,7 @@ export const StandaloneEditorApp = ({ autoHydrate = true, projectId: propsProjec
         (!asset.thumbnails || asset.thumbnails.length === 0)
       )
       .map(asset => asset.id);
-  }, [project?.mediaAssets]);
+  }, [project]);
   const sequence = project?.sequences.find((seq) => seq.id === project.settings.activeSequenceId);
   
   // Calculate audio track and clip counts for export modal
