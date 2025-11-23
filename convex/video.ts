@@ -1001,6 +1001,30 @@ export const updateFinalVideo = mutation({
   },
 });
 
+// Get the most recent final video for a project
+export const getFinalVideo = query({
+  args: {
+    projectId: v.id("videoProjects"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project || project.userId !== identity.subject) {
+      throw new Error("Project not found or unauthorized");
+    }
+
+    return await ctx.db
+      .query("finalVideos")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .first();
+  },
+});
+
 // Update last active phase
 export const updateLastActivePhase = mutation({
   args: {

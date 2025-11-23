@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   ChevronDown,
   ChevronRight,
@@ -65,6 +66,7 @@ interface PromptPlannerCardProps {
   assets?: ProjectAsset[];
   resettingShotIds?: Id<"sceneShots">[];
   onOpenLinkModal?: (shot: SceneShot, scene: ProjectScene) => void;
+  getLinkedShotLabel?: (linkedShotId: Id<"sceneShots">) => string | null;
 }
 
 interface ShotCardProps {
@@ -86,6 +88,7 @@ interface ShotCardProps {
   assets?: ProjectAsset[];
   isResetting?: boolean;
   onOpenLinkModal?: (shot: SceneShot, scene: ProjectScene) => void;
+  getLinkedShotLabel?: (linkedShotId: Id<"sceneShots">) => string | null;
 }
 
 const ShotCard = ({
@@ -107,6 +110,7 @@ const ShotCard = ({
   assets,
   isResetting = false,
   onOpenLinkModal,
+  getLinkedShotLabel,
 }: ShotCardProps) => {
   const [localDescription, setLocalDescription] = useState(shot.description);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -262,7 +266,11 @@ const ShotCard = ({
                 )}
               >
                 <Link2 className="w-4 h-4 mr-1.5" />
-                {shot.linkedShotId ? "Linked" : "Link shot"}
+                {shot.linkedShotId && getLinkedShotLabel
+                  ? `Linked ${getLinkedShotLabel(shot.linkedShotId)}`
+                  : shot.linkedShotId
+                    ? "Linked"
+                    : "Link shot"}
               </Button>
               <div onClick={(event) => event.stopPropagation()}>
                 <ShotBrandAssetPicker
@@ -371,17 +379,10 @@ const ShotCard = ({
       </div>
       {previewCleared && (
         <div className="mt-3 max-w-xs mx-auto rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-          Preview cleared. Update the prompt and generate a fresh frame.
+          Preview cleared.
         </div>
       )}
-
-      {shot.linkedShotId && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-          <Link2 className="w-3 h-3" />
-          <span>Character consistency is linked to another shot&apos;s frame.</span>
-        </div>
-      )}
-
+      
       <ShotImageGrid
         images={previewCleared ? [] : previewImages}
         isLoading={
@@ -429,7 +430,18 @@ export const PromptPlannerCard = ({
   assets,
   resettingShotIds,
   onOpenLinkModal,
+  getLinkedShotLabel,
 }: PromptPlannerCardProps) => {
+  const [titleDraft, setTitleDraft] = useState(scene.title);
+  const [descriptionDraft, setDescriptionDraft] = useState(
+    scene.description ?? "",
+  );
+
+  useEffect(() => {
+    setTitleDraft(scene.title);
+    setDescriptionDraft(scene.description ?? "");
+  }, [scene.title, scene.description, scene._id]);
+
   const {
     attributes: sceneAttributes,
     listeners: sceneListeners,
@@ -453,6 +465,22 @@ export const PromptPlannerCard = ({
       [...shots].sort((a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)),
     [shots],
   );
+
+  const commitSceneTitle = () => {
+    const nextTitle = titleDraft.trim() || `Scene ${scene.sceneNumber}`;
+    setTitleDraft(nextTitle);
+    if (nextTitle !== scene.title) {
+      onUpdateSceneTitle(scene._id, nextTitle);
+    }
+  };
+
+  const commitSceneDescription = () => {
+    const nextDescription = descriptionDraft.trim();
+    setDescriptionDraft(nextDescription);
+    if (nextDescription !== (scene.description ?? "")) {
+      onUpdateSceneDescription(scene._id, nextDescription);
+    }
+  };
 
   return (
     <Card
@@ -486,13 +514,26 @@ export const PromptPlannerCard = ({
         </button>
 
         <div className="flex-1 min-w-0 space-y-2">
-          <div className="text-xl font-semibold text-white px-2 py-1">
-            {scene.title}
-          </div>
+          <Input
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitSceneTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitSceneTitle();
+              }
+            }}
+            className="text-xl font-semibold text-white bg-[#0f1013] border-gray-700 focus-visible:ring-1 focus-visible:ring-blue-400"
+          />
 
-          <p className="text-sm text-gray-300 px-2 py-1">
-            {scene.description}
-          </p>
+          <Textarea
+            value={descriptionDraft}
+            onChange={(e) => setDescriptionDraft(e.target.value)}
+            onBlur={commitSceneDescription}
+            placeholder="Describe your scene..."
+            className="text-sm text-gray-200 bg-[#0f1013] border-gray-700 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-blue-400 resize-none min-h-[56px]"
+          />
 
           {!isExpanded && (
             <Badge variant="outline" className="text-xs text-gray-400">
@@ -550,6 +591,7 @@ export const PromptPlannerCard = ({
               assets={assets}
               isResetting={resettingShotIds?.includes(shot._id)}
               onOpenLinkModal={onOpenLinkModal}
+              getLinkedShotLabel={getLinkedShotLabel}
             />
           ))}
 

@@ -358,8 +358,6 @@ export const clearShotImage = mutation({
     ]);
 
     await ctx.db.patch(args.shotId, {
-      description: "",
-      initialPrompt: "",
       selectedImageId: undefined,
       lastImageGenerationAt: undefined,
       lastImageStatus: undefined,

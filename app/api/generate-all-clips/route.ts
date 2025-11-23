@@ -62,6 +62,8 @@ export async function POST(req: Request) {
       `Starting ${scenes.length} video clip predictions using ${modelConfig.name}...`,
     );
 
+    const supportsAudio = Boolean(modelConfig.supportsAudio);
+
     const clampDuration = (value: number, min: number, max: number) =>
       Math.max(min, Math.min(max, value));
 
@@ -72,7 +74,7 @@ export async function POST(req: Request) {
     };
 
     // Create all predictions in parallel (don't wait for completion)
-    const predictionPromises = scenes.map(async (scene: any, index: number) => {
+      const predictionPromises = scenes.map(async (scene: any, index: number) => {
       // Determine requested duration from storyboard slider (default to modelConfig.defaultDuration or 5)
       const requestedDurationRaw =
         typeof scene.duration === "number" && scene.duration > 0
@@ -126,6 +128,7 @@ export async function POST(req: Request) {
           prediction = mockReplicatePrediction("video");
         } else {
           // Prepare input based on model requirements
+          const sceneAudio = supportsAudio ? Boolean(scene.generateAudio) : false;
           const input: any = {
             image: scene.imageUrl,
             prompt:
@@ -161,7 +164,9 @@ export async function POST(req: Request) {
           // Add Google Veo specific parameters
           if (modelKey.includes("google/veo")) {
             input.aspect_ratio = "16:9";
-            input.generate_audio = false; // We handle audio separately
+            if (supportsAudio) {
+              input.generate_audio = sceneAudio;
+            }
             if (!modelKey.includes("fast")) {
               input.negative_prompt =
                 "blur, distortion, jitter, artifacts, low quality";
