@@ -23,6 +23,7 @@ export const Timeline = ({
   isPlaying,
   selectedClipIds,
   duration,
+  timelineSectionRef,
   onPlayPause,
   onSeek,
   onClipMove,
@@ -53,8 +54,11 @@ export const Timeline = ({
   return (
     <div className="flex flex-col h-full bg-[#1a1a1a]">
       {/* Unified Control Bar */}
-      <div className="flex items-center gap-4 px-4 py-2.5 bg-[#181818] border-b border-[#4a4a4a]">
-        {/* Left: Playback controls */}
+      <div className="flex items-center px-4 py-2.5 bg-[#181818] border-b border-[#4a4a4a]">
+        {/* Left spacer */}
+        <div className="flex-1" />
+
+        {/* Center: Playback controls */}
         <div className="flex items-center gap-3">
           <button
             onClick={onPlayPause}
@@ -68,11 +72,8 @@ export const Timeline = ({
           </span>
         </div>
 
-        {/* Separator */}
-        <div className="h-4 w-px bg-[#4a4a4a]" />
-
-        {/* Center: Zoom controls */}
-        <div className="flex items-center gap-1">
+        {/* Right spacer + Zoom controls */}
+        <div className="flex-1 flex items-center justify-end gap-1">
           <button
             onClick={zoomOut}
             className="px-3 py-1 text-sm text-gray-300 hover:text-white hover:bg-[#2a2a2a] rounded transition-colors"
@@ -90,14 +91,6 @@ export const Timeline = ({
           >
             +
           </button>
-        </div>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Right: Info display */}
-        <div className="text-xs text-gray-500">
-          {sequence.tracks?.length || 0} tracks · {getTotalClipCount(sequence)} clips
         </div>
       </div>
 
@@ -120,6 +113,7 @@ export const Timeline = ({
           zoomLevel={zoomLevel}
           pixelsPerSecond={pixelsPerSecond}
           timelineWidth={timelineWidth}
+          timelineSectionRef={timelineSectionRef}
           onWheel={handleWheel}
           onBackgroundClick={handleBackgroundClick}
         />

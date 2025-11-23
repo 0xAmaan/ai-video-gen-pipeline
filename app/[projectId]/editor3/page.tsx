@@ -34,6 +34,7 @@ export default function Editor3Page() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [mediaBunnyManager, setMediaBunnyManager] = useState<MediaBunnyManager | null>(null);
   const [mediaAssets, setMediaAssets] = useState<Record<string, MediaAssetMeta>>({});
+  const timelineSectionRef = useRef<HTMLElement>(null);
 
   // Initialize MediaBunnyManager
   useEffect(() => {
@@ -136,17 +137,13 @@ export default function Editor3Page() {
     const asset = mediaAssets[selectedClipId];
     if (!asset || asset.thumbnails?.length) return; // Skip if already has thumbnails
 
-    console.log('Generating thumbnails for clip:', selectedClipId);
-
     // Generate 6 thumbnails spread across video to loop
     mediaBunnyManager
       .generateThumbnails(asset.id, asset.url, asset.duration, 6)
       .then((thumbs) => {
         if (!thumbs?.length) {
-          console.warn('No thumbnails generated for clip:', selectedClipId);
           return;
         }
-        console.log('6 thumbnails generated - will loop across clip');
         setMediaAssets((prev) => ({
           ...prev,
           [asset.id]: { ...asset, thumbnails: thumbs, thumbnailCount: thumbs.length },
@@ -164,15 +161,12 @@ export default function Editor3Page() {
     const asset = mediaAssets[selectedClipId];
     if (!asset || (asset.width !== 1920 && asset.width !== undefined && asset.height !== 1080 && asset.height !== undefined)) return; // Skip if already has real dimensions
 
-    console.log('Extracting video dimensions for clip:', selectedClipId);
-
     // Create temporary VideoLoader to get dimensions
     import('@/lib/editor/playback/video-loader').then(({ VideoLoader }) => {
       const loader = new VideoLoader(asset, { cacheSize: 10 });
 
       loader.getVideoDimensions()
         .then((dimensions) => {
-          console.log('Extracted dimensions:', dimensions);
           setMediaAssets((prev) => ({
             ...prev,
             [asset.id]: { ...asset, ...dimensions },
@@ -358,7 +352,7 @@ export default function Editor3Page() {
           </div>
 
           {/* Timeline Editor */}
-          <section className="bg-zinc-950 overflow-hidden">
+          <section ref={timelineSectionRef} className="bg-zinc-950 overflow-hidden">
             {selectedSequence ? (
               <Timeline
                 sequence={selectedSequence}
@@ -367,6 +361,7 @@ export default function Editor3Page() {
                 isPlaying={isPlaying}
                 selectedClipIds={[]}
                 duration={selectedSequence.duration}
+                timelineSectionRef={timelineSectionRef}
                 onPlayPause={() => setIsPlaying(!isPlaying)}
                 onSeek={(time) => setCurrentTime(time)}
                 onClipMove={(clipId, start, trackId) => {

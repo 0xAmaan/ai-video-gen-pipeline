@@ -26,6 +26,7 @@ export class FrameRenderer {
   private config: FrameRendererConfig;
   private videoLoaders: Map<string, VideoLoader> = new Map();
   private mediaAssets: Map<string, MediaAssetMeta> = new Map();
+  private isDetaching: boolean = false;
 
   constructor(config: FrameRendererConfig) {
     this.config = {
@@ -40,6 +41,7 @@ export class FrameRenderer {
    * Attach renderer to a canvas element
    */
   async attach(canvas: HTMLCanvasElement): Promise<void> {
+    this.isDetaching = false; // Reset detaching flag on attach
     this.canvas = canvas;
 
     // Get 2D context (WebGL support can be added later)
@@ -63,6 +65,9 @@ export class FrameRenderer {
    * Detach renderer and cleanup resources
    */
   detach(): void {
+    // Set flag FIRST to stop any in-flight render operations
+    this.isDetaching = true;
+
     // Dispose all video loaders
     for (const loader of this.videoLoaders.values()) {
       loader.dispose();
@@ -85,18 +90,10 @@ export class FrameRenderer {
    * Render a frame at the specified time
    */
   async renderFrame(sequence: Sequence, time: number): Promise<void> {
-    console.log(
-      `[FrameRenderer] renderFrame called at time ${time.toFixed(3)}s`,
-    );
-
     if (!this.canvas || !this.ctx) {
       console.error("[FrameRenderer] Canvas or context not available!");
       throw new Error("Renderer not attached to canvas");
     }
-
-    console.log(
-      `[FrameRenderer] Canvas size: ${this.canvas.width}x${this.canvas.height}`,
-    );
 
     // Clear canvas
     this.ctx.fillStyle = "#000000";
@@ -105,15 +102,8 @@ export class FrameRenderer {
     // Find active clips at current time
     const activeClips = this.findActiveClips(sequence, time);
 
-    console.log(
-      `[FrameRenderer] Found ${activeClips.length} active clips at time ${time.toFixed(3)}s`,
-    );
-
     if (activeClips.length === 0) {
       // No clips to render - canvas stays black
-      console.warn(
-        "[FrameRenderer] No active clips found - showing black screen",
-      );
       return;
     }
 
@@ -182,33 +172,28 @@ export class FrameRenderer {
    * Render a single clip to the canvas
    */
   private async renderClip(clip: Clip, localTime: number): Promise<void> {
-    if (!this.ctx || !this.canvas) return;
-
-    console.log(
-      `[FrameRenderer] renderClip - clip ${clip.id}, localTime ${localTime.toFixed(3)}s`,
-    );
+    if (this.isDetaching || !this.ctx || !this.canvas) return;
 
     // Get or create video loader for this clip's media
     const loader = await this.getVideoLoader(clip.mediaId);
-    if (!loader) {
-      console.warn(`[FrameRenderer] No loader found for media ${clip.mediaId}`);
+    if (this.isDetaching || !loader) {
       return;
     }
 
     // Load the frame at the specified local time
     const frame = await loader.getFrameAt(localTime);
-    if (!frame) {
-      console.warn(
-        `[FrameRenderer] No frame available at ${localTime.toFixed(3)}s for clip ${clip.id}`,
-      );
+    if (this.isDetaching || !frame) {
       return;
     }
-
-    console.log(`[FrameRenderer] Got frame, drawing to canvas`);
 
     try {
       // Apply effects before drawing
       this.applyEffects(clip.effects, clip.opacity);
+
+      // Guard check before drawing (context can be lost during async operations)
+      if (this.isDetaching || !this.ctx || !this.canvas) {
+        return;
+      }
 
       // Draw frame to canvas
       this.ctx.drawImage(frame, 0, 0, this.canvas.width, this.canvas.height);

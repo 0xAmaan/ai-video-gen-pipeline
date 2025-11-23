@@ -20,17 +20,19 @@ interface ClipsLayerProps {
 export const ClipsLayer = ({ sequence, mediaAssets, pixelsPerSecond, selectedClipIds, viewportHeight }: ClipsLayerProps) => {
   const tracks = sequence.tracks || []
 
-  // Calculate total height of all tracks
-  const totalTracksHeight = tracks.length * TIMELINE_LAYOUT.trackHeight
-
-  // Calculate vertical offset to center tracks in remaining space below ruler
+  // Calculate vertical centering for tracks within the visible viewport
+  const tracksTotalHeight = tracks.length * TIMELINE_LAYOUT.trackHeight
   const availableHeight = viewportHeight - TIMELINE_LAYOUT.rulerHeight
-  const centeredOffset = (availableHeight - totalTracksHeight) / 2
+  const centeredOffset = (availableHeight - tracksTotalHeight) / 2
 
   return (
     <Layer>
       {tracks.map((track, trackIndex) => {
-        const trackY = TIMELINE_LAYOUT.rulerHeight + Math.max(0, centeredOffset) + trackIndex * TIMELINE_LAYOUT.trackHeight
+        // Position track with centering, but ensure minimum top margin
+        const trackY =
+          TIMELINE_LAYOUT.rulerHeight +
+          Math.max(TIMELINE_LAYOUT.tracksTopMargin, centeredOffset) +
+          trackIndex * TIMELINE_LAYOUT.trackHeight
 
         return (
           <Group key={track.id}>
@@ -136,7 +138,13 @@ const ClipRect = ({ clip, mediaAsset, trackY, pixelsPerSecond, isSelected }: Cli
 
       {/* Thumbnail tiling (CapCut-style) */}
       {thumbnailImages.length > 0 && clip.kind === 'video' && (
-        <Group clipX={x} clipY={y} clipWidth={width} clipHeight={height}>
+        <Group
+          clipFunc={(ctx) => {
+            ctx.beginPath()
+            ctx.roundRect(x, y, width, height, TIMELINE_LAYOUT.clipBorderRadius)
+            ctx.closePath()
+          }}
+        >
           {Array.from({ length: tilesNeeded }).map((_, i) => {
             const thumbnailIndex = i % thumbnailImages.length // Cycle through available thumbnails
             const img = thumbnailImages[thumbnailIndex]
@@ -150,7 +158,7 @@ const ClipRect = ({ clip, mediaAsset, trackY, pixelsPerSecond, isSelected }: Cli
                 y={y}
                 width={FIXED_TILE_WIDTH}
                 height={height}
-                opacity={0.6}
+                opacity={1.0}
               />
             )
           })}
@@ -172,28 +180,48 @@ const ClipRect = ({ clip, mediaAsset, trackY, pixelsPerSecond, isSelected }: Cli
 
       {/* Clip label (media name or clip name) */}
       {width > 50 && (
-        <Text
-          x={x + 8}
-          y={y + 8}
-          text={getClipLabel(clip)}
-          fontSize={12}
-          fill={TIMELINE_THEME.textPrimary}
-          fontFamily="system-ui, -apple-system, sans-serif"
-          width={width - 16}
-          ellipsis={true}
-        />
+        <>
+          <Rect
+            x={x + 4}
+            y={y + 4}
+            width={Math.min(width - 8, 200)}
+            height={20}
+            fill="rgba(0, 0, 0, 0.6)"
+            cornerRadius={4}
+          />
+          <Text
+            x={x + 8}
+            y={y + 8}
+            text={getClipLabel(clip)}
+            fontSize={12}
+            fill={TIMELINE_THEME.textPrimary}
+            fontFamily="system-ui, -apple-system, sans-serif"
+            width={width - 16}
+            ellipsis={true}
+          />
+        </>
       )}
 
       {/* Duration label (bottom right) */}
       {width > 60 && (
-        <Text
-          x={x + width - 60}
-          y={y + height - 20}
-          text={`${clip.duration.toFixed(1)}s`}
-          fontSize={10}
-          fill={TIMELINE_THEME.textSecondary}
-          fontFamily="system-ui, -apple-system, sans-serif"
-        />
+        <>
+          <Rect
+            x={x + width - 64}
+            y={y + height - 22}
+            width={60}
+            height={18}
+            fill="rgba(0, 0, 0, 0.6)"
+            cornerRadius={4}
+          />
+          <Text
+            x={x + width - 60}
+            y={y + height - 20}
+            text={`${clip.duration.toFixed(1)}s`}
+            fontSize={10}
+            fill={TIMELINE_THEME.textSecondary}
+            fontFamily="system-ui, -apple-system, sans-serif"
+          />
+        </>
       )}
     </Group>
   )

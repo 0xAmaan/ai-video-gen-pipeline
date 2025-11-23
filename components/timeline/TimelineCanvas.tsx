@@ -9,6 +9,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { Stage } from 'react-konva'
 import type { TimelineProps } from './types'
+import { TIMELINE_LAYOUT } from './types'
 import { TracksLayer } from './layers/TracksLayer'
 import { ClipsLayer } from './layers/ClipsLayer'
 import { RulerLayer } from './layers/RulerLayer'
@@ -31,30 +32,50 @@ export const TimelineCanvas = ({
   zoomLevel,
   pixelsPerSecond,
   timelineWidth,
+  timelineSectionRef,
   onWheel,
   onBackgroundClick,
 }: TimelineCanvasProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [hoverTime, setHoverTime] = useState<number | null>(null)
 
-  // Update dimensions on mount and resize
+  // Update dimensions by observing the parent timeline section (not our own container)
   useEffect(() => {
     const updateDimensions = () => {
-      if (containerRef.current) {
-        const { width, height } = containerRef.current.getBoundingClientRect()
-        setDimensions({ width, height })
+      // Observe the parent section for height (it's what actually resizes via grid)
+      // But use our own container for width (for scrolling)
+      const sectionElement = timelineSectionRef?.current
+      const containerElement = containerRef.current
+
+      if (sectionElement && containerElement) {
+        const sectionRect = sectionElement.getBoundingClientRect()
+        const containerRect = containerElement.getBoundingClientRect()
+
+        setDimensions({
+          width: containerRect.width,
+          height: sectionRect.height
+        })
+      } else if (containerElement) {
+        // Fallback to container if no section ref provided
+        const rect = containerElement.getBoundingClientRect()
+        setDimensions({ width: rect.width, height: rect.height })
       }
     }
 
     updateDimensions()
-    window.addEventListener('resize', updateDimensions)
 
-    return () => {
-      window.removeEventListener('resize', updateDimensions)
+    const resizeObserver = new ResizeObserver(updateDimensions)
+
+    // Observe the parent section element (the one that actually changes size)
+    const observeElement = timelineSectionRef?.current || containerRef.current
+    if (observeElement) {
+      resizeObserver.observe(observeElement)
     }
-  }, [])
+
+    return () => resizeObserver.disconnect()
+  }, [timelineSectionRef])
 
   // Handle wheel events for zoom
   useEffect(() => {

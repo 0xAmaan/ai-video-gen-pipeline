@@ -239,25 +239,15 @@ export class VideoLoader {
   private handleDecodedFrame(frame: VideoFrame) {
     const seconds = (frame.timestamp ?? 0) / MICROSECONDS;
     const key = this.keyFor(seconds);
-    console.log(
-      `[VideoLoader] Decoded frame at ${seconds.toFixed(3)}s, cacheKey=${key}`,
-    );
     // Close any existing frame at the same timestamp before replacing.
     void this.cache.put(key, frame);
 
     // Skip trimming if disabled (export mode)
     if (this.disableTrimming) {
-      console.log(
-        `[VideoLoader] Trimming disabled, cache size: ${this.cache.size()}`,
-      );
       return;
     }
 
-    console.log(`[VideoLoader] Cache size before trim: ${this.cache.size()}`);
     this.trimCache(this.lastAnchor);
-    console.log(
-      `[VideoLoader] Cache size after trim: ${this.cache.size()}, lastAnchor=${this.lastAnchor.toFixed(3)}s, lookahead=${this.lookahead.toFixed(3)}s`,
-    );
   }
 
   private trimCache(anchorSeconds: number) {

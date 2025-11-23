@@ -35,6 +35,9 @@ export interface TimelineProps {
   /** Total duration of the sequence in seconds */
   duration: number;
 
+  /** Ref to the parent section element for observing resize */
+  timelineSectionRef?: React.RefObject<HTMLElement>;
+
   /** Called when user toggles play/pause */
   onPlayPause: () => void;
 
@@ -243,7 +246,7 @@ export const TIMELINE_LAYOUT = {
   trackPadding: 4,
 
   // Clips
-  clipBorderRadius: 6,
+  clipBorderRadius: 12,
   clipPadding: 4,
   clipBorderWidth: 2,
   clipSelectedBorderWidth: 3,
