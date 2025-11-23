@@ -1,9 +1,10 @@
 import "@/app/globals.css";
 import "@twick/video-editor/dist/video-editor.css";
 
-import { ClerkProvider } from "@clerk/nextjs";
-import { ConvexClientProvider } from "./ConvexClientProvider";
-import { LayoutWrapper } from "./LayoutWrapper";
+import { Inter } from "next/font/google";
+import { RootProviders } from "./root-providers";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
   title: "AI Video Gen Pipeline",
@@ -12,15 +13,11 @@ export const metadata = {
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <body className="bg-background-base text-foreground h-screen overflow-hidden font-sans">
-          <ConvexClientProvider>
-            <LayoutWrapper>{children}</LayoutWrapper>
-          </ConvexClientProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en">
+      <body className={`${inter.className} bg-background-base text-foreground h-screen overflow-hidden`}>
+        <RootProviders>{children}</RootProviders>
+      </body>
+    </html>
   );
 };
 
