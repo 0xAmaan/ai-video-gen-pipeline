@@ -201,6 +201,7 @@ export default defineSchema({
     userId: v.string(),
     title: v.optional(v.string()),
     projectData: v.any(),
+    history: v.optional(v.any()), // Legacy field from old CapCut editor
     createdAt: v.number(),
     updatedAt: v.number(),
   })
