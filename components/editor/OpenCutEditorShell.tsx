@@ -32,8 +32,7 @@ export const OpenCutEditorShell = ({ projectId }: OpenCutEditorShellProps) => {
       >
         <OpenCutStandaloneEditor />
       </Suspense>
-
-      <div className="pointer-events-none absolute top-4 right-4 z-[1000]">
+      <div className="pointer-events-none absolute top-4 left-5 z-[1000]">
         <div className="pointer-events-auto drop-shadow-xl">
           <PageNavigation projectId={projectId} />
         </div>
