@@ -232,13 +232,6 @@ export class AudioMixer {
     this.startedPlaybackAt = this.audioContext.currentTime;
 
     const activeClips = this.findActiveClips(fromTime);
-    console.log(
-      "[AudioMixer] play() called at time",
-      fromTime,
-      "found",
-      activeClips.length,
-      "active clips",
-    );
 
     for (const { track, clip } of activeClips) {
       const asset = this.getAsset(clip.mediaId);
@@ -289,30 +282,14 @@ export class AudioMixer {
    * Pause audio playback
    */
   pause(): void {
-    console.log(
-      "[AudioMixer] pause() called, active sources:",
-      this.audioSources.size,
-    );
     this.isPlaying = false;
     this.stopAllSources();
-    console.log(
-      "[AudioMixer] pause() complete, remaining sources:",
-      this.audioSources.size,
-    );
   }
 
   /**
    * Seek to specific time
    */
   async seek(time: number): Promise<void> {
-    console.log(
-      "[AudioMixer] seek() called at time",
-      time,
-      "isPlaying:",
-      this.isPlaying,
-    );
-    console.trace("[AudioMixer] seek() call stack:");
-
     // CRITICAL FIX: Don't modify isPlaying state during seek
     // Only stop and restart sources if we're currently playing
     const wasPlaying = this.isPlaying;
@@ -324,10 +301,7 @@ export class AudioMixer {
     // Only restart playback if we were playing before the seek
     // This preserves the play/pause state across seeks
     if (wasPlaying) {
-      console.log("[AudioMixer] Restarting playback after seek");
       await this.play(time);
-    } else {
-      console.log("[AudioMixer] Not restarting playback (was paused)");
     }
   }
 
@@ -335,24 +309,14 @@ export class AudioMixer {
    * Stop all active audio sources
    */
   private stopAllSources(): void {
-    console.log(
-      "[AudioMixer] stopAllSources() called, stopping",
-      this.audioSources.size,
-      "sources",
-    );
-    for (const [clipId, source] of this.audioSources.entries()) {
+    for (const [, source] of this.audioSources.entries()) {
       try {
-        console.log("[AudioMixer] Stopping source for clip:", clipId);
         // CRITICAL FIX: Stop the source AND disconnect from audio graph
         // Just calling stop() doesn't immediately silence buffered audio
         source.stop();
         source.disconnect();
       } catch (error) {
-        console.warn(
-          "[AudioMixer] Error stopping source for clip:",
-          clipId,
-          error,
-        );
+        // Silently handle errors stopping sources
       }
     }
     this.audioSources.clear();
@@ -360,7 +324,6 @@ export class AudioMixer {
     for (const trackNode of this.trackNodes.values()) {
       trackNode.clips.clear();
     }
-    console.log("[AudioMixer] stopAllSources() complete");
   }
 
   /**

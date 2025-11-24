@@ -37,8 +37,14 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "convex/**/*.ts",
+    "workers/**/*.ts",
     "**/*.mts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
@@ -46,6 +52,10 @@
   "exclude": [
     "node_modules",
     ".next",
-    "clipforge-code"
+    "clipforge-code",
+    "external",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }

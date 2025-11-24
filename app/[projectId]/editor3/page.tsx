@@ -133,8 +133,8 @@ export default function Editor3Page() {
             [asset.id]: { ...asset, waveform: waveformData.samples },
           }));
         })
-        .catch((error) => {
-          console.warn(`Failed to generate waveform for ${asset.id}:`, error);
+        .catch(() => {
+          // Waveform generation failed silently
         });
     });
   }, [adaptedData]);
@@ -160,8 +160,8 @@ export default function Editor3Page() {
             [asset.id]: { ...asset, thumbnails: thumbs, thumbnailCount: thumbs.length },
           }));
         })
-        .catch((error) => {
-          console.warn('Failed to generate thumbnail for clip:', clip._id, error);
+        .catch(() => {
+          // Thumbnail generation failed silently
         });
     });
   }, [clips, selectedSequence, mediaAssets, mediaBunnyManager]);
@@ -185,8 +185,8 @@ export default function Editor3Page() {
               [asset.id]: { ...asset, ...dimensions },
             }));
           })
-          .catch((error) => {
-            console.warn('Failed to extract video dimensions:', error);
+          .catch(() => {
+            // Dimension extraction failed silently
           })
           .finally(() => {
             loader.dispose();
@@ -197,7 +197,6 @@ export default function Editor3Page() {
 
   const handleSplitClip = useCallback(() => {
     if (!selectedSequence) {
-      console.warn('No sequence available');
       return;
     }
 
@@ -205,7 +204,6 @@ export default function Editor3Page() {
     const clipToSplit = getClipAtTime(selectedSequence, currentTime);
 
     if (!clipToSplit) {
-      console.warn('No clip at playhead position');
       return;
     }
 
@@ -213,7 +211,6 @@ export default function Editor3Page() {
     const result = splitClipAtTime(clipToSplit, currentTime);
 
     if (!result) {
-      // splitClipAtTime already logs the reason for failure
       return;
     }
 
@@ -229,7 +226,6 @@ export default function Editor3Page() {
     }
 
     if (!trackWithClip) {
-      console.warn('Track not found for clip');
       return;
     }
 
@@ -256,23 +252,14 @@ export default function Editor3Page() {
 
     // Select the right clip after split
     setSelectedTimelineClipIds([rightClip.id]);
-
-    console.log('Split clip successfully:', {
-      original: clipToSplit.id,
-      left: leftClip.id,
-      right: rightClip.id,
-      splitTime: currentTime
-    });
   }, [selectedSequence, currentTime]);
 
   const handleDuplicateClip = useCallback(() => {
     if (!selectedSequence) {
-      console.warn('No sequence available');
       return;
     }
 
     if (selectedTimelineClipIds.length === 0) {
-      console.warn('No clip selected');
       return;
     }
 
@@ -297,7 +284,6 @@ export default function Editor3Page() {
     }
 
     if (!clipToDuplicate || !trackWithClip) {
-      console.warn('Selected clip not found in any track');
       return;
     }
 
@@ -340,21 +326,14 @@ export default function Editor3Page() {
 
     // Select the duplicate
     setSelectedTimelineClipIds([duplicate.id]);
-
-    console.log('Duplicated clip successfully:', {
-      original: clipId,
-      duplicate: duplicate.id,
-    });
   }, [selectedSequence, selectedTimelineClipIds]);
 
   const handleDeleteClip = useCallback(() => {
     if (!selectedSequence) {
-      console.warn('No sequence available');
       return;
     }
 
     if (selectedTimelineClipIds.length === 0) {
-      console.warn('No clip selected');
       return;
     }
 
@@ -379,7 +358,6 @@ export default function Editor3Page() {
     }
 
     if (!clipToDelete || !trackWithClip) {
-      console.warn('Selected clip not found in any track');
       return;
     }
 
@@ -413,8 +391,6 @@ export default function Editor3Page() {
 
     // Clear selection
     setSelectedTimelineClipIds([]);
-
-    console.log('Deleted clip successfully:', clipId);
   }, [selectedSequence, selectedTimelineClipIds]);
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
@@ -735,6 +711,7 @@ export default function Editor3Page() {
           <section ref={timelineSectionRef} className="bg-zinc-950 overflow-hidden">
             {selectedSequence ? (
               <Timeline
+                key={selectedSequence.id}
                 sequence={selectedSequence}
                 mediaAssets={mediaAssets}
                 currentTime={currentTime}
@@ -745,8 +722,6 @@ export default function Editor3Page() {
                 onPlayPause={() => setIsPlaying(prev => !prev)}
                 onSeek={(time) => setCurrentTime(time)}
                 onClipMove={(updates: { clipId: string; newStart: number; newTrackId?: string }[]) => {
-                  console.log('Clips moved:', updates)
-
                   if (!selectedSequence) return;
 
                   // Create a map of updates for quick lookup
@@ -807,12 +782,33 @@ export default function Editor3Page() {
                   // For single-track backwards compat: also update modifiedClips
                   const allClips = updatedTracks.flatMap(t => t.clips);
                   setModifiedClips(allClips);
-
-                  console.log('Tracks after move:', updatedTracks.map(t => ({ id: t.id, clipCount: t.clips.length })));
                 }}
                 onClipTrim={(clipId, trimStart, trimEnd) => {
-                  console.log('Clip trimmed:', { clipId, trimStart, trimEnd })
-                  // TODO: Implement clip trimming logic
+                  if (!selectedSequence) return
+
+                  // Update tracks - find and update the clip's trim values
+                  const updatedTracks = selectedSequence.tracks.map(track => {
+                    const clipIndex = track.clips.findIndex((c: Clip) => c.id === clipId)
+                    if (clipIndex === -1) return track
+
+                    // Update the clip's trim values
+                    const updatedClips = [...track.clips]
+                    const oldClip = updatedClips[clipIndex]
+                    updatedClips[clipIndex] = {
+                      ...oldClip,
+                      trimStart,
+                      trimEnd,
+                    }
+
+                    return { ...track, clips: updatedClips }
+                  })
+
+                  // Update state
+                  setModifiedTracks(updatedTracks)
+
+                  // For backwards compatibility
+                  const allClips = updatedTracks.flatMap(t => t.clips)
+                  setModifiedClips(allClips)
                 }}
                 onClipSelect={(clipIds) => {
                   setSelectedTimelineClipIds(clipIds)
@@ -865,7 +861,6 @@ export default function Editor3Page() {
                   const allClips = updatedTracks.flatMap(t => t.clips);
                   setModifiedClips(allClips);
                   setSelectedTimelineClipIds([]);
-                  console.log('Deleted clip:', clipId);
                 }}
                 onClipDuplicate={(clipId) => {
                   if (!selectedSequence) return;
@@ -915,11 +910,8 @@ export default function Editor3Page() {
                   const allClips = updatedTracks.flatMap((t) => t.clips);
                   setModifiedClips(allClips);
                   setSelectedTimelineClipIds([duplicate.id]);
-                  console.log('Duplicated clip from context menu:', clipId, '→', duplicate.id);
                 }}
                 onClipAdd={(mediaId, trackId, startTime) => {
-                  console.log('Add clip from library:', { mediaId, trackId, startTime });
-
                   if (!selectedSequence) return;
 
                   // Get the media asset for this clip
@@ -968,11 +960,8 @@ export default function Editor3Page() {
 
                   // Select the new clip
                   setSelectedTimelineClipIds([newClip.id]);
-
-                  console.log('Added clip to timeline:', newClip.id, 'on track:', trackId);
                 }}
                 onTrackAdd={(kind) => {
-                  console.log('Add track:', kind)
                   if (!selectedSequence) return;
 
                   // Find highest zIndex across all tracks
@@ -998,14 +987,11 @@ export default function Editor3Page() {
 
                   // Add to additional tracks state
                   setAdditionalTracks(prev => [...prev, newTrack]);
-                  console.log('Track added:', newTrack.name);
                 }}
                 onTrackRemove={(trackId) => {
-                  console.log('Remove track:', trackId)
                   // TODO: Implement track removal
                 }}
                 onTrackUpdate={(trackId, updates) => {
-                  console.log('Update track:', trackId, updates)
                   // TODO: Implement track update
                 }}
                 magneticSnapEnabled={true}

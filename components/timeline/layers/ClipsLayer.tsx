@@ -36,6 +36,7 @@ interface ClipsLayerProps {
   dropZone: DropZoneInfo | null
   onClipSelect: (clipIds: string[]) => void
   onClipMove: (updates: { clipId: string; newStart: number; newTrackId?: string }[]) => void
+  onClipTrim?: (clipId: string, trimStart: number, trimEnd: number) => void
   onSnapGuideShow?: (snapPoint: number | null) => void
   onDropZoneChange?: (dropZone: DropZoneInfo | null) => void
 }
@@ -50,6 +51,7 @@ export const ClipsLayer = ({
   dropZone,
   onClipSelect,
   onClipMove,
+  onClipTrim,
   onSnapGuideShow,
   onDropZoneChange
 }: ClipsLayerProps) => {
@@ -90,6 +92,7 @@ export const ClipsLayer = ({
                 dropZone={dropZone}
                 onClipSelect={onClipSelect}
                 onClipMove={onClipMove}
+                onClipTrim={onClipTrim}
                 onSnapGuideShow={onSnapGuideShow}
                 onDropZoneChange={onDropZoneChange}
               />
@@ -119,6 +122,7 @@ interface ClipRectProps {
   dropZone: DropZoneInfo | null
   onClipSelect: (clipIds: string[]) => void
   onClipMove: (updates: { clipId: string; newStart: number; newTrackId?: string }[]) => void
+  onClipTrim?: (clipId: string, trimStart: number, trimEnd: number) => void
   onSnapGuideShow?: (snapPoint: number | null) => void
   onDropZoneChange?: (dropZone: DropZoneInfo | null) => void
 }
@@ -138,15 +142,68 @@ const ClipRect = ({
   dropZone,
   onClipSelect,
   onClipMove,
+  onClipTrim,
   onSnapGuideShow,
   onDropZoneChange
 }: ClipRectProps) => {
   const [isHovered, setIsHovered] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [isTrimming, setIsTrimming] = React.useState<'left' | 'right' | null>(null)
   const [thumbnailImages, setThumbnailImages] = useState<HTMLImageElement[]>([])
   const [dragStartX, setDragStartX] = useState(0)
   const [originalStart, setOriginalStart] = useState(0)
+  const [originalTrimStart, setOriginalTrimStart] = useState(0)
+  const [originalTrimEnd, setOriginalTrimEnd] = useState(0)
   const [dragTargetTrackId, setDragTargetTrackId] = useState<string | null>(null)
+
+  // Local trim state for real-time visual feedback
+  const [localTrimStart, setLocalTrimStart] = useState(clip.trimStart || 0)
+  const [localTrimEnd, setLocalTrimEnd] = useState(clip.trimEnd || 0)
+
+  // Sync local trim state with props when not actively trimming
+  useEffect(() => {
+    if (!isTrimming) {
+      setLocalTrimStart(clip.trimStart || 0)
+      setLocalTrimEnd(clip.trimEnd || 0)
+    }
+  }, [clip.trimStart, clip.trimEnd, isTrimming])
+
+  // Add global mouse listeners for trimming
+  useEffect(() => {
+    if (!isTrimming) return
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - dragStartX
+      const deltaTime = deltaX / pixelsPerSecond
+
+      if (isTrimming === 'left') {
+        // Update local state for immediate visual feedback
+        const newTrimStart = Math.max(0, Math.min(clip.duration - localTrimEnd - 0.1, originalTrimStart + deltaTime))
+        setLocalTrimStart(newTrimStart)
+      } else if (isTrimming === 'right') {
+        // Update local state for immediate visual feedback
+        const newTrimEnd = Math.max(0, Math.min(clip.duration - localTrimStart - 0.1, originalTrimEnd - deltaTime))
+        setLocalTrimEnd(newTrimEnd)
+      }
+    }
+
+    const handleGlobalMouseUp = () => {
+      // Persist trim values to parent state on mouse up
+      if (onClipTrim) {
+        onClipTrim(clip.id, localTrimStart, localTrimEnd)
+      }
+      setIsTrimming(null)
+      document.body.style.cursor = 'default'
+    }
+
+    window.addEventListener('mousemove', handleGlobalMouseMove)
+    window.addEventListener('mouseup', handleGlobalMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove)
+      window.removeEventListener('mouseup', handleGlobalMouseUp)
+    }
+  }, [isTrimming, dragStartX, pixelsPerSecond, clip.id, clip.duration, localTrimStart, localTrimEnd, originalTrimStart, originalTrimEnd, onClipTrim])
 
   // Helper function to calculate which track the mouse is over
   const calculateTargetTrack = (mouseY: number): string | null => {
@@ -178,7 +235,7 @@ const ClipRect = ({
         }
       }
       img.onerror = () => {
-        console.warn('Failed to load thumbnail', index, 'for clip:', clip.id)
+        // Thumbnail loading failed silently
       }
       img.src = dataUrl // Use data URL from thumbnails array
       images[index] = img
@@ -329,7 +386,10 @@ const ClipRect = ({
   }
 
   // Calculate position and size
-  const width = clip.duration * pixelsPerSecond
+  // Width should be the VISIBLE duration (duration minus trim from both ends)
+  // Use local trim state for real-time visual feedback during trimming
+  const visibleDuration = clip.duration - localTrimStart - localTrimEnd
+  const width = visibleDuration * pixelsPerSecond
   const y = trackY + TIMELINE_LAYOUT.clipPadding
   const height = trackHeight - TIMELINE_LAYOUT.clipPadding * 2
 
@@ -420,7 +480,7 @@ const ClipRect = ({
     <Group
       x={x}
       y={y}
-      draggable={true}
+      draggable={!isTrimming}
       opacity={isBeingDragged ? 0.6 : 1.0}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
@@ -428,7 +488,7 @@ const ClipRect = ({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={(e) => {
-        if (isDragging) return // Prevent selection during drag
+        if (isDragging || isTrimming) return // Prevent selection during drag or trim
         e.cancelBubble = true // Prevent event from bubbling to stage (prevents seek)
         onClipSelect([clip.id])
       }}
@@ -491,15 +551,98 @@ const ClipRect = ({
 
       {/* Selection border (CapCut-style blue border) */}
       {isSelected && (
-        <Rect
-          x={0}
-          y={0}
-          width={width}
-          height={height}
-          stroke={TIMELINE_THEME.clipSelected}
-          strokeWidth={TIMELINE_LAYOUT.clipSelectedBorderWidth}
-          cornerRadius={TIMELINE_LAYOUT.clipBorderRadius}
-        />
+        <>
+          <Rect
+            x={0}
+            y={0}
+            width={width}
+            height={height}
+            stroke={TIMELINE_THEME.clipSelected}
+            strokeWidth={TIMELINE_LAYOUT.clipSelectedBorderWidth}
+            cornerRadius={TIMELINE_LAYOUT.clipBorderRadius}
+          />
+
+          {/* Left trim handle */}
+          <Rect
+            x={0}
+            y={0}
+            width={12}
+            height={height}
+            fill={TIMELINE_THEME.clipSelected}
+            opacity={0.9}
+            cornerRadius={[TIMELINE_LAYOUT.clipBorderRadius, 0, 0, TIMELINE_LAYOUT.clipBorderRadius]}
+            onMouseDown={(e) => {
+              e.cancelBubble = true
+              setIsTrimming('left')
+              setDragStartX(e.evt.clientX)
+              setOriginalTrimStart(localTrimStart)
+              setOriginalStart(clip.start)
+              document.body.style.cursor = 'ew-resize'
+            }}
+            onMouseEnter={(e) => {
+              if (!isTrimming) {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'ew-resize'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isTrimming) {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }
+            }}
+          />
+
+          {/* Left trim handle indicator line */}
+          <Rect
+            x={4}
+            y={height / 2 - 10}
+            width={2}
+            height={20}
+            fill="#ffffff"
+            cornerRadius={1}
+          />
+
+          {/* Right trim handle */}
+          <Rect
+            x={width - 12}
+            y={0}
+            width={12}
+            height={height}
+            fill={TIMELINE_THEME.clipSelected}
+            opacity={0.9}
+            cornerRadius={[0, TIMELINE_LAYOUT.clipBorderRadius, TIMELINE_LAYOUT.clipBorderRadius, 0]}
+            onMouseDown={(e) => {
+              e.cancelBubble = true
+              setIsTrimming('right')
+              setDragStartX(e.evt.clientX)
+              setOriginalTrimEnd(localTrimEnd)
+              document.body.style.cursor = 'ew-resize'
+            }}
+            onMouseEnter={(e) => {
+              if (!isTrimming) {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'ew-resize'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isTrimming) {
+                const stage = e.target.getStage()
+                if (stage) stage.container().style.cursor = 'default'
+              }
+            }}
+          />
+
+          {/* Right trim handle indicator line */}
+          <Rect
+            x={width - 8}
+            y={height / 2 - 10}
+            width={2}
+            height={20}
+            fill="#ffffff"
+            cornerRadius={1}
+          />
+        </>
       )}
 
       {/* Clip label (media name or clip name) */}
