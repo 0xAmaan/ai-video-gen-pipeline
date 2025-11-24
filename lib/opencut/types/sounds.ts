@@ -2,21 +2,32 @@
 export interface SoundEffect {
   id: number;
   name: string;
-  username: string;
-  previewUrl: string;
-  downloadUrl: string;
+  description: string;
+  url: string;
+  previewUrl?: string;
+  downloadUrl?: string;
   duration: number;
+  filesize: number;
+  type: string;
+  channels: number;
+  bitrate: number;
+  bitdepth: number;
+  samplerate: number;
+  username: string;
   tags: string[];
   license: string;
-  [key: string]: unknown;
+  created: string;
+  downloads: number;
+  rating: number;
+  ratingCount: number;
 }
 
 export interface SavedSound {
   id: number;
   name: string;
   username: string;
-  previewUrl: string;
-  downloadUrl: string;
+  previewUrl?: string;
+  downloadUrl?: string;
   duration: number;
   tags: string[];
   license: string;

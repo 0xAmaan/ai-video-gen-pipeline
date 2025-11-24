@@ -1,13 +1,16 @@
 // Stub types for OpenCut media (external package not installed)
+export type MediaType = "image" | "video" | "audio";
+
 export interface MediaFile {
   id: string;
   name: string;
-  url: string;
-  type: string;
+  type: MediaType;
+  file: File;
+  url?: string;
+  thumbnailUrl?: string;
   duration?: number;
   width?: number;
   height?: number;
-  size?: number;
-  thumbnailUrl?: string;
-  [key: string]: unknown;
+  fps?: number;
+  ephemeral?: boolean;
 }

@@ -1,14 +1,8 @@
 import type { Project, MediaAssetMeta, Track, Clip } from "@/lib/editor/types";
 import type { MediaFile } from "./types/media";
-import type { TimelineTrack } from "./types/timeline";
+import type { TimelineTrack, TimelineElement } from "./types/timeline";
 import type { TProject } from "./types/project";
 import type { OpenCutSnapshot } from "./storage-service";
-
-// TimelineElement stub type (not in external package)
-interface TimelineElement {
-  id: string;
-  [key: string]: unknown;
-}
 
 interface SnapshotOptions {
   signal?: AbortSignal;
@@ -204,7 +198,7 @@ export async function buildOpenCutSnapshot(
     id: track.id,
     name: track.id,
     type: mapTrackKind(track),
-    clips: track.clips.map((clip) =>
+    elements: track.clips.map((clip) =>
       toMediaElement(clip, assetMap.get(clip.mediaId)),
     ),
     muted: track.muted,

@@ -87,6 +87,7 @@ export async function POST(req: Request) {
       return apiError("projectId is required", 400);
     }
     ensuredProjectId = projectId;
+    const validProjectId = projectId;
 
     const convex = await getConvexClient();
     const [projectData, storyboardRows] = await Promise.all([
