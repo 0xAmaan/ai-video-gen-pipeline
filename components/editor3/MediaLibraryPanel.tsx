@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud } from "lucide-react";
+import { Cloud, Music, Volume2 } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -30,6 +30,7 @@ export const MediaLibraryPanel = ({
 
   const project = data?.project ?? null;
   const clips = data?.clips ?? [];
+  const audioAssets = data?.audioAssets ?? [];
   const isLoading = data === undefined;
 
   // Truncate project title
@@ -149,6 +150,96 @@ export const MediaLibraryPanel = ({
             );
           })}
         </div>
+
+        {/* Audio Section */}
+        {audioAssets.length > 0 && (
+          <div className="mt-6">
+            {/* Section Header */}
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+                Audio
+              </h2>
+              <span className="text-xs text-zinc-500">({audioAssets.length})</span>
+            </div>
+
+            {/* Audio Grid - 1 column for better readability */}
+            <div className="space-y-2">
+              {audioAssets.map((audio) => {
+                const duration = audio.duration ?? 0;
+                const audioType = audio.type ?? "audio";
+
+                // Type-specific icons and labels
+                const getAudioTypeInfo = (type: string) => {
+                  switch (type) {
+                    case "bgm":
+                      return { icon: Music, label: "BGM", color: "text-blue-400" };
+                    case "sfx":
+                      return { icon: Volume2, label: "SFX", color: "text-purple-400" };
+                    case "narration":
+                      return { icon: Volume2, label: "Narration", color: "text-green-400" };
+                    case "voiceover":
+                      return { icon: Volume2, label: "Voiceover", color: "text-cyan-400" };
+                    default:
+                      return { icon: Music, label: "Audio", color: "text-zinc-400" };
+                  }
+                };
+
+                const typeInfo = getAudioTypeInfo(audioType);
+                const TypeIcon = typeInfo.icon;
+
+                return (
+                  <div
+                    key={audio._id}
+                    draggable={true}
+                    onDragStart={(e) => {
+                      // Set the media ID for timeline drag-and-drop
+                      e.dataTransfer.setData('mediaId', audio._id);
+                      e.dataTransfer.setData('mediaType', 'audio');
+                      e.dataTransfer.effectAllowed = 'copy';
+
+                      const target = e.currentTarget as HTMLElement;
+                      e.dataTransfer.setDragImage(target, 50, 25);
+                    }}
+                    className="group cursor-grab active:cursor-grabbing bg-zinc-800/50 hover:bg-zinc-800 rounded-lg overflow-hidden transition-colors border border-zinc-700/50 hover:border-zinc-600"
+                  >
+                    <div className="flex items-center gap-3 px-3 py-2.5">
+                      {/* Icon */}
+                      <div className={`flex-shrink-0 ${typeInfo.color}`}>
+                        <TypeIcon className="w-5 h-5" />
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${typeInfo.color} bg-zinc-900/50`}>
+                            {typeInfo.label}
+                          </span>
+                          {duration > 0 && (
+                            <span className="text-xs text-zinc-500">
+                              {formatDuration(duration)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-400 truncate">
+                          {audio.name || `${typeInfo.label} Track`}
+                        </p>
+                      </div>
+
+                      {/* Drag Indicator */}
+                      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="w-3 h-0.5 bg-zinc-600 rounded"></div>
+                          <div className="w-3 h-0.5 bg-zinc-600 rounded"></div>
+                          <div className="w-3 h-0.5 bg-zinc-600 rounded"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
