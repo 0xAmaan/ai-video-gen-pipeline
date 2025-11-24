@@ -74,6 +74,8 @@ export default function Editor3Page() {
     projectId ? { projectId: projectId as Id<"videoProjects"> } : "skip"
   );
 
+  const clips = data?.clips ?? [];
+
   // Use convex-adapter to transform Convex data to editor format (includes audio support!)
   const adaptedData = useMemo(() => {
     if (!data?.project || !data?.clips) return null;
