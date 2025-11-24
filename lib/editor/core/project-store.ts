@@ -39,13 +39,24 @@ const deepClone = <T,>(value: T): T => {
   return JSON.parse(JSON.stringify(value));
 };
 
-const createTrack = (id: string, kind: Track["kind"]): Track => ({
+const createTrack = (
+  id: string,
+  kind: Track["kind"],
+  zIndex: number = 0,
+): Track => ({
   id,
+  name: `${kind.charAt(0).toUpperCase() + kind.slice(1)} ${
+    id.split("-")[1] || "1"
+  }`,
   kind,
   allowOverlap: kind !== "video",
   locked: false,
   muted: false,
+  solo: false,
   volume: 1,
+  zIndex,
+  height: kind === "audio" ? 80 : 120,
+  visible: true,
   clips: [],
 });
 
@@ -95,7 +106,7 @@ const createSequence = (): Sequence => ({
   fps: 30,
   sampleRate: 48000,
   duration: 0,
-  tracks: [createTrack("video-1", "video"), createTrack("audio-1", "audio")],
+    tracks: [createTrack("video-1", "video", 1), createTrack("audio-1", "audio", 0)],
 });
 
 const createProject = (): Project => {
@@ -201,7 +212,9 @@ export interface ProjectStoreState {
     slipEdit: (clipId: string, offset: number) => void;
     slideEdit: (clipId: string, newStart: number) => void;
     splitClip: (clipId: string, offset: number) => void;
+    splitClipAtTime: (clipId: string, time: number) => void;
     splitAtPlayhead: (clipId: string) => void;
+    duplicateClip: (clipId: string) => void;
     deleteClip: (clipId: string) => void;
     rippleDelete: (clipId: string) => void;
     // Batch operations for multi-clip selection
@@ -212,6 +225,13 @@ export interface ProjectStoreState {
     copyClips: (clipIds: string[]) => void; // Copy clips to clipboard
     pasteClips: (targetTime: number) => void; // Paste clips from clipboard at target time
     duplicateClips: (clipIds: string[]) => void; // Duplicate clips immediately after originals
+    addTrack: (kind: Track["kind"]) => void;
+    removeTrack: (trackId: string) => void;
+    updateTrack: (trackId: string, updates: Partial<Track>) => void;
+    reorderTracks: (trackIds: string[]) => void;
+    detachAudio: (clipId: string) => void;
+    linkClips: (clipId1: string, clipId2: string) => void;
+    unlinkClip: (clipId: string) => void;
     undo: () => void;
     redo: () => void;
     save: () => Promise<void>; // Explicit save to Convex (PRD Tri-State)
@@ -365,6 +385,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         transitions: [],
         speedCurve: null,
         preservePitch: true,
+        blendMode: "normal",
       };
 
       const state = get();
@@ -527,6 +548,18 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         void timelineService.splitClip(clipId, offset);
       }
     },
+    splitClipAtTime: (clipId, time) => {
+      const project = get().project;
+      if (!project) return;
+      const sequence = getSequence(project);
+      const targetClip = findClip(sequence, clipId);
+      if (!targetClip) return;
+      const offset = time - targetClip.start;
+      if (offset <= 0 || offset >= targetClip.duration) {
+        return;
+      }
+      get().actions.splitClip(clipId, offset);
+    },
     splitAtPlayhead: (clipId) => {
       const state = get();
       const project = state.project;
@@ -564,6 +597,10 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       
       // Use existing splitClip implementation
       get().actions.splitClip(clipId, offset);
+    },
+    duplicateClip: (clipId) => {
+      if (!clipId) return;
+      get().actions.duplicateClips([clipId]);
     },
     deleteClip: (clipId) => {
       const state = get();
@@ -862,6 +899,173 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       } else {
         console.error('[duplicateClips] Failed to execute DuplicateClipsCommand');
       }
+    },
+    addTrack: (kind) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        const sequence = getSequence(next);
+        const tracksOfKind = sequence.tracks.filter((t) => t.kind === kind);
+        const maxZIndex = sequence.tracks.reduce(
+          (max, track) => Math.max(max, track.zIndex ?? 0),
+          0,
+        );
+        const newTrack = createTrack(
+          `${kind}-${tracksOfKind.length + 1}`,
+          kind,
+          maxZIndex + 1,
+        );
+        sequence.tracks.push(newTrack);
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        void timelineService.setSequence(getSequence(next));
+        return { ...state, project: next, history, dirty: true };
+      });
+      get().actions.rebuildCollisionIndex();
+    },
+    removeTrack: (trackId) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        const sequence = getSequence(next);
+        const index = sequence.tracks.findIndex((t) => t.id === trackId);
+        if (index === -1) return state;
+        sequence.tracks.splice(index, 1);
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        void timelineService.setSequence(getSequence(next));
+        return { ...state, project: next, history, dirty: true };
+      });
+      get().actions.rebuildCollisionIndex();
+    },
+    updateTrack: (trackId, updates) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        const sequence = getSequence(next);
+        const track = sequence.tracks.find((t) => t.id === trackId);
+        if (!track) return state;
+        Object.assign(track, updates);
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        return { ...state, project: next, history, dirty: true };
+      });
+    },
+    reorderTracks: (trackIds) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        const sequence = getSequence(next);
+        const map = new Map(sequence.tracks.map((track) => [track.id, track]));
+        const reordered: Track[] = [];
+        trackIds.forEach((id, index) => {
+          const track = map.get(id);
+          if (track) {
+            track.zIndex = index;
+            reordered.push(track);
+            map.delete(id);
+          }
+        });
+        // Append any tracks not included in trackIds to preserve them
+        reordered.push(...map.values());
+        sequence.tracks = reordered;
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        void timelineService.setSequence(getSequence(next));
+        return { ...state, project: next, history, dirty: true };
+      });
+      get().actions.rebuildCollisionIndex();
+    },
+    detachAudio: (clipId) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        const sequence = getSequence(next);
+        const located = findTrackAndClip(sequence, clipId);
+        if (!located) return state;
+        const { track, clip } = located;
+        if (clip.kind !== "video") return state;
+        const asset = next.mediaAssets[clip.mediaId];
+        if (!asset || asset.type !== "video") return state;
+
+        let audioTrack = sequence.tracks.find((t) => t.kind === "audio");
+        if (!audioTrack) {
+          const audioTracks = sequence.tracks.filter((t) => t.kind === "audio");
+          const maxZIndex = sequence.tracks.reduce(
+            (max, t) => Math.max(max, t.zIndex ?? 0),
+            0,
+          );
+          audioTrack = createTrack(
+            `audio-${audioTracks.length + 1}`,
+            "audio",
+            maxZIndex + 1,
+          );
+          sequence.tracks.push(audioTrack);
+        }
+
+        const audioClip: Clip = {
+          id: `${clip.id}-audio`,
+          mediaId: clip.mediaId,
+          trackId: audioTrack.id,
+          kind: "audio",
+          start: clip.start,
+          duration: clip.duration,
+          trimStart: clip.trimStart,
+          trimEnd: clip.trimEnd,
+          opacity: 1,
+          volume: clip.volume,
+          effects: [],
+          transitions: [],
+          speedCurve: clip.speedCurve ? deepClone(clip.speedCurve) : null,
+          preservePitch: clip.preservePitch,
+          blendMode: "normal",
+          linkedClipId: clip.id,
+          originalMediaId: clip.mediaId,
+        };
+
+        clip.linkedClipId = audioClip.id;
+        audioTrack.clips.push(audioClip);
+        sortTrackClips(audioTrack);
+        recalculateSequenceDuration(sequence);
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        void timelineService.setSequence(getSequence(next));
+        void timelineService.upsertClip(audioClip);
+        return { ...state, project: next, history, dirty: true };
+      });
+      get().actions.rebuildCollisionIndex();
+    },
+    linkClips: (clipId1, clipId2) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        const sequence = getSequence(next);
+        const clip1 = findClip(sequence, clipId1);
+        const clip2 = findClip(sequence, clipId2);
+        if (!clip1 || !clip2) return state;
+        clip1.linkedClipId = clipId2;
+        clip2.linkedClipId = clipId1;
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        return { ...state, project: next, history, dirty: true };
+      });
+    },
+    unlinkClip: (clipId) => {
+      set((state) => {
+        if (!state.project) return state;
+        const next = deepClone(state.project);
+        const sequence = getSequence(next);
+        const clip = findClip(sequence, clipId);
+        if (!clip || !clip.linkedClipId) return state;
+        const linkedClip = findClip(sequence, clip.linkedClipId);
+        if (linkedClip) {
+          linkedClip.linkedClipId = undefined;
+        }
+        clip.linkedClipId = undefined;
+        next.updatedAt = Date.now();
+        const history = historyAfterPush(state, state.project);
+        return { ...state, project: next, history, dirty: true };
+      });
     },
     
     rebuildCollisionIndex: () => {

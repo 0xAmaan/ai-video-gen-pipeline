@@ -9,12 +9,17 @@ import type { Track } from '../lib/editor/types';
 // Mock track factory
 const createMockTrack = (id: string, kind: Track['kind']): Track => ({
   id,
+  name: `${kind.toUpperCase()}-${id}`,
   kind,
   allowOverlap: false,
   clips: [],
   locked: false,
   muted: false,
+  solo: false,
   volume: 1.0,
+  zIndex: kind === 'video' ? 1 : 0,
+  height: kind === 'audio' ? 80 : 120,
+  visible: true,
 });
 
 console.log('🧪 Testing Track Compatibility Utilities\n');

@@ -83,6 +83,23 @@ export class VideoLoader {
     this.reconfigureDecoder();
   }
 
+  async getVideoDimensions(): Promise<{ width: number; height: number }> {
+    await this.init();
+
+    const firstFrame = await this.getFrameAt(0);
+    if (!firstFrame) {
+      throw new Error("Could not decode first frame to get dimensions");
+    }
+
+    const dimensions = {
+      width: firstFrame.displayWidth,
+      height: firstFrame.displayHeight,
+    };
+
+    firstFrame.close();
+    return dimensions;
+  }
+
   async getFrameAt(timeSeconds: number): Promise<VideoFrame | null> {
     await this.init();
     const cacheKey = this.keyFor(timeSeconds);
@@ -186,6 +203,13 @@ export class VideoLoader {
     this.reconfigureDecoder();
     this.cache.clear();
     await this.decodeAround(timeSeconds);
+  }
+
+  setPlaybackMode(isPlaying: boolean): void {
+    this.disableTrimming = isPlaying;
+    console.log(
+      `[VideoLoader] Playback mode: ${isPlaying}, trimming: ${!isPlaying}`,
+    );
   }
 
   dispose() {

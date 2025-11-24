@@ -1,11 +1,5 @@
 import type { Doc } from "@/convex/_generated/dataModel";
-import type {
-  Clip,
-  MediaAssetMeta,
-  Project,
-  Sequence,
-  Track,
-} from "./types";
+import type { Clip, MediaAssetMeta, Project, Sequence, Track } from "./types";
 import { buildAssetUrl } from "./io/asset-url";
 
 type ConvexProject = Doc<"videoProjects">;
@@ -42,7 +36,8 @@ const parseResolution = (value?: string | null) => {
   }
   const justHeight = value.match(/(\d{3,4})p/i);
   if (justHeight) {
-    const height = Number.parseInt(justHeight[1] ?? "0", 10) || DEFAULT_RESOLUTION.height;
+    const height =
+      Number.parseInt(justHeight[1] ?? "0", 10) || DEFAULT_RESOLUTION.height;
     return { width: Math.round((height * 16) / 9), height };
   }
   return DEFAULT_RESOLUTION;
@@ -82,7 +77,7 @@ const buildMediaAsset = (
     url: playbackUrl,
     r2Key: clip.r2Key ?? undefined,
     proxyUrl,
-    proxyR2Key: proxyUrl ? clip.r2Key ?? undefined : undefined,
+    proxyR2Key: proxyUrl ? (clip.r2Key ?? undefined) : undefined,
     sourceUrl: originalUrl,
     // Map beat analysis fields from videoClip
     beatMarkers: clip.beatMarkers,
@@ -90,7 +85,11 @@ const buildMediaAsset = (
   };
 };
 
-const buildClip = (asset: MediaAssetMeta, start: number, trackId: string): Clip => ({
+const buildClip = (
+  asset: MediaAssetMeta,
+  start: number,
+  trackId: string,
+): Clip => ({
   id: asset.id,
   mediaId: asset.id,
   trackId,
@@ -105,6 +104,7 @@ const buildClip = (asset: MediaAssetMeta, start: number, trackId: string): Clip 
   transitions: [],
   speedCurve: null,
   preservePitch: true,
+  blendMode: "normal",
 });
 
 export interface ConvexEditorDataset {
@@ -134,7 +134,9 @@ export const adaptConvexProjectToStandalone = ({
     .join("|");
 
   const readyClips = clips
-    .filter((clip) => clip.status === "complete" && typeof clip.videoUrl === "string")
+    .filter(
+      (clip) => clip.status === "complete" && typeof clip.videoUrl === "string",
+    )
     .map((clip) => ({
       clip,
       scene: scenesById.get(clip.sceneId),
@@ -231,6 +233,7 @@ export const adaptConvexProjectToStandalone = ({
       transitions: [],
       speedCurve: null,
       preservePitch: true,
+      blendMode: "normal",
     };
     clipBuckets[trackId].push(clip);
     timelineExtent = Math.max(timelineExtent, clip.start + clip.duration);
@@ -246,11 +249,14 @@ export const adaptConvexProjectToStandalone = ({
     clipsForTrack.push(buildClip(asset, startTime, "video-1"));
 
     if (scene?._id) {
-      sceneTimings.set(scene._id, { start: startTime, duration: asset.duration });
+      sceneTimings.set(scene._id, {
+        start: startTime,
+        duration: asset.duration,
+      });
     }
 
     const sceneAssetBucket = scene?._id
-      ? audioAssetsByScene.get(scene._id as string) ?? []
+      ? (audioAssetsByScene.get(scene._id as string) ?? [])
       : [];
     const hasSceneNarrationAsset = sceneAssetBucket.some(
       (asset) => asset.type === "narration",
@@ -287,7 +293,20 @@ export const adaptConvexProjectToStandalone = ({
     cursor += asset.duration;
   });
 
-  if (project.backgroundMusicUrl && !hasProjectLevelBgmAsset) {
+  if (project.soundtrackUrl && !hasProjectLevelBgmAsset) {
+    addAudioClip({
+      assetId: `${project._id}-soundtrack`,
+      name: "Project Soundtrack",
+      url: project.soundtrackUrl,
+      trackId: BGM_TRACK_ID,
+      start: 0,
+      duration:
+        typeof project.soundtrackDuration === "number"
+          ? Math.max(project.soundtrackDuration, 0.1)
+          : Math.max(cursor, 1),
+      volume: getDefaultVolumeForTrack(BGM_TRACK_ID),
+    });
+  } else if (project.backgroundMusicUrl && !hasProjectLevelBgmAsset) {
     addAudioClip({
       assetId: `${project._id}-project-bgm`,
       name: "Project Background Music",
@@ -322,7 +341,7 @@ export const adaptConvexProjectToStandalone = ({
         ? asset.duration
         : typeof asset.timelineEnd === "number"
           ? Math.max(asset.timelineEnd - clipStart, 0.1)
-          : sceneTiming?.duration ?? Math.max(cursor, 1);
+          : (sceneTiming?.duration ?? Math.max(cursor, 1));
 
     const metadataVolume =
       typeof asset.metadata === "object" &&
@@ -349,49 +368,67 @@ export const adaptConvexProjectToStandalone = ({
 
   const videoTrack: Track = {
     id: "video-1",
+    name: "Video",
     kind: "video",
     allowOverlap: false,
     locked: false,
     muted: false,
+    solo: false,
     volume: 1,
+    zIndex: 0,
+    height: 64,
+    visible: true,
     clips: clipsForTrack,
   };
 
   const narrationTrack: Track = {
     id: NARRATION_TRACK_ID,
+    name: "Narration",
     kind: "audio",
     allowOverlap: false,
     locked: false,
     muted: false,
+    solo: false,
     volume: 1,
+    zIndex: 0,
+    height: 64,
+    visible: true,
     clips: narrationClips,
   };
 
   const bgmTrack: Track = {
     id: BGM_TRACK_ID,
+    name: "BGM",
     kind: "audio",
     allowOverlap: true,
     locked: false,
     muted: false,
+    solo: false,
     volume: 1,
+    zIndex: 0,
+    height: 64,
+    visible: true,
     clips: bgmClips,
   };
 
   const sfxTrack: Track = {
     id: SFX_TRACK_ID,
+    name: "SFX",
     kind: "audio",
     allowOverlap: true,
     locked: false,
     muted: false,
+    solo: false,
     volume: 1,
+    zIndex: 0,
+    height: 64,
+    visible: true,
     clips: sfxClips,
   };
   const audioTrackSettings = project.audioTrackSettings ?? {};
   const applyTrackSettings = (track: Track) => {
     const settingsKey =
-      TRACK_SETTING_KEY_MAP[
-        track.id as keyof typeof TRACK_SETTING_KEY_MAP
-      ];
+      TRACK_SETTING_KEY_MAP[track.id as keyof typeof TRACK_SETTING_KEY_MAP];
     if (!settingsKey) return;
     const settings = audioTrackSettings[settingsKey];
     if (!settings) return;

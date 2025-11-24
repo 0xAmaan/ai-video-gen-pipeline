@@ -54,13 +54,18 @@ export const timelineToProject = (
     project.sequences[0];
   const timelineTracks = timeline.tracks ?? [];
 
-  const convertedTracks = timelineTracks.map((track) => ({
+  const convertedTracks = timelineTracks.map((track, index) => ({
     id: track.id,
+    name: track.id,
     kind: mapTrackType(track.type),
     allowOverlap: track.type !== "video",
     locked: false,
     muted: false,
+    solo: false,
     volume: 1,
+    zIndex: track.type === "video" ? Math.max(0, timelineTracks.length - index) : 0,
+    height: track.type === "audio" ? 80 : 120,
+    visible: true,
     clips: track.elements.map((element) => elementToClip(element, track.id, assets)),
   }));
 
@@ -122,6 +127,7 @@ const clipToElement = (clip: Clip, asset?: MediaAssetMeta): ElementJSON => {
       trimEnd,
       opacity,
       volume,
+      blendMode: clip.blendMode ?? "normal",
       // Timeline preview data (matching legacy editor)
       thumbnails: asset?.thumbnails ?? [],
       thumbnailCount: asset?.thumbnailCount ?? 0,
@@ -171,6 +177,7 @@ const elementToClip = (
     trimEnd,
     opacity,
     volume,
+    blendMode: ((element as any)?.props?.blendMode as Clip["blendMode"]) ?? "normal",
     effects: [],
     transitions: [],
     speedCurve: null,

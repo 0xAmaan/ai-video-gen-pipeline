@@ -328,55 +328,35 @@ export const LegacyEditorApp = ({
         onToggleMultiTrackRipple={() => actions.toggleMultiTrackRipple()}
       />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="grid grid-cols-[320px_1fr_320px] flex-1 overflow-hidden border-b border-border bg-[#120f1a]">
-          <div className="border-r border-border bg-[#1a1525]">
-            <div className="border-b border-border px-3 py-2 text-xs font-semibold text-red-200 uppercase tracking-wide">
-              Library
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <MediaPanel
-                assets={assets}
-                onImport={handleImport}
-                onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
-              />
-            </div>
-            <div className="border-t border-border">
-              <TransitionLibrary onSelectTransition={() => undefined} selectedPresetId={undefined} />
-              <FilterLibrary onSelectFilter={() => undefined} selectedPresetId={undefined} />
-            </div>
+      <div className="grid grid-rows-[200px_1fr_280px] flex-1 overflow-hidden">
+        {/* Media Panel - Full width at top */}
+        <div className="border-b border-border bg-[#1a1525] overflow-hidden">
+          <div className="border-b border-border px-3 py-2 text-xs font-semibold text-red-200 uppercase tracking-wide">
+            Library
           </div>
-
-          <div className="relative flex flex-col bg-black">
-            <PreviewPanel
-              canvasRef={canvasRef}
-              currentTime={currentTime}
-              duration={sequence.duration}
-              isPlaying={isPlaying}
-              onTogglePlayback={() => actions.togglePlayback()}
-              onSeek={(time) => actions.setCurrentTime(time)}
+          <div className="h-[calc(100%-32px)] overflow-hidden">
+            <MediaPanel
+              assets={assets}
+              onImport={handleImport}
+              onAddToTimeline={(assetId) => actions.appendClipFromAsset(assetId)}
             />
-          </div>
-
-          <div className="border-l border-border bg-[#1a1525]">
-            <div className="border-b border-border px-3 py-2 text-xs font-semibold text-red-200 uppercase tracking-wide">
-              Properties
-            </div>
-            <div className="p-4 text-sm text-muted-foreground">
-              {selectedClipId ? (
-                <div>
-                  <div className="font-semibold text-red-200 mb-1">Clip ID</div>
-                  <div className="break-all text-xs">{selectedClipId}</div>
-                  <div className="mt-3 text-xs text-red-200">Adjustments coming soon.</div>
-                </div>
-              ) : (
-                <div className="text-xs opacity-60">Select a clip to edit properties.</div>
-              )}
-            </div>
           </div>
         </div>
 
-        <div className="h-[360px] bg-[#0f0c13] border-t border-border flex flex-col" ref={timelineContainerRef}>
+        {/* Video Viewer - Takes remaining space */}
+        <div className="relative flex flex-col bg-black border-b border-border overflow-hidden">
+          <PreviewPanel
+            canvasRef={canvasRef}
+            currentTime={currentTime}
+            duration={sequence.duration}
+            isPlaying={isPlaying}
+            onTogglePlayback={() => actions.togglePlayback()}
+            onSeek={(time) => actions.setCurrentTime(time)}
+          />
+        </div>
+
+        {/* Timeline - Full width at bottom */}
+        <div className="bg-[#0f0c13] border-t border-border flex flex-col overflow-hidden" ref={timelineContainerRef}>
           <KonvaTimeline
             sequence={sequence}
             selectedClipId={selectedClipId}
@@ -384,7 +364,7 @@ export const LegacyEditorApp = ({
             currentTime={currentTime}
             isPlaying={isPlaying}
             containerWidth={timelineWidth}
-            containerHeight={360}
+            containerHeight={280}
             assets={assets}
             onClipSelect={(clipId) => actions.setSelection({ clipIds: [clipId], trackIds: [] })}
             onClipMove={(clipId, newStart) => {

@@ -105,6 +105,7 @@ export interface SceneShot {
   shotNumber: number;
   description: string;
   initialPrompt: string;
+  mood?: string | null;
   selectedImageId?: Id<"shotImages">;
   referencedAssets?: Id<"projectAssets">[];
   linkedShotId?: Id<"sceneShots"> | null;

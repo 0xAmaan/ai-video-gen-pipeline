@@ -467,23 +467,24 @@ const StoryboardPage = () => {
         }
 
         if (result.status === "failed") {
-          const failureMessage =
-            result.errorMessage ||
-            "Video generation failed. Please try again.";
+          const errorMessage = result.errorMessage || "Video generation failed. Please try again.";
           await updateVideoClip({
             clipId,
             status: "failed",
-            errorMessage: failureMessage,
+            errorMessage,
           });
           activeVideoPolls.current.delete(clipId);
           toast.error("Video generation failed", {
-            description: failureMessage,
+            description: errorMessage,
           });
           console.error("[StoryboardPage] Clip failed while polling", {
             clipId,
             predictionId,
-            error: failureMessage,
+            error: errorMessage,
+            fullResult: result, // Log full result to see what Replicate returned
           });
+          // Show user-friendly alert with the error
+          alert(`Video generation failed: ${errorMessage}\n\nPrediction ID: ${predictionId}`);
           return;
         }
 
@@ -856,6 +857,8 @@ type SceneRequestPayload = {
             projectId={projectId}
             storyboardLocked={false}
             storyboardLockMessage={lockMessage}
+            audioLocked={projectProgress?.projectStatus !== "video_generated"}
+            audioLockMessage="Generate video clips before soundtracking"
             editorLocked={projectProgress?.projectStatus !== "video_generated"}
             editorLockMessage="Generate video clips before editing"
           />
@@ -905,6 +908,19 @@ type SceneRequestPayload = {
                   return `Generate ${totalCount - completedCount} Video${totalCount - completedCount === 1 ? "" : "s"}`;
                 }
               })()}
+            </Button>
+            <Button
+              variant="outline"
+              className="border-emerald-500/60 text-emerald-200 hover:bg-emerald-900/40"
+              disabled={projectProgress?.projectStatus !== "video_generated"}
+              onClick={() => router.push(`/${projectId}/audio`)}
+              title={
+                projectProgress?.projectStatus !== "video_generated"
+                  ? "Finish video generation to build a soundtrack"
+                  : "Move to soundtrack generation"
+              }
+            >
+              Next: Audio
             </Button>
           </div>
         </div>

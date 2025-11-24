@@ -89,14 +89,17 @@ const HomePage = () => {
     <div className="min-h-screen w-full bg-[#0a0a0a] flex flex-col overflow-y-auto">
       {/* Hero Video Section - positioned at top */}
       <div className="w-full px-8 pt-8 shrink-0">
-        <div className="relative rounded-3xl overflow-hidden shadow-2xl h-[50vh] mx-auto" style={{ maxWidth: '90vw' }}>
+        <div
+          className="relative rounded-3xl overflow-hidden shadow-2xl h-[50vh] mx-auto"
+          style={{ maxWidth: "90vw" }}
+        >
           <video
             autoPlay
             loop
             muted
             playsInline
             className="w-full h-full object-cover"
-            src="/home-demo.mp4"
+            src="/home-demo.mov"
           />
           {/* Dark overlay */}
           <div className="absolute inset-0 bg-black/40" />
@@ -116,7 +119,6 @@ const HomePage = () => {
       {/* Projects Section - centered with more margin from hero */}
       <div className="flex-1 w-full px-8 pb-12 pt-16">
         <div className="max-w-6xl mx-auto space-y-6">
-
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 auto-rows-[180px]">
             {/* New Project Button */}
             <button
@@ -160,8 +162,9 @@ const HomePage = () => {
           <DialogHeader>
             <DialogTitle>Delete project?</DialogTitle>
             <DialogDescription>
-              This will permanently delete &quot;{projectToDelete?.title}&quot; and all
-              related scenes, clips, and assets. This action cannot be undone.
+              This will permanently delete &quot;{projectToDelete?.title}&quot;
+              and all related scenes, clips, and assets. This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -217,8 +220,8 @@ const ProjectPreviewCard = ({
 
   const previewImage =
     scenes && scenes.length > 0
-      ? scenes[0].imageUrl ?? project.referenceImageUrl ?? null
-      : project.referenceImageUrl ?? null;
+      ? (scenes[0].imageUrl ?? project.referenceImageUrl ?? null)
+      : (project.referenceImageUrl ?? null);
 
   const clipWithVideo =
     videoClips?.find(
