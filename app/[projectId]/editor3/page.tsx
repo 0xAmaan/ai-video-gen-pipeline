@@ -618,26 +618,26 @@ export default function Editor3Page() {
 
           {activePanel === 'text' && (
             <TextPanel
-              onSelectText={(preset) => console.log('Selected text preset:', preset)}
+              onSelectText={(preset) => {}}
             />
           )}
 
           {activePanel === 'captions' && (
             <CaptionsPanel
-              onSelectStyle={(style) => console.log('Selected caption style:', style)}
-              onGenerateCaptions={() => console.log('Generate captions clicked')}
+              onSelectStyle={(style) => {}}
+              onGenerateCaptions={() => {}}
             />
           )}
 
           {activePanel === 'transitions' && (
             <TransitionLibrary
-              onSelectTransition={(transition) => console.log('Selected transition:', transition)}
+              onSelectTransition={(transition) => {}}
             />
           )}
 
           {activePanel === 'effects' && (
             <FilterLibrary
-              onSelectFilter={(filter) => console.log('Selected filter:', filter)}
+              onSelectFilter={(filter) => {}}
             />
           )}
         </aside>
