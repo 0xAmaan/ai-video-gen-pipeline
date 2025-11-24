@@ -2,6 +2,8 @@ import type { MediaFile } from "./types/media";
 import type { TimelineTrack } from "./types/timeline";
 import type { SavedSoundsData, SoundEffect, SavedSound } from "./types/sounds";
 import type { TProject } from "./types/project";
+import type { Project } from "@/lib/editor/types";
+import { buildProjectFromTimeline } from "./project-sync";
 
 type TimelineKey = `${string}::${string}`;
 
@@ -23,6 +25,38 @@ const cloneMedia = (media: MediaFile): MediaFile => {
   return { ...media };
 };
 
+const cloneProjectDeep = (project: Project): Project => ({
+  ...project,
+  sequences: project.sequences.map((sequence) => ({
+    ...sequence,
+    tracks: sequence.tracks.map((track) => ({
+      ...track,
+      clips: track.clips.map((clip) => ({ ...clip })),
+    })),
+  })),
+  mediaAssets: { ...project.mediaAssets },
+});
+
+const persistProjectToConvex = async (
+  projectId: string,
+  project: Project,
+): Promise<void> => {
+  if (typeof fetch !== "function") return;
+  try {
+    await fetch("/api/editor-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        projectData: project,
+        sequenceNumber: Date.now(),
+      }),
+    });
+  } catch (error) {
+    console.warn("persistProjectToConvex failed", error);
+  }
+};
+
 export interface OpenCutSnapshot {
   project: TProject;
   mediaFiles: MediaFile[];
@@ -38,6 +72,10 @@ class InMemoryStorageService {
     sounds: [],
     lastModified: new Date().toISOString(),
   };
+  private convexSyncContexts = new Map<string, { convexProjectId: string; baseProject: Project }>();
+  private syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private syncingProjects = new Set<string>();
+  private pendingSyncs = new Set<string>();
 
   hydrateFromSnapshot(snapshot: OpenCutSnapshot) {
     this.reset(snapshot.project.id);
@@ -56,16 +94,31 @@ class InMemoryStorageService {
     this.timelines.set(key, clone(snapshot.timeline));
   }
 
+  configureConvexSync({
+    project,
+    convexProjectId,
+  }: {
+    project: Project;
+    convexProjectId: string;
+  }) {
+    this.convexSyncContexts.set(project.id, {
+      convexProjectId,
+      baseProject: cloneProjectDeep(project),
+    });
+  }
+
   reset(projectId?: string) {
     if (!projectId) {
       this.projects.clear();
       this.projectMedia.clear();
       this.timelines.clear();
+      this.convexSyncContexts.clear();
       return;
     }
 
     this.projects.delete(projectId);
     this.projectMedia.delete(projectId);
+    this.convexSyncContexts.delete(projectId);
     for (const key of Array.from(this.timelines.keys())) {
       if (key.startsWith(`${projectId}::`)) {
         this.timelines.delete(key);
@@ -75,6 +128,7 @@ class InMemoryStorageService {
 
   async saveProject({ project }: { project: TProject }): Promise<void> {
     this.projects.set(project.id, clone(project));
+    this.scheduleConvexSync(project.id);
   }
 
   async loadProject({ id }: { id: string }): Promise<TProject | null> {
@@ -155,6 +209,7 @@ class InMemoryStorageService {
     sceneId?: string;
   }): Promise<void> {
     this.timelines.set(timelineKey(projectId, sceneId), clone(tracks));
+    this.scheduleConvexSync(projectId);
   }
 
   async loadTimeline({
@@ -178,6 +233,67 @@ class InMemoryStorageService {
         this.timelines.delete(key);
       }
     }
+  }
+
+  private scheduleConvexSync(projectId: string) {
+    if (!this.convexSyncContexts.has(projectId)) {
+      return;
+    }
+    const timer = this.syncTimers.get(projectId);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    const handle = setTimeout(() => {
+      this.syncTimers.delete(projectId);
+      void this.performConvexSync(projectId);
+    }, 300);
+    this.syncTimers.set(projectId, handle);
+  }
+
+  private async performConvexSync(projectId: string): Promise<void> {
+    if (this.syncingProjects.has(projectId)) {
+      this.pendingSyncs.add(projectId);
+      return;
+    }
+    this.syncingProjects.add(projectId);
+    try {
+      await this.syncProjectNow(projectId);
+    } finally {
+      this.syncingProjects.delete(projectId);
+      if (this.pendingSyncs.has(projectId)) {
+        this.pendingSyncs.delete(projectId);
+        void this.performConvexSync(projectId);
+      }
+    }
+  }
+
+  private async syncProjectNow(projectId: string): Promise<void> {
+    const context = this.convexSyncContexts.get(projectId);
+    if (!context) {
+      return;
+    }
+
+    const projectMeta = await this.loadProject({ id: projectId });
+    if (!projectMeta) {
+      return;
+    }
+
+    const tracks = await this.loadTimeline({
+      projectId,
+      sceneId: projectMeta.currentSceneId,
+    });
+    if (!tracks) {
+      return;
+    }
+
+    const nextProject = buildProjectFromTimeline({
+      baseProject: context.baseProject,
+      timeline: tracks,
+      projectMeta,
+    });
+
+    await persistProjectToConvex(context.convexProjectId, nextProject);
+    context.baseProject = cloneProjectDeep(nextProject);
   }
 
   async clearAllData(): Promise<void> {

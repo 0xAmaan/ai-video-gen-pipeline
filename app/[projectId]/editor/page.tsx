@@ -47,6 +47,14 @@ const OpenCutEditorPage = () => {
     lastSignatureRef.current = null;
   }, [actions, projectId]);
 
+  useEffect(() => {
+    if (!adaptedProject || !projectId) return;
+    storageService.configureConvexSync({
+      project: adaptedProject.project,
+      convexProjectId: projectId,
+    });
+  }, [adaptedProject?.signature, projectId]);
+
   // Load project into store when data is ready
   useEffect(() => {
     if (!adaptedProject) return;
