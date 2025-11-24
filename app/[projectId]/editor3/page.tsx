@@ -127,10 +127,10 @@ export default function Editor3Page() {
 
     audioAssets.forEach((asset) => {
       generateWaveform(asset.url)
-        .then((waveform) => {
+        .then((waveformData) => {
           setMediaAssets((prev) => ({
             ...prev,
-            [asset.id]: { ...asset, waveform },
+            [asset.id]: { ...asset, waveform: waveformData.samples },
           }));
         })
         .catch((error) => {
