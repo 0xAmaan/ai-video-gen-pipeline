@@ -99,7 +99,7 @@ const HomePage = () => {
             muted
             playsInline
             className="w-full h-full object-cover"
-            src="/hero-demo.mov"
+            src="/hero-demo.mp4"
           />
           {/* Dark overlay */}
           <div className="absolute inset-0 bg-black/40" />
