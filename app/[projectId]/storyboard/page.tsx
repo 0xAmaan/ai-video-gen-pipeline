@@ -72,7 +72,7 @@ const StoryboardPage = () => {
   const projectProgress = useProjectProgress(projectId);
   const selectionsComplete = Boolean(projectProgress?.isSelectionComplete);
   const syncShotToLegacyScene = useSyncShotToLegacyScene();
-  const syncedShotIds = useRef<Set<string>>(new Set());
+  const syncedShotVersions = useRef<Map<string, string>>(new Map());
   const [isSyncing, setIsSyncing] = useState(false);
   const storyboardRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -708,6 +708,7 @@ type SceneRequestPayload = {
         sceneId: Id<"projectScenes">;
         shotId: Id<"sceneShots">;
         selectedImageId: Id<"shotImages">;
+        versionKey: string;
       }> = [];
 
       // Collect all shots that need syncing
@@ -718,15 +719,26 @@ type SceneRequestPayload = {
           }
 
           const shotId = shotWrapper.shot._id;
-          if (syncedShotIds.current.has(shotId)) {
-            return;
-          }
+          const versionKey = [
+            shotWrapper.shot.updatedAt ?? "",
+            shotWrapper.shot.description ?? "",
+            shotWrapper.shot.initialPrompt ?? "",
+            JSON.stringify(shotWrapper.shot.referencedAssets ?? []),
+            shotWrapper.selectedImage?._id ?? "",
+            shotWrapper.selectedImage?.updatedAt ?? "",
+            shotWrapper.selectedImage?.imageUrl ?? "",
+            JSON.stringify(shotWrapper.selectedImage?.usedAssets ?? []),
+          ].join("|");
+
+          const previousVersion = syncedShotVersions.current.get(shotId);
+          if (previousVersion === versionKey) return;
 
           const syncItem = {
             projectId,
             sceneId: row.scene._id,
             shotId,
             selectedImageId: shotWrapper.selectedImage._id,
+            versionKey,
           };
 
           shotsToSync.push(syncItem);
@@ -744,11 +756,15 @@ type SceneRequestPayload = {
         await Promise.all(
           shotsToSync.map(async (syncData) => {
             try {
-              syncedShotIds.current.add(syncData.shotId);
-              await syncShotToLegacyScene(syncData);
+              const { versionKey, ...syncPayload } = syncData;
+              await syncShotToLegacyScene(syncPayload);
+              syncedShotVersions.current.set(
+                syncData.shotId,
+                syncData.versionKey,
+              );
             } catch (error) {
               console.error("[StoryboardPage] Shot sync failed:", error);
-              syncedShotIds.current.delete(syncData.shotId);
+              syncedShotVersions.current.delete(syncData.shotId);
               throw error;
             }
           })

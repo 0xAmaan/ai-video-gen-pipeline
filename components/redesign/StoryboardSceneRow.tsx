@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RefreshCw } from "lucide-react";
 
 const getLegacySceneId = (shotId?: Id<"sceneShots">) => {
   if (!shotId) {
@@ -158,8 +159,23 @@ export const StoryboardSceneRow = ({
                         className="w-full h-auto bg-black"
                         playsInline
                       />
-                      <div className="bg-gray-900 px-3 py-2">
+                      <div className="bg-gray-900 px-3 py-2 flex items-center justify-between gap-2">
                         <p className="text-xs text-green-400">Shot {shotWrapper.shot.shotNumber} - Complete</p>
+                        <button
+                          type="button"
+                          className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                          title="Regenerate video"
+                          aria-label={`Regenerate video for shot ${shotWrapper.shot.shotNumber}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            if (onRetryClip && clip) {
+                              onRetryClip(clip._id, clip.sceneId);
+                            }
+                          }}
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   )}
