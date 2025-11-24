@@ -326,7 +326,7 @@ export default function Editor3Page() {
 
       // Insert duplicate and sort by start position
       newClips.push(duplicate);
-      newClips.sort((a, b) => a.start - b.start);
+      newClips.sort((a: Clip, b: Clip) => a.start - b.start);
 
       return { ...track, clips: newClips };
     });
@@ -689,7 +689,7 @@ export default function Editor3Page() {
                 onEnded={() => setIsPlaying(false)}
                 onError={(error) => {
                   console.error("Video player error:", error);
-                  console.error("Current sequence clips:", selectedSequence?.tracks[0]?.clips.map(c => ({
+                  console.error("Current sequence clips:", selectedSequence?.tracks[0]?.clips.map((c: Clip) => ({
                     id: c.id,
                     mediaId: c.mediaId,
                     url: mediaAssets[c.mediaId]?.url
@@ -697,7 +697,7 @@ export default function Editor3Page() {
 
                   // Find which clip might be failing
                   const currentClip = selectedSequence?.tracks[0]?.clips.find(
-                    clip => currentTime >= clip.start && currentTime < clip.start + clip.duration
+                    (clip: Clip) => currentTime >= clip.start && currentTime < clip.start + clip.duration
                   );
 
                   const errorDetails = currentClip
@@ -744,18 +744,20 @@ export default function Editor3Page() {
                 timelineSectionRef={timelineSectionRef}
                 onPlayPause={() => setIsPlaying(!isPlaying)}
                 onSeek={(time) => setCurrentTime(time)}
-                onClipMove={(updates) => {
+                onClipMove={(updates: { clipId: string; newStart: number; newTrackId?: string }[]) => {
                   console.log('Clips moved:', updates)
 
                   if (!selectedSequence) return;
 
                   // Create a map of updates for quick lookup
-                  const updateMap = new Map(updates.map(u => [u.clipId, u]));
+                  const updateMap = new Map<string, { clipId: string; newStart: number; newTrackId?: string }>(
+                    updates.map((u) => [u.clipId, u])
+                  );
 
                   // Handle track changes - rebuild all track clip arrays
-                  const updatedTracks = selectedSequence.tracks.map(track => {
+                  const updatedTracks = selectedSequence.tracks.map((track: Sequence["tracks"][number]) => {
                     // Get all clips for this track (both existing and newly moved)
-                    let trackClips = track.clips.filter(clip => {
+                    let trackClips = track.clips.filter((clip: Clip) => {
                       const update = updateMap.get(clip.id);
                       // Keep clip if: (1) no update, or (2) update exists but no track change, or (3) update moves it TO this track
                       if (!update) return true;
@@ -764,9 +766,9 @@ export default function Editor3Page() {
                     });
 
                     // Check if any clips were moved FROM other tracks TO this track
-                    selectedSequence.tracks.forEach(otherTrack => {
+                    selectedSequence.tracks.forEach((otherTrack: Sequence["tracks"][number]) => {
                       if (otherTrack.id === track.id) return; // Skip same track
-                      otherTrack.clips.forEach(clip => {
+                      otherTrack.clips.forEach((clip: Clip) => {
                         const update = updateMap.get(clip.id);
                         if (update?.newTrackId === track.id) {
                           // This clip was moved TO this track
@@ -777,13 +779,13 @@ export default function Editor3Page() {
 
                     // Apply position updates and filter out moved clips
                     trackClips = trackClips
-                      .filter(clip => {
+                      .filter((clip: Clip) => {
                         const update = updateMap.get(clip.id);
                         // Remove if moved to different track
                         if (update?.newTrackId && update.newTrackId !== track.id) return false;
                         return true;
                       })
-                      .map(clip => {
+                      .map((clip: Clip) => {
                         const update = updateMap.get(clip.id);
                         if (update) {
                           return {
@@ -794,7 +796,7 @@ export default function Editor3Page() {
                         }
                         return clip;
                       })
-                      .sort((a, b) => a.start - b.start);
+                      .sort((a: Clip, b: Clip) => a.start - b.start);
 
                     return { ...track, clips: trackClips };
                   });
@@ -891,7 +893,7 @@ export default function Editor3Page() {
                   };
 
                   // Update all tracks - add duplicate to the same track and apply ripple insert
-                  const updatedTracks = selectedSequence.tracks.map(track => {
+                  const updatedTracks = selectedSequence.tracks.map((track: Sequence["tracks"][number]) => {
                     if (track.id !== trackWithClip.id) {
                       return track;
                     }
@@ -904,13 +906,13 @@ export default function Editor3Page() {
                     });
 
                     newClips.push(duplicate);
-                    newClips.sort((a, b) => a.start - b.start);
+                    newClips.sort((a: Clip, b: Clip) => a.start - b.start);
 
                     return { ...track, clips: newClips };
                   });
 
                   setModifiedTracks(updatedTracks);
-                  const allClips = updatedTracks.flatMap(t => t.clips);
+                  const allClips = updatedTracks.flatMap((t) => t.clips);
                   setModifiedClips(allClips);
                   setSelectedTimelineClipIds([duplicate.id]);
                   console.log('Duplicated clip from context menu:', clipId, '→', duplicate.id);
