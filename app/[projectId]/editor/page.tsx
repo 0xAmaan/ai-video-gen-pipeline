@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import OpenCutEditorApp from "@opencut/app/editor/[project_id]/page";
+import { OpenCutEditorShell } from "@/components/editor/OpenCutEditorShell";
 import { useProjectData } from "@/app/archive/[projectId]/_components/useProjectData";
 import { adaptConvexProjectToStandalone } from "@/lib/editor/convex-adapter";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buildOpenCutSnapshot } from "@/lib/opencut/snapshot";
-import { storageService } from "@opencut/lib/storage/storage-service";
+import { storageService } from "@/lib/opencut/storage-service";
 
 type SnapshotState = "idle" | "converting" | "ready" | "error";
 
@@ -172,11 +172,7 @@ const OpenCutEditorPage = () => {
     return null;
   }
 
-  return (
-    <div className="h-screen" key={snapshotVersion}>
-      <OpenCutEditorApp />
-    </div>
-  );
+  return <OpenCutEditorShell projectId={projectId} key={snapshotVersion} />;
 };
 
 export default OpenCutEditorPage;
