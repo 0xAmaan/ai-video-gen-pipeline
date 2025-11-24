@@ -857,6 +857,8 @@ type SceneRequestPayload = {
             projectId={projectId}
             storyboardLocked={false}
             storyboardLockMessage={lockMessage}
+            audioLocked={projectProgress?.projectStatus !== "video_generated"}
+            audioLockMessage="Generate video clips before soundtracking"
             editorLocked={projectProgress?.projectStatus !== "video_generated"}
             editorLockMessage="Generate video clips before editing"
           />
@@ -906,6 +908,19 @@ type SceneRequestPayload = {
                   return `Generate ${totalCount - completedCount} Video${totalCount - completedCount === 1 ? "" : "s"}`;
                 }
               })()}
+            </Button>
+            <Button
+              variant="outline"
+              className="border-emerald-500/60 text-emerald-200 hover:bg-emerald-900/40"
+              disabled={projectProgress?.projectStatus !== "video_generated"}
+              onClick={() => router.push(`/${projectId}/audio`)}
+              title={
+                projectProgress?.projectStatus !== "video_generated"
+                  ? "Finish video generation to build a soundtrack"
+                  : "Move to soundtrack generation"
+              }
+            >
+              Next: Audio
             </Button>
           </div>
         </div>

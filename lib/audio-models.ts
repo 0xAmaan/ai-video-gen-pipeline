@@ -54,10 +54,7 @@ export interface AudioModel {
   docsUrl?: string;
 }
 
-const withEnvOverride = (
-  value: string | undefined,
-  fallback: string,
-) =>
+const withEnvOverride = (value: string | undefined, fallback: string) =>
   value && value.trim().length > 0 ? value.trim() : fallback;
 
 const MUSICGEN_DEFAULT_MODEL =
@@ -67,10 +64,7 @@ const RIFFUSION_DEFAULT_MODEL =
   "riffusion/riffusion:8cf61ea6c56afd61d8f5b9ffd14d7c216c0a93844ce2d82ac1c9ecc9c7f24e05";
 const BARK_DEFAULT_MODEL =
   "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787";
-const MINIMAX_SPEECH_DEFAULT_MODEL =
-  "minimax/speech-02-hd:fdd081f807e655246ef42adbcb3ee9334e7fdc710428684771f90d69992cabb3";
-const MINIMAX_SPEECH_TURBO_MODEL =
-  "minimax/speech-02-turbo:e9f9a5c7f0f2e0f9f5c7f0f2e0f9f5c7f0f2e0f9f5c7f0f2e0f9f5c7f0f2e0f9";
+const MINIMAX_SPEECH_DEFAULT_MODEL = "minimax/speech-02-turbo";
 
 export const AUDIO_MODELS: Record<string, AudioModel> = {
   // --- Music generation (Replicate) ---
@@ -118,11 +112,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     kind: "music_generation",
     vendor: "replicate",
     capabilities: ["music-generation", "prompt-audio"],
-    bestFor: [
-      "cinematic underscore",
-      "ad jingles",
-      "custom background loops",
-    ],
+    bestFor: ["cinematic underscore", "ad jingles", "custom background loops"],
     estimatedCost: 0.12,
     costUnit: "per 20s clip",
     latencySeconds: 15,
@@ -163,10 +153,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     docsUrl: "https://replicate.com/riffusion/riffusion",
   },
   "bark-v0": {
-    id: withEnvOverride(
-      process.env.REPLICATE_BARK_MODEL,
-      BARK_DEFAULT_MODEL,
-    ),
+    id: withEnvOverride(process.env.REPLICATE_BARK_MODEL, BARK_DEFAULT_MODEL),
     name: "Bark (Music & Speech)",
     kind: "music_generation",
     vendor: "replicate",
@@ -237,7 +224,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
         process.env.REPLICATE_MINIMAX_TTS_MODEL_ID,
       MINIMAX_SPEECH_DEFAULT_MODEL,
     ),
-    name: "MiniMax Speech 02 HD",
+    name: "MiniMax Speech 02 Turbo",
     kind: "voice_synthesis",
     vendor: "replicate",
     capabilities: ["voice-cloning", "emotion-control"],
@@ -249,7 +236,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     estimatedCost: 0.012,
     costUnit: "per 1K characters",
     latencySeconds: 6,
-    outputFormats: ["wav"],
+    outputFormats: ["wav", "mp3"],
     defaultParams: {
       sample_rate: 44100,
       audio_format: "wav",
@@ -257,13 +244,13 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
       channel: "mono",
     },
     notes:
-      "Current production narrator. Runs on Replicate using MiniMax Speech HD for neutral English voices.",
-    docsUrl: "https://replicate.com/minimax/speech-02-hd",
+      "Current production narrator. Runs on Replicate using MiniMax Speech Turbo for neutral English voices.",
+    docsUrl: "https://replicate.com/minimax/speech-02-turbo",
   },
   "replicate-minimax-turbo": {
     id: withEnvOverride(
       process.env.REPLICATE_MINIMAX_TURBO_MODEL,
-      MINIMAX_SPEECH_TURBO_MODEL,
+      MINIMAX_SPEECH_DEFAULT_MODEL,
     ),
     name: "MiniMax Speech 02 Turbo",
     kind: "voice_synthesis",
@@ -289,10 +276,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     docsUrl: "https://replicate.com/minimax/speech-02-turbo",
   },
   "bark-voice": {
-    id: withEnvOverride(
-      process.env.REPLICATE_BARK_MODEL,
-      BARK_DEFAULT_MODEL,
-    ),
+    id: withEnvOverride(process.env.REPLICATE_BARK_MODEL, BARK_DEFAULT_MODEL),
     name: "Bark Hybrid Voice",
     kind: "voice_synthesis",
     vendor: "replicate",
@@ -335,8 +319,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     },
     notes:
       "Powered by Freesound.org community uploads. Requires FREESOUND_API_KEY and respects Creative Commons licensing.",
-    docsUrl:
-      "https://freesound.org/docs/api/resources_apiv2.html#search-text",
+    docsUrl: "https://freesound.org/docs/api/resources_apiv2.html#search-text",
   },
   "freesound-sfx-library": {
     id: "freesound/sound-effects",
@@ -355,10 +338,8 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     },
     notes:
       "Same Freesound integration but tuned for SFX tagging and shorter clips.",
-    docsUrl:
-      "https://freesound.org/docs/api/resources_apiv2.html#search-text",
+    docsUrl: "https://freesound.org/docs/api/resources_apiv2.html#search-text",
   },
-
 };
 
 export const DEFAULT_MUSIC_MODEL = "lyria-2";
@@ -368,15 +349,11 @@ export function getAudioModel(key: string): AudioModel {
   return AUDIO_MODELS[key] || AUDIO_MODELS[DEFAULT_MUSIC_MODEL];
 }
 
-export function getModelsByKind(
-  kind: AudioModelKind,
-): AudioModel[] {
+export function getModelsByKind(kind: AudioModelKind): AudioModel[] {
   return Object.values(AUDIO_MODELS).filter((model) => model.kind === kind);
 }
 
-export function getModelsByVendor(
-  vendor: AudioVendor,
-): AudioModel[] {
+export function getModelsByVendor(vendor: AudioVendor): AudioModel[] {
   return Object.values(AUDIO_MODELS).filter((model) => model.vendor === vendor);
 }
 
@@ -413,9 +390,7 @@ export interface AudioTrackResult {
 
 export interface MusicGenerationAdapter extends BaseAudioProviderAdapter {
   kind: "music_generation";
-  generateTrack(
-    request: MusicGenerationRequest,
-  ): Promise<AudioTrackResult>;
+  generateTrack(request: MusicGenerationRequest): Promise<AudioTrackResult>;
 }
 
 export interface VoiceSynthesisRequest {
