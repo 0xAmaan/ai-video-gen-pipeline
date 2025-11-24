@@ -125,6 +125,11 @@ export class VideoLoader {
       return decodedExact.clone();
     }
 
+    const toleranceFrame = this.getNearestFrameWithinTolerance(timeSeconds, 0.05);
+    if (toleranceFrame) {
+      return toleranceFrame;
+    }
+
     // Fall back to nearest available frame
     const nearest = this.cache.findNearest(timeSeconds);
     if (nearest) {
@@ -384,5 +389,26 @@ export class VideoLoader {
       console.error("Asset:", this.asset);
       throw error;
     }
+  }
+
+  private getNearestFrameWithinTolerance(
+    timeSeconds: number,
+    toleranceSeconds: number,
+  ): VideoFrame | null {
+    let nearest: VideoFrame | null = null;
+    let smallestDelta = Infinity;
+
+    for (const [key, frame] of this.cache.entries()) {
+      const frameTime = Number.parseFloat(key);
+      if (!Number.isFinite(frameTime)) continue;
+
+      const delta = Math.abs(frameTime - timeSeconds);
+      if (delta <= toleranceSeconds && delta < smallestDelta) {
+        smallestDelta = delta;
+        nearest = frame;
+      }
+    }
+
+    return nearest ? nearest.clone() : null;
   }
 }

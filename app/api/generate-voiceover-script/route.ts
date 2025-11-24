@@ -81,11 +81,20 @@ export async function POST(req: Request) {
       return apiError("Project not found", 404);
     }
 
-    const scenes = (projectData.scenes ?? []).map((scene) => ({
-      sceneNumber: scene.sceneNumber,
-      description: scene.description,
-      duration: scene.duration,
-    }));
+    const scenes = (projectData.scenes ?? []).map((scene) => {
+      const safeScene = scene as {
+        sceneNumber: number;
+        description?: string | null;
+        title?: string | null;
+        duration?: number | null;
+      };
+      return {
+        sceneNumber: safeScene.sceneNumber,
+        description: safeScene.description ?? "",
+        title: safeScene.title ?? null,
+        duration: safeScene.duration ?? 0,
+      };
+    });
 
     const hasOpenAI = !!process.env.OPENAI_API_KEY;
     const prompt = buildPrompt({
@@ -110,6 +119,7 @@ export async function POST(req: Request) {
         scenes: scenes.map((scene) => ({
           sceneNumber: scene.sceneNumber,
           description: scene.description,
+          title: scene.title,
           durationSeconds: scene.duration,
         })),
       });
@@ -127,6 +137,7 @@ export async function POST(req: Request) {
         "You are an expert creative copywriter for video ads. Deliver scripts that sound human, confident, and concise.",
       prompt,
       temperature: 0.8,
+      maxOutputTokens: 260,
     });
 
     const script = stripVoiceoverLabel(result.text.trim());

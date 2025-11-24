@@ -1,10 +1,6 @@
 "use client";
 
-import type {
-  ElementJSON,
-  ProjectJSON,
-  TrackJSON,
-} from "@twick/timeline/dist/types";
+import type { ElementJSON, ProjectJSON, TrackJSON } from "@twick/timeline/dist/types";
 import type { Project, Track, Clip, MediaAssetMeta } from "./types";
 
 // Guardrail: ensure clips only live on compatible tracks (audio on audio tracks, everything else on video/overlay)
@@ -25,9 +21,8 @@ const mapTrackType = (type?: string): Track["kind"] => {
 
 export const projectToTimelineJSON = (project: Project): ProjectJSON => {
   const activeSequence =
-    project.sequences.find(
-      (seq) => seq.id === project.settings.activeSequenceId,
-    ) ?? project.sequences[0];
+    project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ??
+    project.sequences[0];
   const assets = project.mediaAssets;
 
   const friendlyName = (track: Track) => {
@@ -42,9 +37,7 @@ export const projectToTimelineJSON = (project: Project): ProjectJSON => {
     id: track.id,
     name: friendlyName(track),
     type: track.kind,
-    elements: track.clips.map((clip) =>
-      clipToElement(clip, assets[clip.mediaId]),
-    ),
+    elements: track.clips.map((clip) => clipToElement(clip, assets[clip.mediaId])),
   }));
 
   return {
@@ -60,9 +53,8 @@ export const timelineToProject = (
 ): Project => {
   const project: Project = structuredClone(base);
   const sequence =
-    project.sequences.find(
-      (seq) => seq.id === project.settings.activeSequenceId,
-    ) ?? project.sequences[0];
+    project.sequences.find((seq) => seq.id === project.settings.activeSequenceId) ??
+    project.sequences[0];
   const timelineTracks = timeline.tracks ?? [];
 
   const convertedTracks = timelineTracks.map((track, index) => ({
@@ -74,12 +66,10 @@ export const timelineToProject = (
     muted: false,
     solo: false,
     volume: 1,
-    zIndex: index,
-    height: 64,
+    zIndex: track.type === "video" ? Math.max(0, timelineTracks.length - index) : 0,
+    height: track.type === "audio" ? 80 : 120,
     visible: true,
-    clips: track.elements.map((element) =>
-      elementToClip(element, track.id, assets),
-    ),
+    clips: track.elements.map((element) => elementToClip(element, track.id, assets)),
   }));
 
   // Validate track/clip compatibility before accepting Twick state
@@ -103,10 +93,7 @@ export const timelineToProject = (
   sequence.tracks = convertedTracks;
 
   sequence.duration = sequence.tracks.reduce((max, track) => {
-    const end = track.clips.reduce(
-      (clipMax, clip) => Math.max(clipMax, clip.start + clip.duration),
-      0,
-    );
+    const end = track.clips.reduce((clipMax, clip) => Math.max(clipMax, clip.start + clip.duration), 0);
     return Math.max(max, end);
   }, 0);
 
@@ -156,6 +143,7 @@ const clipToElement = (clip: Clip, asset?: MediaAssetMeta): ElementJSON => {
       trimEnd,
       opacity,
       volume,
+      blendMode: clip.blendMode ?? "normal",
       // Timeline preview data (matching legacy editor)
       thumbnails: asset?.thumbnails ?? [],
       thumbnailCount: asset?.thumbnailCount ?? 0,
@@ -197,7 +185,6 @@ const elementToClip = (
       : element.type === "image"
         ? "image"
         : "video";
-
   // Log warning if values were corrected
   if (
     !Number.isFinite(element.s) ||
@@ -214,7 +201,6 @@ const elementToClip = (
       },
     );
   }
-
   return {
     id: element.id,
     mediaId: assetId,
@@ -226,10 +212,10 @@ const elementToClip = (
     trimEnd,
     opacity,
     volume,
+    blendMode: ((element as any)?.props?.blendMode as Clip["blendMode"]) ?? "normal",
     effects: [],
     transitions: [],
     speedCurve: null,
     preservePitch: true,
-    blendMode: "normal",
   };
 };

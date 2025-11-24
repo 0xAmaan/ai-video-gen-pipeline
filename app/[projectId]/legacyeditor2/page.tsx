@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import OpenCutEditorApp from "@opencut/app/editor/[project_id]/page";
+import { OpenCutEditorShell } from "@/components/editor/OpenCutEditorShell";
 import { useProjectData } from "@/app/archive/[projectId]/_components/useProjectData";
 import { adaptConvexProjectToStandalone } from "@/lib/editor/convex-adapter";
+import { useProjectStore } from "@/lib/editor/core/project-store";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buildOpenCutSnapshot } from "@/lib/opencut/snapshot";
-import { storageService } from "@opencut/lib/storage/storage-service";
+import { storageService } from "@/lib/opencut/storage-service";
 
 type SnapshotState = "idle" | "converting" | "ready" | "error";
 
@@ -19,6 +20,8 @@ const OpenCutEditorPage = () => {
   const { project, scenes, clips, audioAssets, isLoading } = useProjectData(
     convexProjectId,
   );
+  const actions = useProjectStore((state) => state.actions);
+  const lastSignatureRef = useRef<string | null>(null);
 
   const adaptedProject = useMemo(() => {
     if (!project) return null;
@@ -37,6 +40,20 @@ const OpenCutEditorPage = () => {
     { completed: 0, total: 0 },
   );
   const [retryNonce, setRetryNonce] = useState(0);
+
+  // Reset project store when projectId changes
+  useEffect(() => {
+    actions.reset();
+    lastSignatureRef.current = null;
+  }, [actions, projectId]);
+
+  // Load project into store when data is ready
+  useEffect(() => {
+    if (!adaptedProject) return;
+    if (lastSignatureRef.current === adaptedProject.signature) return;
+    void actions.loadProject(adaptedProject.project, { persist: false });
+    lastSignatureRef.current = adaptedProject.signature;
+  }, [adaptedProject, actions]);
 
   useEffect(() => {
     if (!adaptedProject) return;
@@ -172,11 +189,7 @@ const OpenCutEditorPage = () => {
     return null;
   }
 
-  return (
-    <div className="h-screen" key={snapshotVersion}>
-      <OpenCutEditorApp />
-    </div>
-  );
+  return <OpenCutEditorShell projectId={projectId} key={snapshotVersion} />;
 };
 
 export default OpenCutEditorPage;
