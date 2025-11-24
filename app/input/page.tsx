@@ -13,7 +13,14 @@ import {
 import { toast } from "sonner";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -56,8 +63,11 @@ const RawInputPage = () => {
   const [isUploadingToFolder, setIsUploadingToFolder] = useState(false);
   const [folderDeleteConfirmId, setFolderDeleteConfirmId] = useState<string | null>(null);
   const [isModalDragging, setIsModalDragging] = useState(false);
+  const [isDropZoneDragging, setIsDropZoneDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputId = "brand-folder-file-input";
   const modalDragCounter = useRef(0);
+  const dropZoneDragCounter = useRef(0);
   const storageWarningShownRef = useRef(false);
   const router = useRouter();
   const { userId, isSignedIn } = useAuth();
@@ -189,7 +199,11 @@ const RawInputPage = () => {
   };
 
   const handleFilesForFolder = useCallback(
-    (folderId: string, fileList: FileList | null) => {
+    (
+      folderId: string,
+      fileList: FileList | null,
+      options?: { selectAdded?: boolean },
+    ) => {
       if (!folderId) return;
       if (!fileList?.length) return;
       const imageFiles = Array.from(fileList).filter((file) =>
@@ -219,6 +233,13 @@ const RawInputPage = () => {
             if (!folderModalOpen || activeFolderId !== folderId) return prev;
             return [...prev, nextAsset.id];
           });
+          if (options?.selectAdded) {
+            setSelectedAssetIds((prev) => {
+              const combined = [...prev, nextAsset.id];
+              const unique = Array.from(new Set(combined));
+              return unique.slice(0, MAX_ASSETS);
+            });
+          }
         };
         reader.readAsDataURL(file);
       });
@@ -231,6 +252,25 @@ const RawInputPage = () => {
     if (!activeFolderId) return;
     handleFilesForFolder(activeFolderId, event.target.files);
     event.target.value = "";
+  };
+
+  const handleFileButtonClick = () => {
+    if (!activeFolderId || isUploadingToFolder) return;
+    const input = fileInputRef.current;
+    if (!input) return;
+
+    input.value = "";
+
+    if (typeof input.showPicker === "function") {
+      try {
+        input.showPicker();
+        return;
+      } catch (error) {
+        console.debug("file input showPicker failed, falling back to click", error);
+      }
+    }
+
+    input.click();
   };
 
   const handleToggleSelectionInFolder = (assetId: string) => {
@@ -390,6 +430,58 @@ const RawInputPage = () => {
     }
   };
 
+  const uploadDisabled = !activeFolderId || isUploadingToFolder;
+
+  const ensureFirstFolderId = useCallback(() => {
+    const existing = folders[0];
+    if (existing) return existing.id;
+    const newFolder: BrandFolder = {
+      id: createDraftId(),
+      name: DEFAULT_FOLDER_NAME,
+      createdAt: Date.now(),
+      assets: [],
+    };
+    setFolders((prev) => [newFolder, ...prev]);
+    return newFolder.id;
+  }, [folders]);
+
+  const handleDropToFirstFolder = useCallback(
+    (files: FileList | null) => {
+      if (!files?.length) return;
+      const targetFolderId = ensureFirstFolderId();
+      setActiveFolderId((prev) => prev ?? targetFolderId);
+      handleFilesForFolder(targetFolderId, files, { selectAdded: true });
+    },
+    [ensureFirstFolderId, handleFilesForFolder],
+  );
+
+  const handleDropZoneDragEnter = (event: React.DragEvent) => {
+    event.preventDefault();
+    dropZoneDragCounter.current += 1;
+    setIsDropZoneDragging(true);
+  };
+
+  const handleDropZoneDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDropZoneDragging(true);
+  };
+
+  const handleDropZoneDragLeave = (event: React.DragEvent) => {
+    event.preventDefault();
+    dropZoneDragCounter.current = Math.max(0, dropZoneDragCounter.current - 1);
+    if (dropZoneDragCounter.current === 0) {
+      setIsDropZoneDragging(false);
+    }
+  };
+
+  const handleDropZoneDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    dropZoneDragCounter.current = 0;
+    setIsDropZoneDragging(false);
+    handleDropToFirstFolder(event.dataTransfer.files);
+  };
+
   if (!isSignedIn) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-[#0a0a0a]">
@@ -496,9 +588,23 @@ const RawInputPage = () => {
               })}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-dashed border-white/12 bg-black/30 p-4">
+            <div
+              className={cn(
+                "mt-5 rounded-2xl border border-dashed border-white/12 bg-black/30 p-4",
+                isDropZoneDragging && "border-white/30 bg-white/[0.04]",
+              )}
+              onDragEnter={handleDropZoneDragEnter}
+              onDragOver={handleDropZoneDragOver}
+              onDragLeave={handleDropZoneDragLeave}
+              onDrop={handleDropZoneDrop}
+            >
               {selectedAssets.length === 0 ? (
-                <div className="text-sm text-gray-500">
+                <div
+                  className={cn(
+                    "text-sm text-gray-500 rounded-xl border border-dashed border-transparent p-3 transition",
+                    isDropZoneDragging && "border-white/20 bg-white/[0.03]",
+                  )}
+                >
                   Pick images inside a folder to attach them to this project. You can mix
                   assets from different folders (up to {MAX_ASSETS} total).
                 </div>
@@ -587,9 +693,9 @@ const RawInputPage = () => {
                   </DialogTitle>
                 </div>
               </div>
-              <p className="text-sm text-gray-400">
+              <DialogDescription className="text-sm text-gray-400">
                 Drag brand images in, or upload, then select which to use for this project.
-              </p>
+              </DialogDescription>
             </DialogHeader>
 
               <div className="space-y-4">
@@ -609,24 +715,33 @@ const RawInputPage = () => {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!activeFolderId || isUploadingToFolder}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border-white/30 text-white hover:bg-white/10"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload
-                    </Button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={handleModalFileInputChange}
-                    />
+                    <div className="relative">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={uploadDisabled}
+                        onClick={handleFileButtonClick}
+                        aria-controls={fileInputId}
+                        className="border-white/30 text-white hover:bg-white/10"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload
+                      </Button>
+                      <input
+                        ref={fileInputRef}
+                        id={fileInputId}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        disabled={uploadDisabled}
+                        className={cn(
+                          "absolute inset-0 h-full w-full cursor-pointer opacity-0",
+                          uploadDisabled && "pointer-events-none",
+                        )}
+                        aria-label="Upload brand images into this folder"
+                        onChange={handleModalFileInputChange}
+                      />
+                    </div>
                   </div>
                 </div>
 
