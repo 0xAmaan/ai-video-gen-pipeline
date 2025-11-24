@@ -65,10 +65,6 @@ export const VideoPlayer = ({
               // Mark this as an internal time update to prevent seek loop
               isInternalTimeUpdate.current = true;
               onTimeUpdate?.(time);
-              // Reset flag after React processes the state update
-              setTimeout(() => {
-                isInternalTimeUpdate.current = false;
-              }, 0);
             },
             onEnded: () => {
               onEnded?.();
@@ -112,6 +108,8 @@ export const VideoPlayer = ({
     // CRITICAL: Ignore time updates from internal playback to prevent feedback loop
     // Only seek on user-initiated changes (timeline scrubbing, clicking, etc.)
     if (isInternalTimeUpdate.current) {
+      isInternalTimeUpdate.current = false; // Reset flag after checking
+      lastSeekTimeRef.current = currentTime; // Update ref to prevent drift
       return;
     }
 

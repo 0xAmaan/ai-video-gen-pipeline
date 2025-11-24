@@ -305,6 +305,14 @@ export class AudioMixer {
    * Seek to specific time
    */
   async seek(time: number): Promise<void> {
+    console.log(
+      "[AudioMixer] seek() called at time",
+      time,
+      "isPlaying:",
+      this.isPlaying,
+    );
+    console.trace("[AudioMixer] seek() call stack:");
+
     // CRITICAL FIX: Don't modify isPlaying state during seek
     // Only stop and restart sources if we're currently playing
     const wasPlaying = this.isPlaying;
@@ -316,7 +324,10 @@ export class AudioMixer {
     // Only restart playback if we were playing before the seek
     // This preserves the play/pause state across seeks
     if (wasPlaying) {
+      console.log("[AudioMixer] Restarting playback after seek");
       await this.play(time);
+    } else {
+      console.log("[AudioMixer] Not restarting playback (was paused)");
     }
   }
 
@@ -332,7 +343,10 @@ export class AudioMixer {
     for (const [clipId, source] of this.audioSources.entries()) {
       try {
         console.log("[AudioMixer] Stopping source for clip:", clipId);
+        // CRITICAL FIX: Stop the source AND disconnect from audio graph
+        // Just calling stop() doesn't immediately silence buffered audio
         source.stop();
+        source.disconnect();
       } catch (error) {
         console.warn(
           "[AudioMixer] Error stopping source for clip:",
