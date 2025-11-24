@@ -35,6 +35,7 @@ export const TimelineCanvas = ({
   onSeek,
   onClipSelect,
   onClipMove,
+  onClipTrim,
   onClipAdd,
   zoomLevel,
   pixelsPerSecond,
@@ -258,6 +259,7 @@ export const TimelineCanvas = ({
             dropZone={dropZone}
             onClipSelect={onClipSelect}
             onClipMove={onClipMove}
+            onClipTrim={onClipTrim}
             onSnapGuideShow={setSnapGuidePosition}
             onDropZoneChange={setDropZone}
           />

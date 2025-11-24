@@ -38,6 +38,9 @@ export async function POST(req: Request) {
     }
     const supportsAudio = Boolean(modelConfig.supportsAudio);
     const shouldGenerateAudio = supportsAudio ? Boolean(generateAudio) : false;
+    const isVeo31 =
+      modelKey.includes("google/veo-3.1") || modelKey.includes("google/veo-3.1-fast");
+    const isVeoModel = modelKey.includes("google/veo");
 
     console.log(`Using video model: ${modelConfig.name} (${modelKey})`);
 
@@ -69,7 +72,17 @@ export async function POST(req: Request) {
     }
 
     // Add Google Veo specific parameters
-    if (modelKey.includes("google/veo")) {
+    if (isVeo31) {
+      // Force widescreen for Veo 3.1 clips
+      input.aspect_ratio = "16:9";
+      if (supportsAudio) {
+        input.generate_audio = shouldGenerateAudio;
+      }
+      if (!modelKey.includes("fast")) {
+        input.negative_prompt =
+          "blur, distortion, jitter, artifacts, low quality";
+      }
+    } else if (isVeoModel) {
       input.aspect_ratio = "16:9";
       if (supportsAudio) {
         input.generate_audio = shouldGenerateAudio;

@@ -24,21 +24,29 @@
     ],
     "paths": {
       "@/*": [
-        "./*",
-        "./external/OpenCut/apps/web/src/*"
-      ],
-      "@opencut/lib/storage/storage-service": [
-        "./lib/opencut/storage-service.ts"
-      ],
-      "@opencut/*": [
-        "./external/OpenCut/apps/web/src/*"
+        "./*"
+        // COMMENTED OUT: OpenCut dependency removed
+        // "./external/OpenCut/apps/web/src/*"
       ]
+      // COMMENTED OUT: OpenCut dependencies removed
+      // "@opencut/lib/storage/storage-service": [
+      //   "./lib/opencut/storage-service.ts"
+      // ],
+      // "@opencut/*": [
+      //   "./external/OpenCut/apps/web/src/*"
+      // ]
     }
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "convex/**/*.ts",
+    "workers/**/*.ts",
     "**/*.mts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
@@ -46,6 +54,10 @@
   "exclude": [
     "node_modules",
     ".next",
-    "clipforge-code"
+    "clipforge-code",
+    "external",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }

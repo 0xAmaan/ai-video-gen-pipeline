@@ -32,6 +32,7 @@ export const VideoPlayer = ({
   const [isInitialized, setIsInitialized] = useState(false);
   const [renderError, setRenderError] = useState<Error | null>(null);
   const lastSeekTimeRef = useRef<number>(currentTime);
+  const isInternalTimeUpdate = useRef(false);
 
   /**
    * Initialize renderer and playback controller
@@ -61,6 +62,8 @@ export const VideoPlayer = ({
           mediaAssets,
           {
             onTimeUpdate: (time) => {
+              // Mark this as an internal time update to prevent seek loop
+              isInternalTimeUpdate.current = true;
               onTimeUpdate?.(time);
             },
             onEnded: () => {
@@ -101,6 +104,14 @@ export const VideoPlayer = ({
    */
   useEffect(() => {
     if (!isInitialized || !playbackControllerRef.current) return;
+
+    // CRITICAL: Ignore time updates from internal playback to prevent feedback loop
+    // Only seek on user-initiated changes (timeline scrubbing, clicking, etc.)
+    if (isInternalTimeUpdate.current) {
+      isInternalTimeUpdate.current = false; // Reset flag after checking
+      lastSeekTimeRef.current = currentTime; // Update ref to prevent drift
+      return;
+    }
 
     // Check if this is a user-initiated seek (not from playback updates)
     const timeDifference = Math.abs(currentTime - lastSeekTimeRef.current);

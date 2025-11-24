@@ -172,11 +172,8 @@ export class PlaybackController {
   private startRAFLoop(): void {
     if (this.rafId !== null) return;
 
-    console.log("[PlaybackController] Starting RAF loop");
-
     const tick = (timestamp: number) => {
       if (!this.isPlaying) {
-        console.log("[PlaybackController] RAF loop stopped - not playing");
         return;
       }
 
@@ -194,10 +191,6 @@ export class PlaybackController {
       // Update current time based on FPS
       const deltaSeconds = deltaMs / 1000;
       this.currentTime += deltaSeconds;
-
-      console.log(
-        `[PlaybackController] RAF tick - currentTime: ${this.currentTime.toFixed(3)}s, delta: ${deltaMs.toFixed(1)}ms`,
-      );
 
       // Check if playback has ended
       if (this.currentTime >= this.sequence.duration) {

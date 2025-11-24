@@ -132,20 +132,20 @@ async function handleThumbnailRequest(
 
   try {
     // Validate mediaUrl
-    if (!mediaUrl || typeof mediaUrl !== 'string') {
-      throw new Error('Invalid media URL provided');
+    if (!mediaUrl || typeof mediaUrl !== "string") {
+      throw new Error("Invalid media URL provided");
     }
 
     // Check if it's a blob URL that might be revoked
-    if (mediaUrl.startsWith('blob:')) {
+    if (mediaUrl.startsWith("blob:")) {
       // Try to verify the blob is still valid by attempting a HEAD request
       try {
-        const response = await fetch(mediaUrl, { method: 'HEAD' });
+        const response = await fetch(mediaUrl, { method: "HEAD" });
         if (!response.ok) {
-          throw new Error('Blob URL is no longer valid or accessible');
+          throw new Error("Blob URL is no longer valid or accessible");
         }
       } catch (e) {
-        throw new Error('Blob URL appears to be revoked or inaccessible');
+        throw new Error("Blob URL appears to be revoked or inaccessible");
       }
     }
 
@@ -157,7 +157,9 @@ async function handleThumbnailRequest(
     try {
       input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
     } catch (e) {
-      throw new Error(`Failed to create Input from URL: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(
+        `Failed to create Input from URL: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
 
     let videoTrack;
@@ -165,7 +167,9 @@ async function handleThumbnailRequest(
       videoTrack = await input.getPrimaryVideoTrack();
     } catch (e) {
       input.dispose();
-      throw new Error(`Failed to get video track: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(
+        `Failed to get video track: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
 
     if (!videoTrack) {
@@ -175,7 +179,7 @@ async function handleThumbnailRequest(
     const canDecode = await videoTrack.canDecode();
 
     if (!canDecode) {
-      const codec = videoTrack.codec || 'unknown';
+      const codec = videoTrack.codec || "unknown";
       throw new Error(`Video codec '${codec}' cannot be decoded by browser`);
     }
 
@@ -213,7 +217,7 @@ async function handleThumbnailRequest(
       if (!result) {
         continue;
       }
-      
+
       const canvas = result.canvas as OffscreenCanvas;
       const blob = await canvas.convertToBlob({
         type: "image/jpeg",
@@ -230,7 +234,7 @@ async function handleThumbnailRequest(
         progress: (blobIndex / count) * 0.5, // 0-50% for generation
         current: blobIndex,
         total: count,
-        phase: 'generation',
+        phase: "generation",
       });
     }
 
@@ -240,61 +244,64 @@ async function handleThumbnailRequest(
 
     const uploadPromises = blobs.map((blob, index) =>
       uploadThumbnailToR2(blob, assetId, index)
-        .then(url => {
+        .then((url) => {
           const result = { success: true as const, url, index };
           results.push(result);
           completedUploads++;
-          
+
           // Send progressive update with partial results
           const sortedResults = [...results].sort((a, b) => a.index - b.index);
-          const partialThumbnails = sortedResults.map(r => r.url);
-          
+          const partialThumbnails = sortedResults.map((r) => r.url);
+
           ctx.postMessage({
             type: "THUMBNAIL_PROGRESS",
             requestId,
             progress: 0.5 + (completedUploads / count) * 0.5, // 50-100%
             current: completedUploads,
             total: count,
-            phase: 'upload',
+            phase: "upload",
             thumbnails: partialThumbnails, // Include partial results for progressive rendering
-            indices: sortedResults.map(r => r.index),
+            indices: sortedResults.map((r) => r.index),
           });
-          
+
           return result;
         })
         .catch(async (error) => {
-          console.error(`Failed to upload thumbnail ${index} for asset ${assetId}:`, error);
+          console.warn(
+            `Failed to upload thumbnail ${index} for asset ${assetId}:`,
+            error.message || error,
+          );
           // Fallback to data URL if R2 upload fails
           const dataUrl = await blobToDataUrl(blob);
           const result = { success: false as const, url: dataUrl, index };
           results.push(result);
           completedUploads++;
-          
+
           // Send progressive update even for fallback
           const sortedResults = [...results].sort((a, b) => a.index - b.index);
-          const partialThumbnails = sortedResults.map(r => r.url);
-          
+          const partialThumbnails = sortedResults.map((r) => r.url);
+
           ctx.postMessage({
             type: "THUMBNAIL_PROGRESS",
             requestId,
             progress: 0.5 + (completedUploads / count) * 0.5,
             current: completedUploads,
             total: count,
-            phase: 'upload',
+            phase: "upload",
             thumbnails: partialThumbnails,
-            indices: sortedResults.map(r => r.index),
+            indices: sortedResults.map((r) => r.index),
           });
-          
+
           return result;
-        })
+        }),
     );
 
     // Wait for all uploads to complete
     await Promise.all(uploadPromises);
-    
+
     // Sort by index to maintain correct order
     results.sort((a, b) => a.index - b.index);
-    const thumbnails = results.map(r => r.url);
+    const thumbnails = results.map((r) => r.url);
 
     // Send result
     const payload: ThumbnailResponseMessage = {
@@ -311,7 +318,10 @@ async function handleThumbnailRequest(
     let errorMessage = error instanceof Error ? error.message : String(error);
 
     // Check for common MediaBunny errors and provide better context
-    if (errorMessage.includes('unsupported') || errorMessage.includes('unrecognizable')) {
+    if (
+      errorMessage.includes("unsupported") ||
+      errorMessage.includes("unrecognizable")
+    ) {
       errorMessage = `Media format not supported: ${errorMessage}. The file may be corrupted or the blob URL may have been revoked.`;
     }
 
@@ -326,7 +336,7 @@ async function handleThumbnailRequest(
 async function uploadThumbnailToR2(
   blob: Blob,
   assetId: string,
-  index: number
+  index: number,
 ): Promise<string> {
   const formData = new FormData();
   formData.append("file", blob);

@@ -63,6 +63,9 @@ export async function POST(req: Request) {
     );
 
     const supportsAudio = Boolean(modelConfig.supportsAudio);
+    const isVeo31 =
+      modelKey.includes("google/veo-3.1") || modelKey.includes("google/veo-3.1-fast");
+    const isVeoModel = modelKey.includes("google/veo");
 
     const clampDuration = (value: number, min: number, max: number) =>
       Math.max(min, Math.min(max, value));
@@ -162,7 +165,17 @@ export async function POST(req: Request) {
           }
 
           // Add Google Veo specific parameters
-          if (modelKey.includes("google/veo")) {
+          if (isVeo31) {
+            // Force widescreen for Veo 3.1 in storyboard flow
+            input.aspect_ratio = "16:9";
+            if (supportsAudio) {
+              input.generate_audio = sceneAudio;
+            }
+            if (!modelKey.includes("fast")) {
+              input.negative_prompt =
+                "blur, distortion, jitter, artifacts, low quality";
+            }
+          } else if (isVeoModel) {
             input.aspect_ratio = "16:9";
             if (supportsAudio) {
               input.generate_audio = sceneAudio;

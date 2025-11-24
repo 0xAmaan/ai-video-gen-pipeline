@@ -23,8 +23,8 @@ export const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
     pathname?.startsWith("/input") ||
     pathname?.match(/^\/[^/]+\/(scene-planner|scene-iterator|loading|storyboard)/);
 
-  // Editor3 pages: completely clean - no dev tools
-  const isEditor3Page = pathname?.match(/^\/[^/]+\/editor3/);
+  // Editor pages: completely clean - no dev tools (formerly editor3, now main editor)
+  const isEditor3Page = pathname?.match(/^\/[^/]+\/editor/);
 
   // Archive pages: old flow with sidebar
   const isArchivePage = pathname?.startsWith("/archive");
