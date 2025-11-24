@@ -464,7 +464,7 @@ export default function Editor3Page() {
       // Space for play/pause
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
-        setIsPlaying(!isPlaying);
+        setIsPlaying(prev => !prev);
         return;
       }
 
@@ -742,7 +742,7 @@ export default function Editor3Page() {
                 selectedClipIds={selectedTimelineClipIds}
                 duration={selectedSequence.duration}
                 timelineSectionRef={timelineSectionRef}
-                onPlayPause={() => setIsPlaying(!isPlaying)}
+                onPlayPause={() => setIsPlaying(prev => !prev)}
                 onSeek={(time) => setCurrentTime(time)}
                 onClipMove={(updates: { clipId: string; newStart: number; newTrackId?: string }[]) => {
                   console.log('Clips moved:', updates)

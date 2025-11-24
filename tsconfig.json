@@ -24,7 +24,8 @@
     ],
     "paths": {
       "@/*": [
-        "./*"
+        "./*",
+        "./external/OpenCut/apps/web/src/*"
       ],
       "@opencut/lib/storage/storage-service": [
         "./lib/opencut/storage-service.ts"

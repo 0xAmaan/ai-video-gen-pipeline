@@ -225,7 +225,7 @@ export const MediaLibraryPanel = ({
                           )}
                         </div>
                         <p className="text-xs text-zinc-400 truncate">
-                          {audioName}
+                          {audio.prompt || `${typeInfo.label} Track`}
                         </p>
                       </div>
 

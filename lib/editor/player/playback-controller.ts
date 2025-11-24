@@ -2,11 +2,12 @@
  * PlaybackController
  *
  * Manages playback state and RequestAnimationFrame loop.
- * Coordinates between FrameRenderer and parent component.
+ * Coordinates between FrameRenderer and AudioMixer.
  */
 
 import type { Sequence, MediaAssetMeta } from "../types";
 import type { FrameRenderer } from "./frame-renderer";
+import { AudioMixer } from "../audio/audio-mixer";
 
 interface PlaybackCallbacks {
   onTimeUpdate?: (time: number) => void;
@@ -17,6 +18,7 @@ interface PlaybackCallbacks {
 export class PlaybackController {
   private sequence: Sequence;
   private frameRenderer: FrameRenderer;
+  private audioMixer: AudioMixer;
   private callbacks: PlaybackCallbacks;
   private mediaAssets: Record<string, MediaAssetMeta> = {};
 
@@ -46,6 +48,17 @@ export class PlaybackController {
 
     // Initialize frame renderer with media assets
     this.frameRenderer.setMediaAssets(mediaAssets);
+
+    // Initialize audio mixer
+    this.audioMixer = new AudioMixer(
+      () => this.sequence,
+      (id: string) => this.mediaAssets[id],
+    );
+
+    // Preload audio assets
+    this.audioMixer.preloadAudioAssets(mediaAssets).catch((error) => {
+      console.warn("Failed to preload audio assets:", error);
+    });
   }
 
   /**
@@ -54,6 +67,9 @@ export class PlaybackController {
   async play(): Promise<void> {
     if (this.isPlaying) return;
 
+    // Resume audio context (needed after user interaction on some browsers)
+    await this.audioMixer.resume();
+
     // Disable cache trimming during playback to prevent flickering
     this.frameRenderer.setPlaybackMode(true);
 
@@ -61,6 +77,10 @@ export class PlaybackController {
     // Don't set lastFrameTime here - let first RAF tick set it
     // to avoid negative delta issues
     this.lastFrameTime = 0;
+
+    // Start audio playback
+    await this.audioMixer.play(this.currentTime);
+
     this.startRAFLoop();
   }
 
@@ -72,6 +92,9 @@ export class PlaybackController {
 
     this.isPlaying = false;
     this.stopRAFLoop();
+
+    // Pause audio
+    this.audioMixer.pause();
 
     // Re-enable cache trimming when paused
     this.frameRenderer.setPlaybackMode(false);
@@ -86,6 +109,9 @@ export class PlaybackController {
 
     this.currentTime = clampedTime;
     this.pendingSeekTime = clampedTime;
+
+    // Seek audio to new time
+    await this.audioMixer.seek(clampedTime);
 
     // If not playing, render the frame immediately
     if (!this.isPlaying) {
@@ -105,6 +131,11 @@ export class PlaybackController {
     if (mediaAssets) {
       this.mediaAssets = mediaAssets;
       this.frameRenderer.setMediaAssets(mediaAssets);
+
+      // Preload any new audio assets
+      this.audioMixer.preloadAudioAssets(mediaAssets).catch((error) => {
+        console.warn("Failed to preload audio assets:", error);
+      });
     }
 
     // Re-render current frame with new sequence data
@@ -123,7 +154,7 @@ export class PlaybackController {
    */
   setMasterVolume(volume: number): void {
     this.masterVolume = Math.max(0, Math.min(1, volume));
-    // TODO: Apply to AudioMixer when implemented
+    this.audioMixer.setMasterVolume(volume);
   }
 
   /**
@@ -132,6 +163,7 @@ export class PlaybackController {
   destroy(): void {
     this.stopRAFLoop();
     this.isPlaying = false;
+    this.audioMixer.dispose();
   }
 
   /**
