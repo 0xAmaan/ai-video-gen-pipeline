@@ -88,16 +88,22 @@ export class PlaybackController {
    * Pause playback
    */
   pause(): void {
+    console.log(
+      "[PlaybackController] pause() called, isPlaying:",
+      this.isPlaying,
+    );
     if (!this.isPlaying) return;
 
     this.isPlaying = false;
     this.stopRAFLoop();
 
     // Pause audio
+    console.log("[PlaybackController] Pausing audio mixer");
     this.audioMixer.pause();
 
     // Re-enable cache trimming when paused
     this.frameRenderer.setPlaybackMode(false);
+    console.log("[PlaybackController] pause() complete");
   }
 
   /**
