@@ -1,12 +1,16 @@
 import type { Project, MediaAssetMeta, Track, Clip } from "@/lib/editor/types";
-import type { MediaFile } from "@opencut/types/media";
-import type { TimelineTrack, TimelineElement } from "@opencut/types/timeline";
-import type { TProject } from "@opencut/types/project";
+import type { MediaFile } from "./types/media";
+import type { TimelineTrack, TimelineElement } from "./types/timeline";
+import type { TProject } from "./types/project";
 import type { OpenCutSnapshot } from "./storage-service";
 
 interface SnapshotOptions {
   signal?: AbortSignal;
-  onAssetLoaded?: (params: { completed: number; total: number; name: string }) => void;
+  onAssetLoaded?: (params: {
+    completed: number;
+    total: number;
+    name: string;
+  }) => void;
 }
 
 const MIME_FALLBACK: Record<string, string> = {
@@ -44,14 +48,22 @@ const guessExtension = (asset: MediaAssetMeta, mime: string): string => {
 };
 
 const buildFileName = (asset: MediaAssetMeta, mime: string): string => {
-  const safeBase = asset.name.replace(/[^a-z0-9]+/gi, "-").replace(/(^-|-$)/g, "").toLowerCase() || asset.id;
+  const safeBase =
+    asset.name
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/(^-|-$)/g, "")
+      .toLowerCase() || asset.id;
   const ext = guessExtension(asset, mime);
   return `${safeBase}.${ext}`;
 };
 
-const inferMimeType = (asset: MediaAssetMeta): string => MIME_FALLBACK[asset.type] ?? "application/octet-stream";
+const inferMimeType = (asset: MediaAssetMeta): string =>
+  MIME_FALLBACK[asset.type] ?? "application/octet-stream";
 
-const toMediaElement = (clip: Clip, asset: MediaAssetMeta | undefined): TimelineElement => ({
+const toMediaElement = (
+  clip: Clip,
+  asset: MediaAssetMeta | undefined,
+): TimelineElement => ({
   id: clip.id,
   name: asset?.name ?? clip.id,
   type: "media",
@@ -145,6 +157,12 @@ const buildProject = (
       height,
     },
     canvasMode: "custom",
+    // Additional TProject required fields
+    width,
+    height,
+    frameRate: fps,
+    duration: primarySequence.duration || 0,
+    mediaAssets: {},
   };
 };
 
@@ -187,7 +205,9 @@ export async function buildOpenCutSnapshot(
     isMain: track.kind === "video",
   }));
 
-  const firstMediaThumbnail = mediaFiles.find((item) => item.thumbnailUrl)?.thumbnailUrl;
+  const firstMediaThumbnail = mediaFiles.find(
+    (item) => item.thumbnailUrl,
+  )?.thumbnailUrl;
 
   return {
     project: buildProject(project, primarySequence, firstMediaThumbnail),

@@ -1,14 +1,14 @@
-import type { MediaFile } from "@opencut/types/media";
-import type { TimelineTrack } from "@opencut/types/timeline";
-import type { SavedSoundsData, SoundEffect, SavedSound } from "@opencut/types/sounds";
-import type { TProject } from "@opencut/types/project";
+import type { MediaFile } from "./types/media";
+import type { TimelineTrack } from "./types/timeline";
+import type { SavedSoundsData, SoundEffect, SavedSound } from "./types/sounds";
+import type { TProject } from "./types/project";
 
 type TimelineKey = `${string}::${string}`;
 
 const timelineKey = (projectId: string, sceneId?: string): TimelineKey =>
   `${projectId}::${sceneId ?? "default"}`;
 
-const clone = <T,>(value: T): T => {
+const clone = <T>(value: T): T => {
   if (typeof structuredClone === "function") {
     return structuredClone(value);
   }
@@ -97,7 +97,8 @@ class InMemoryStorageService {
     projectId: string;
     mediaItem: MediaFile;
   }): Promise<void> {
-    const bucket = this.projectMedia.get(projectId) ?? new Map<string, MediaFile>();
+    const bucket =
+      this.projectMedia.get(projectId) ?? new Map<string, MediaFile>();
     bucket.set(mediaItem.id, cloneMedia(mediaItem));
     this.projectMedia.set(projectId, bucket);
   }
@@ -115,7 +116,11 @@ class InMemoryStorageService {
     return media ? cloneMedia(media) : null;
   }
 
-  async loadAllMediaFiles({ projectId }: { projectId: string }): Promise<MediaFile[]> {
+  async loadAllMediaFiles({
+    projectId,
+  }: {
+    projectId: string;
+  }): Promise<MediaFile[]> {
     const bucket = this.projectMedia.get(projectId);
     if (!bucket) return [];
     return Array.from(bucket.values()).map((item) => cloneMedia(item));
@@ -132,7 +137,11 @@ class InMemoryStorageService {
     bucket?.delete(id);
   }
 
-  async deleteProjectMedia({ projectId }: { projectId: string }): Promise<void> {
+  async deleteProjectMedia({
+    projectId,
+  }: {
+    projectId: string;
+  }): Promise<void> {
     this.projectMedia.delete(projectId);
   }
 
@@ -159,7 +168,11 @@ class InMemoryStorageService {
     return data ? clone(data) : null;
   }
 
-  async deleteProjectTimeline({ projectId }: { projectId: string }): Promise<void> {
+  async deleteProjectTimeline({
+    projectId,
+  }: {
+    projectId: string;
+  }): Promise<void> {
     for (const key of Array.from(this.timelines.keys())) {
       if (key.startsWith(`${projectId}::`)) {
         this.timelines.delete(key);
@@ -203,9 +216,15 @@ class InMemoryStorageService {
     return clone(this.savedSounds);
   }
 
-  async saveSoundEffect({ soundEffect }: { soundEffect: SoundEffect }): Promise<void> {
+  async saveSoundEffect({
+    soundEffect,
+  }: {
+    soundEffect: SoundEffect;
+  }): Promise<void> {
     const current = await this.loadSavedSounds();
-    if (current.sounds.some((sound) => sound.id === soundEffect.id)) {
+    if (
+      current.sounds.some((sound: SavedSound) => sound.id === soundEffect.id)
+    ) {
       return;
     }
 
@@ -230,14 +249,16 @@ class InMemoryStorageService {
   async removeSavedSound({ soundId }: { soundId: number }): Promise<void> {
     const current = await this.loadSavedSounds();
     this.savedSounds = {
-      sounds: current.sounds.filter((sound) => sound.id !== soundId),
+      sounds: current.sounds.filter(
+        (sound: SavedSound) => sound.id !== soundId,
+      ),
       lastModified: new Date().toISOString(),
     };
   }
 
   async isSoundSaved({ soundId }: { soundId: number }): Promise<boolean> {
     const current = await this.loadSavedSounds();
-    return current.sounds.some((sound) => sound.id === soundId);
+    return current.sounds.some((sound: SavedSound) => sound.id === soundId);
   }
 
   async clearSavedSounds(): Promise<void> {

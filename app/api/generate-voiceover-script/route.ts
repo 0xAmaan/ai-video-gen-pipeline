@@ -119,7 +119,6 @@ export async function POST(req: Request) {
         scenes: scenes.map((scene) => ({
           sceneNumber: scene.sceneNumber,
           description: scene.description,
-          title: scene.title,
           durationSeconds: scene.duration,
         })),
       });
