@@ -185,6 +185,10 @@ export const MediaLibraryPanel = ({
                 };
 
                 const typeInfo = getAudioTypeInfo(audioType);
+                const audioName =
+                  ("name" in audio && typeof audio.name === "string" && audio.name.trim().length > 0
+                    ? audio.name
+                    : undefined) ?? `${typeInfo.label} Track`;
                 const TypeIcon = typeInfo.icon;
 
                 return (
@@ -221,7 +225,7 @@ export const MediaLibraryPanel = ({
                           )}
                         </div>
                         <p className="text-xs text-zinc-400 truncate">
-                          {audio.name || `${typeInfo.label} Track`}
+                          {audioName}
                         </p>
                       </div>
 
