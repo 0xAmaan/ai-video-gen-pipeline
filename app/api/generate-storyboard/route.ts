@@ -67,6 +67,35 @@ async function generateSceneImage(
   );
 
   console.log(`   ✅ Scene ${scene.sceneNumber} image URL:`, imageUrl);
+  
+  // Validate aspect ratio to prevent square images from breaking Veo 3.1
+  try {
+    const imageResponse = await fetch(imageUrl);
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const uint8Array = new Uint8Array(imageBuffer);
+    
+    // Quick JPEG dimension parsing (JPEG SOF marker)
+    let width = 0, height = 0;
+    for (let i = 0; i < uint8Array.length - 8; i++) {
+      if (uint8Array[i] === 0xFF && (uint8Array[i + 1] === 0xC0 || uint8Array[i + 1] === 0xC2)) {
+        height = (uint8Array[i + 5] << 8) | uint8Array[i + 6];
+        width = (uint8Array[i + 7] << 8) | uint8Array[i + 8];
+        break;
+      }
+    }
+    
+    if (width > 0 && height > 0) {
+      const aspectRatio = width / height;
+      console.log(`   📐 Scene ${scene.sceneNumber} dimensions: ${width}x${height} (${aspectRatio.toFixed(2)}:1)`);
+      
+      // Warn if not 16:9 (1.78:1, allow 5% tolerance)
+      if (aspectRatio < 1.6 || aspectRatio > 1.9) {
+        console.warn(`   ⚠️  Scene ${scene.sceneNumber} aspect ratio ${aspectRatio.toFixed(2)}:1 is not 16:9 - Veo 3.1 may produce non-widescreen videos!`);
+      }
+    }
+  } catch (err) {
+    console.warn(`   ⚠️  Could not validate aspect ratio for scene ${scene.sceneNumber}:`, err);
+  }
   return imageUrl;
 }
 

@@ -168,6 +168,8 @@ export async function POST(req: Request) {
           if (isVeo31) {
             // Force widescreen for Veo 3.1 in storyboard flow
             input.aspect_ratio = "16:9";
+            console.log(`[Veo 3.1] Scene ${scene.sceneNumber}: Setting aspect_ratio=16:9 for image: ${scene.imageUrl?.substring(0, 80)}...`);
+            console.log(`[Veo 3.1] Full input:`, JSON.stringify(input, null, 2));
             if (supportsAudio) {
               input.generate_audio = sceneAudio;
             }
@@ -177,6 +179,7 @@ export async function POST(req: Request) {
             }
           } else if (isVeoModel) {
             input.aspect_ratio = "16:9";
+            console.log(`[Veo] Scene ${scene.sceneNumber}: Setting aspect_ratio=16:9 for image: ${scene.imageUrl?.substring(0, 80)}...`);
             if (supportsAudio) {
               input.generate_audio = sceneAudio;
             }

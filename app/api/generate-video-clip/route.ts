@@ -44,6 +44,40 @@ export async function POST(req: Request) {
 
     console.log(`Using video model: ${modelConfig.name} (${modelKey})`);
 
+    // Validate input image aspect ratio for Veo models
+    if (isVeo31 || isVeoModel) {
+      try {
+        const imageResponse = await fetch(imageUrl);
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const uint8Array = new Uint8Array(imageBuffer);
+        
+        // Quick JPEG dimension parsing
+        let width = 0, height = 0;
+        for (let i = 0; i < uint8Array.length - 8; i++) {
+          if (uint8Array[i] === 0xFF && (uint8Array[i + 1] === 0xC0 || uint8Array[i + 1] === 0xC2)) {
+            height = (uint8Array[i + 5] << 8) | uint8Array[i + 6];
+            width = (uint8Array[i + 7] << 8) | uint8Array[i + 8];
+            break;
+          }
+        }
+        
+        if (width > 0 && height > 0) {
+          const aspectRatio = width / height;
+          console.log(`[Veo] Input image dimensions: ${width}x${height} (${aspectRatio.toFixed(2)}:1)`);
+          
+          // Reject if not close to 16:9
+          if (aspectRatio < 1.6 || aspectRatio > 1.9) {
+            return apiError(
+              `Input image aspect ratio ${aspectRatio.toFixed(2)}:1 is not 16:9. Veo 3.1 requires 16:9 images (${width}x${height}). Please regenerate the scene image.`,
+              400
+            );
+          }
+        }
+      } catch (err) {
+        console.warn(`[Veo] Could not validate image aspect ratio:`, err);
+      }
+    }
+
     // Prepare input based on model requirements (following PRD WAN-style template)
     const input: any = {
       image: imageUrl,
@@ -75,6 +109,7 @@ export async function POST(req: Request) {
     if (isVeo31) {
       // Force widescreen for Veo 3.1 clips
       input.aspect_ratio = "16:9";
+      console.log(`[Veo 3.1] Forcing aspect_ratio to 16:9 for image: ${imageUrl}`);
       if (supportsAudio) {
         input.generate_audio = shouldGenerateAudio;
       }
@@ -84,6 +119,7 @@ export async function POST(req: Request) {
       }
     } else if (isVeoModel) {
       input.aspect_ratio = "16:9";
+      console.log(`[Veo] Forcing aspect_ratio to 16:9 for image: ${imageUrl}`);
       if (supportsAudio) {
         input.generate_audio = shouldGenerateAudio;
       }

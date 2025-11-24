@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/lib/editor/core/project-store";
 import { adaptConvexProjectToStandalone } from "@/lib/editor/convex-adapter";
 import { generateWaveform } from "@/lib/editor/audio/waveform-generator";
+import { storageService } from "@/lib/opencut/storage-service";
 
 type PanelType = "media" | "text" | "captions" | "transitions" | "effects";
 
@@ -144,12 +145,12 @@ export default function Editor3Page() {
   }, [adaptedData]);
 
   useEffect(() => {
-    if (!adaptedProject || !projectId) return;
+    if (!adaptedData || !projectId) return;
     storageService.configureConvexSync({
-      project: adaptedProject.project,
+      project: adaptedData.project,
       convexProjectId: projectId,
     });
-  }, [adaptedProject?.signature, projectId]);
+  }, [adaptedData?.signature, projectId]);
 
   // Load project into store when data is ready
   // Generate waveforms for audio assets
