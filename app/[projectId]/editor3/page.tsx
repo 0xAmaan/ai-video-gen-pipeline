@@ -5,7 +5,12 @@ import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Download } from "lucide-react";
+import { Image, Type, Subtitles, Shuffle, Sparkles, ChevronLeft, ChevronRight, Play, Pause, Download } from "lucide-react";
+import { TextPanel } from "@/components/editor/TextPanel";
+import { CaptionsPanel } from "@/components/editor/CaptionsPanel";
+import { TransitionLibrary } from "@/components/editor/TransitionLibrary";
+import { FilterLibrary } from "@/components/editor/FilterLibrary";
+import { MediaLibraryPanel } from "@/components/editor3/MediaLibraryPanel";
 import { VideoPlayer } from "@/components/editor/VideoPlayer";
 import { Timeline } from "@/components/timeline";
 import { MediaBunnyManager } from "@/lib/editor/io/media-bunny-manager";
@@ -18,15 +23,20 @@ import { useProjectStore } from "@/lib/editor/core/project-store";
 import { adaptConvexProjectToStandalone } from "@/lib/editor/convex-adapter";
 import { generateWaveform } from "@/lib/editor/audio/waveform-generator";
 
+type PanelType = 'media' | 'text' | 'captions' | 'transitions' | 'effects';
+
 export default function Editor3Page() {
   const params = useParams();
   const projectId = params?.projectId as string;
 
+  const [activePanel, setActivePanel] = useState<PanelType>('media');
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [videoHeight, setVideoHeight] = useState(50); // Percentage
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Video player state
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedTimelineClipIds, setSelectedTimelineClipIds] = useState<string[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -547,9 +557,91 @@ export default function Editor3Page() {
     }
   }, [selectedSequence, exportManager, mediaAssets, projectId, data?.project?.title]);
 
+  const sidebarButtons = [
+    { id: 'media' as PanelType, icon: Image, label: 'Media' },
+    { id: 'text' as PanelType, icon: Type, label: 'Text' },
+    { id: 'captions' as PanelType, icon: Subtitles, label: 'Captions' },
+    { id: 'transitions' as PanelType, icon: Shuffle, label: 'Transitions' },
+    { id: 'effects' as PanelType, icon: Sparkles, label: 'Effects' },
+  ];
+
   return (
     <div className="h-screen w-full bg-black text-white relative">
-      <div className="h-full w-full">
+      <div className="h-full grid" style={{
+        gridTemplateColumns: isPanelOpen ? "64px 280px 1fr" : "64px 0px 1fr",
+      }}>
+        {/* Left Sidebar */}
+        <aside className="bg-zinc-900 border-r border-zinc-800 flex flex-col items-center py-4 gap-2">
+          {sidebarButtons.map((button) => {
+            const Icon = button.icon;
+            const isActive = activePanel === button.id;
+
+            return (
+              <button
+                key={button.id}
+                onClick={() => {
+                  setActivePanel(button.id);
+                  setIsPanelOpen(true);
+                }}
+                className={`
+                  w-12 h-12 rounded-lg flex flex-col items-center justify-center gap-1 transition-all group cursor-pointer
+                  ${isActive
+                    ? 'bg-zinc-800 text-white'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                  }
+                `}
+                title={button.label}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-[10px] font-medium">{button.label}</span>
+              </button>
+            );
+          })}
+        </aside>
+
+        {/* Content Panel */}
+        <aside
+          className="bg-zinc-900 border-r border-zinc-800 overflow-hidden transition-all duration-300"
+          style={{ width: isPanelOpen ? "280px" : "0px" }}
+        >
+          {activePanel === 'media' && (
+            <MediaLibraryPanel
+              projectId={projectId}
+              onClipSelect={(clipId) => {
+                setSelectedClipId(clipId);
+                setCurrentTime(0);
+                setIsPlaying(false);
+              }}
+              selectedClipId={selectedClipId}
+            />
+          )}
+
+          {activePanel === 'text' && (
+            <TextPanel
+              onSelectText={(preset) => {}}
+            />
+          )}
+
+          {activePanel === 'captions' && (
+            <CaptionsPanel
+              onSelectStyle={(style) => {}}
+              onGenerateCaptions={() => {}}
+            />
+          )}
+
+          {activePanel === 'transitions' && (
+            <TransitionLibrary
+              onSelectTransition={(transition) => {}}
+            />
+          )}
+
+          {activePanel === 'effects' && (
+            <FilterLibrary
+              onSelectFilter={(filter) => {}}
+            />
+          )}
+        </aside>
+
         {/* Main Content Area */}
         <main
           ref={containerRef}
@@ -923,6 +1015,26 @@ export default function Editor3Page() {
           </section>
         </main>
       </div>
+
+      {/* Toggle Button - Absolutely Positioned */}
+      <button
+        onClick={() => setIsPanelOpen(!isPanelOpen)}
+        className="absolute top-1/2 -translate-y-1/2 z-50 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 flex items-center justify-center transition-all shadow-lg cursor-pointer"
+        style={{
+          left: isPanelOpen ? "344px" : "64px", // 64px (sidebar) + 280px (panel) or just 64px
+          width: "16px",
+          height: "64px",
+          borderTopRightRadius: "12px",
+          borderBottomRightRadius: "12px",
+          borderLeft: "none",
+        }}
+      >
+        {isPanelOpen ? (
+          <ChevronLeft className="w-4 h-4 text-zinc-400" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-zinc-400" />
+        )}
+      </button>
 
       {/* Export FAB - Floating Action Button */}
       <Button
