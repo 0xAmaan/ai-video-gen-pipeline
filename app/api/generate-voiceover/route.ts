@@ -5,7 +5,10 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { apiError, apiResponse } from "@/lib/api-response";
 import { getFlowTracker } from "@/lib/flow-tracker";
-import { sanitizeNarrationText, normalizeVoiceSettings } from "@/lib/narration";
+import {
+  sanitizeNarrationText,
+  normalizeVoiceSettings,
+} from "@/lib/narration";
 import { extractReplicateUrl } from "@/lib/replicate";
 import { getConvexClient } from "@/lib/server/convex";
 
@@ -17,10 +20,13 @@ const MODEL_ID =
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const deriveDuration = (output: unknown, fallback: number): number | null => {
+const deriveDuration = (
+  output: unknown,
+  fallback: number,
+): number | null => {
   if (Array.isArray(output)) {
     for (const item of output) {
-      const duration: number | null = deriveDuration(item, fallback);
+      const duration = deriveDuration(item, fallback);
       if (duration !== null) return duration;
     }
   }
@@ -56,8 +62,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     projectId = body?.projectId as Id<"videoProjects"> | undefined;
     const script = typeof body?.script === "string" ? body.script : "";
-    const voiceId =
-      typeof body?.voiceId === "string" ? body.voiceId : undefined;
+    const voiceId = typeof body?.voiceId === "string" ? body.voiceId : undefined;
     const emotion =
       typeof body?.emotion === "string" ? body.emotion : undefined;
     const speed = typeof body?.speed === "number" ? body.speed : undefined;
@@ -70,7 +75,8 @@ export async function POST(req: Request) {
       typeof body?.bitrate === "number" ? body.bitrate : undefined;
     const channel =
       typeof body?.channel === "string" ? body.channel : undefined;
-    const volume = typeof body?.volume === "number" ? body.volume : undefined;
+    const volume =
+      typeof body?.volume === "number" ? body.volume : undefined;
     const languageBoost =
       typeof body?.language_boost === "string"
         ? body.language_boost
@@ -88,7 +94,8 @@ export async function POST(req: Request) {
       return apiError("projectId is required", 400);
     }
 
-    const { text: sanitizedScript, truncated } = sanitizeNarrationText(script);
+    const { text: sanitizedScript, truncated } =
+      sanitizeNarrationText(script);
     if (!sanitizedScript) {
       return apiError("Voiceover script is required", 400);
     }
@@ -168,13 +175,11 @@ export async function POST(req: Request) {
         finalPrediction.status === "failed" ||
         finalPrediction.status === "canceled"
       ) {
-        const errorMessage =
+        const message =
           typeof finalPrediction.error === "string"
             ? finalPrediction.error
-            : finalPrediction.error
-              ? JSON.stringify(finalPrediction.error)
-              : "Voiceover generation failed before completion";
-        throw new Error(errorMessage);
+            : "Voiceover generation failed before completion";
+        throw new Error(message);
       }
       await wait(1200);
       finalPrediction = await replicateClient.predictions.get(
@@ -183,13 +188,11 @@ export async function POST(req: Request) {
     }
 
     if (finalPrediction.status !== "succeeded") {
-      const errorMessage =
+      const message =
         typeof finalPrediction.error === "string"
           ? finalPrediction.error
-          : finalPrediction.error
-            ? JSON.stringify(finalPrediction.error)
-            : `Voiceover generation did not complete (status: ${finalPrediction.status})`;
-      throw new Error(errorMessage);
+          : `Voiceover generation did not complete (status: ${finalPrediction.status})`;
+      throw new Error(message);
     }
 
     const audioUrl = extractReplicateUrl(

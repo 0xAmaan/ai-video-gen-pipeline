@@ -94,7 +94,7 @@ const OpenCutEditorPage = () => {
 
     return () => {
       cancelled = true;
-      controller.abort("Component unmounted");
+      controller.abort();
     };
   }, [adaptedProject?.signature, adaptedProject?.readyClipCount, retryNonce]);
 

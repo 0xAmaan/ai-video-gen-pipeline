@@ -20,6 +20,8 @@ import { getExportPipeline } from "@/lib/editor/export/export-pipeline";
 import { saveBlob } from "@/lib/editor/export/save-file";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/lib/editor/core/project-store";
+import { adaptConvexProjectToStandalone } from "@/lib/editor/convex-adapter";
+import { generateWaveform } from "@/lib/editor/audio/waveform-generator";
 
 type PanelType = 'media' | 'text' | 'captions' | 'transitions' | 'effects';
 
@@ -74,149 +76,68 @@ export default function Editor3Page() {
 
   const clips = data?.clips ?? [];
 
-  // Transform all Convex clips to a timeline Sequence and update mediaAssets
-  const selectedSequence = useMemo(() => {
-    if (clips.length === 0) {
-      return null;
-    }
+  // Use convex-adapter to transform Convex data to editor format (includes audio support!)
+  const adaptedData = useMemo(() => {
+    if (!data?.project || !data?.clips) return null;
 
-    // Process all clips and create media assets
-    const timelineClips: any[] = [];
-    let currentStart = 0;
-    let totalDuration = 0;
-    let sequenceWidth = 1920;
-    let sequenceHeight = 1080;
-
-    clips.forEach((clip) => {
-      // Build MediaAssetMeta exactly like convex-adapter.ts does
-      const videoUrl =
-        clip.lipsyncVideoUrl ??
-        clip.videoUrl ??
-        clip.originalVideoUrl ??
-        "";
-
-      // Skip clips with no valid URL (including empty strings)
-      if (!videoUrl || videoUrl.trim() === "") {
-        console.warn('Skipping clip with no valid video URL:', {
-          clipId: clip._id,
-          lipsyncVideoUrl: clip.lipsyncVideoUrl,
-          videoUrl: clip.videoUrl,
-          originalVideoUrl: clip.originalVideoUrl
-        });
-        return;
-      }
-
-      // Parse resolution (e.g., "1920x1080") or use defaults
-      let width = 1920;
-      let height = 1080;
-      if (clip.resolution) {
-        const [w, h] = clip.resolution.split('x').map(Number);
-        if (w && h) {
-          width = w;
-          height = h;
-        }
-      }
-
-      // Create/update MediaAssetMeta - EXACT PATTERN FROM convex-adapter.ts
-      const safeDuration = Math.max(clip.duration ?? 0, 0.1);
-      const originalUrl = clip.sourceUrl ?? clip.videoUrl ?? videoUrl;
-      const proxyUrl = clip.proxyUrl ?? undefined;
-      const playbackUrl = proxyUrl ?? originalUrl;
-
-      const asset: MediaAssetMeta = mediaAssets[clip._id] || {
-        id: clip._id,
-        name: `Clip ${clip._id}`,
-        type: "video",
-        duration: safeDuration,
-        width,
-        height,
-        fps: 30,
-        url: playbackUrl,  // Use playbackUrl (proxy preferred!)
-        r2Key: clip.r2Key ?? undefined,
-        proxyUrl,
-        proxyR2Key: proxyUrl ? clip.r2Key ?? undefined : undefined,
-        sourceUrl: originalUrl,
-      };
-
-      // Update mediaAssets if needed (preserve thumbnails if they exist)
-      if (!mediaAssets[clip._id]) {
-        setMediaAssets((prev) => ({ ...prev, [asset.id]: asset }));
-      }
-
-      // Track max dimensions for sequence
-      if (asset.width > sequenceWidth) sequenceWidth = asset.width;
-      if (asset.height > sequenceHeight) sequenceHeight = asset.height;
-
-      // Use position override if available, otherwise stack horizontally
-      const clipStart = clipPositionOverrides[clip._id] !== undefined
-        ? clipPositionOverrides[clip._id]
-        : currentStart;
-
-      // Add clip to timeline
-      timelineClips.push({
-        id: clip._id,
-        mediaId: clip._id,
-        trackId: "video-track",
-        kind: "video",
-        start: clipStart,
-        duration: asset.duration,
-        trimStart: 0,
-        trimEnd: 0, // No trimming - play full clip
-        opacity: 1,
-        volume: 1,
-        effects: [],
-        transitions: [],
-        speedCurve: null,
-        preservePitch: true,
-        blendMode: "normal",
-      });
-
-      // Only increment currentStart if not using override (for default stacking)
-      if (clipPositionOverrides[clip._id] === undefined) {
-        currentStart += asset.duration;
-      }
+    return adaptConvexProjectToStandalone({
+      project: data.project,
+      clips: data.clips,
+      scenes: data.scenes ?? [],
+      audioAssets: data.audioAssets ?? [],
     });
+  }, [data]);
 
-    if (timelineClips.length === 0) {
-      return null;
+  // Get sequence and media assets from adapter
+  const selectedSequence = useMemo(() => {
+    if (!adaptedData) return null;
+
+    // Get the first sequence (main timeline)
+    const sequence = adaptedData.project.sequences[0];
+    if (!sequence) return null;
+
+    // Apply any modifications from user actions
+    if (modifiedClips || modifiedTracks || additionalTracks.length > 0) {
+      return {
+        ...sequence,
+        tracks: modifiedTracks || [
+          ...sequence.tracks,
+          ...additionalTracks,
+        ],
+      };
     }
-
-    // Calculate ACTUAL sequence duration - end of the furthest clip
-    const actualClips = modifiedClips || timelineClips;
-    const sequenceDuration = actualClips.length > 0
-      ? Math.max(...actualClips.map(clip => clip.start + clip.duration))
-      : 0;
-
-    // Create a sequence with all clips horizontally stacked
-    const sequence: Sequence = {
-      id: "timeline-sequence",
-      name: "Timeline",
-      width: sequenceWidth,
-      height: sequenceHeight,
-      fps: 30,
-      sampleRate: 48000,
-      duration: sequenceDuration,
-      tracks: modifiedTracks || [
-        {
-          id: "video-track",
-          name: "Video 1",
-          kind: "video",
-          allowOverlap: false,
-          clips: modifiedClips || timelineClips,
-          locked: false,
-          muted: false,
-          solo: false,
-          volume: 1,
-          zIndex: 0,
-          height: 60,
-          visible: true,
-        },
-        ...additionalTracks,
-      ],
-    };
 
     return sequence;
-  }, [clips, mediaAssets, selectedClipId, clipPositionOverrides, modifiedClips, modifiedTracks, additionalTracks]);
+  }, [adaptedData, modifiedClips, modifiedTracks, additionalTracks]);
+
+  // Update mediaAssets state when adapter data changes
+  useEffect(() => {
+    if (adaptedData?.project.mediaAssets) {
+      setMediaAssets(adaptedData.project.mediaAssets);
+    }
+  }, [adaptedData]);
+
+  // Generate waveforms for audio assets
+  useEffect(() => {
+    if (!adaptedData?.project.mediaAssets) return;
+
+    const audioAssets = Object.values(adaptedData.project.mediaAssets).filter(
+      (asset) => asset.type === "audio" && asset.url && !asset.waveform
+    );
+
+    audioAssets.forEach((asset) => {
+      generateWaveform(asset.url)
+        .then((waveformData) => {
+          setMediaAssets((prev) => ({
+            ...prev,
+            [asset.id]: { ...asset, waveform: waveformData.samples },
+          }));
+        })
+        .catch((error) => {
+          console.warn(`Failed to generate waveform for ${asset.id}:`, error);
+        });
+    });
+  }, [adaptedData]);
 
   // Generate thumbnails for all clips in the sequence
   useEffect(() => {

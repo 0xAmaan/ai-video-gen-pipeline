@@ -54,7 +54,10 @@ export interface AudioModel {
   docsUrl?: string;
 }
 
-const withEnvOverride = (value: string | undefined, fallback: string) =>
+const withEnvOverride = (
+  value: string | undefined,
+  fallback: string,
+) =>
   value && value.trim().length > 0 ? value.trim() : fallback;
 
 const MUSICGEN_DEFAULT_MODEL =
@@ -65,6 +68,7 @@ const RIFFUSION_DEFAULT_MODEL =
 const BARK_DEFAULT_MODEL =
   "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787";
 const MINIMAX_SPEECH_DEFAULT_MODEL = "minimax/speech-02-turbo";
+const MINIMAX_SPEECH_TURBO_MODEL = MINIMAX_SPEECH_DEFAULT_MODEL;
 
 export const AUDIO_MODELS: Record<string, AudioModel> = {
   // --- Music generation (Replicate) ---
@@ -112,7 +116,11 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     kind: "music_generation",
     vendor: "replicate",
     capabilities: ["music-generation", "prompt-audio"],
-    bestFor: ["cinematic underscore", "ad jingles", "custom background loops"],
+    bestFor: [
+      "cinematic underscore",
+      "ad jingles",
+      "custom background loops",
+    ],
     estimatedCost: 0.12,
     costUnit: "per 20s clip",
     latencySeconds: 15,
@@ -153,7 +161,10 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     docsUrl: "https://replicate.com/riffusion/riffusion",
   },
   "bark-v0": {
-    id: withEnvOverride(process.env.REPLICATE_BARK_MODEL, BARK_DEFAULT_MODEL),
+    id: withEnvOverride(
+      process.env.REPLICATE_BARK_MODEL,
+      BARK_DEFAULT_MODEL,
+    ),
     name: "Bark (Music & Speech)",
     kind: "music_generation",
     vendor: "replicate",
@@ -250,7 +261,7 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
   "replicate-minimax-turbo": {
     id: withEnvOverride(
       process.env.REPLICATE_MINIMAX_TURBO_MODEL,
-      MINIMAX_SPEECH_DEFAULT_MODEL,
+      MINIMAX_SPEECH_TURBO_MODEL,
     ),
     name: "MiniMax Speech 02 Turbo",
     kind: "voice_synthesis",
@@ -276,7 +287,10 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     docsUrl: "https://replicate.com/minimax/speech-02-turbo",
   },
   "bark-voice": {
-    id: withEnvOverride(process.env.REPLICATE_BARK_MODEL, BARK_DEFAULT_MODEL),
+    id: withEnvOverride(
+      process.env.REPLICATE_BARK_MODEL,
+      BARK_DEFAULT_MODEL,
+    ),
     name: "Bark Hybrid Voice",
     kind: "voice_synthesis",
     vendor: "replicate",
@@ -319,7 +333,8 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     },
     notes:
       "Powered by Freesound.org community uploads. Requires FREESOUND_API_KEY and respects Creative Commons licensing.",
-    docsUrl: "https://freesound.org/docs/api/resources_apiv2.html#search-text",
+    docsUrl:
+      "https://freesound.org/docs/api/resources_apiv2.html#search-text",
   },
   "freesound-sfx-library": {
     id: "freesound/sound-effects",
@@ -338,8 +353,10 @@ export const AUDIO_MODELS: Record<string, AudioModel> = {
     },
     notes:
       "Same Freesound integration but tuned for SFX tagging and shorter clips.",
-    docsUrl: "https://freesound.org/docs/api/resources_apiv2.html#search-text",
+    docsUrl:
+      "https://freesound.org/docs/api/resources_apiv2.html#search-text",
   },
+
 };
 
 export const DEFAULT_MUSIC_MODEL = "lyria-2";
@@ -349,11 +366,15 @@ export function getAudioModel(key: string): AudioModel {
   return AUDIO_MODELS[key] || AUDIO_MODELS[DEFAULT_MUSIC_MODEL];
 }
 
-export function getModelsByKind(kind: AudioModelKind): AudioModel[] {
+export function getModelsByKind(
+  kind: AudioModelKind,
+): AudioModel[] {
   return Object.values(AUDIO_MODELS).filter((model) => model.kind === kind);
 }
 
-export function getModelsByVendor(vendor: AudioVendor): AudioModel[] {
+export function getModelsByVendor(
+  vendor: AudioVendor,
+): AudioModel[] {
   return Object.values(AUDIO_MODELS).filter((model) => model.vendor === vendor);
 }
 
@@ -390,7 +411,9 @@ export interface AudioTrackResult {
 
 export interface MusicGenerationAdapter extends BaseAudioProviderAdapter {
   kind: "music_generation";
-  generateTrack(request: MusicGenerationRequest): Promise<AudioTrackResult>;
+  generateTrack(
+    request: MusicGenerationRequest,
+  ): Promise<AudioTrackResult>;
 }
 
 export interface VoiceSynthesisRequest {
