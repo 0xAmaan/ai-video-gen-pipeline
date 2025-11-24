@@ -84,7 +84,6 @@ export async function POST(req: Request) {
     const scenes = (projectData.scenes ?? []).map((scene) => ({
       sceneNumber: scene.sceneNumber,
       description: scene.description,
-      title: scene.title,
       duration: scene.duration,
     }));
 
@@ -111,7 +110,6 @@ export async function POST(req: Request) {
         scenes: scenes.map((scene) => ({
           sceneNumber: scene.sceneNumber,
           description: scene.description,
-          title: scene.title,
           durationSeconds: scene.duration,
         })),
       });
@@ -129,7 +127,6 @@ export async function POST(req: Request) {
         "You are an expert creative copywriter for video ads. Deliver scripts that sound human, confident, and concise.",
       prompt,
       temperature: 0.8,
-      maxTokens: 260,
     });
 
     const script = stripVoiceoverLabel(result.text.trim());

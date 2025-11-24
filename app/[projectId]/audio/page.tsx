@@ -155,7 +155,6 @@ const AudioPage = () => {
         sceneNumber: row.scene.sceneNumber,
         shots: row.shots.map((shot) => ({
           description: shot.shot.description,
-          mood: shot.shot.mood,
           shotNumber: shot.shot.shotNumber,
           selectedImagePrompt: shot.selectedImage?.iterationPrompt,
         })),

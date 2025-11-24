@@ -35,10 +35,10 @@ type StoryboardRow = Array<{
   }>;
 }>;
 
-const deriveDuration = (output: unknown, fallback: number) => {
+const deriveDuration = (output: unknown, fallback: number): number | null => {
   if (Array.isArray(output)) {
     for (const item of output) {
-      const duration = deriveDuration(item as unknown, fallback);
+      const duration: number | null = deriveDuration(item as unknown, fallback);
       if (duration !== null) return duration;
     }
   }
@@ -83,10 +83,17 @@ export async function POST(req: Request) {
       return apiError("projectId is required", 400);
     }
 
+    // Type assertion: projectId is guaranteed to be defined after the check above
+    const validProjectId = projectId as Id<"videoProjects">;
+
     const convex = await getConvexClient();
     const [projectData, storyboardRows] = await Promise.all([
-      convex.query(api.video.getProjectWithAllData, { projectId }),
-      convex.query(api.projectRedesign.getStoryboardRows, { projectId }),
+      convex.query(api.video.getProjectWithAllData, {
+        projectId: validProjectId,
+      }),
+      convex.query(api.projectRedesign.getStoryboardRows, {
+        projectId: validProjectId,
+      }),
     ]);
 
     if (!projectData?.project) {
@@ -95,8 +102,7 @@ export async function POST(req: Request) {
 
     const clips = projectData.clips ?? [];
     const completedClips = clips.filter((clip) => clip.status === "complete");
-    const clipsForTiming =
-      completedClips.length > 0 ? completedClips : clips;
+    const clipsForTiming = completedClips.length > 0 ? completedClips : clips;
     const scenes = projectData.scenes ?? [];
     const storyboard = (storyboardRows as StoryboardRow) ?? [];
 
@@ -181,7 +187,7 @@ export async function POST(req: Request) {
     });
 
     await convex.mutation(api.video.updateProjectSoundtrack, {
-      projectId,
+      projectId: validProjectId,
       soundtrackStatus: "generating",
       soundtrackPrompt: resolvedPrompt,
       soundtrackDuration: Math.round(totalDuration),
@@ -194,7 +200,7 @@ export async function POST(req: Request) {
     ) => {
       const existingAssets =
         (await convex.query(api.video.getAudioAssets, {
-          projectId,
+          projectId: validProjectId,
         })) ?? [];
 
       await Promise.all(
@@ -213,7 +219,7 @@ export async function POST(req: Request) {
       );
 
       const assetId = await convex.mutation(api.video.createAudioAsset, {
-        projectId,
+        projectId: validProjectId,
         type: "bgm",
         source: "generated",
         provider: "lyria-2",
@@ -232,7 +238,7 @@ export async function POST(req: Request) {
       });
 
       await convex.mutation(api.video.updateProjectSoundtrack, {
-        projectId,
+        projectId: validProjectId,
         soundtrackUrl: audioUrl,
         soundtrackPrompt: resolvedPrompt,
         soundtrackDuration: durationSeconds,
@@ -249,7 +255,10 @@ export async function POST(req: Request) {
         "Using mock soundtrack to avoid API costs",
       );
       await mockDelay(600);
-      const mockTrack = mockMusicTrack(resolvedPrompt, Math.round(totalDuration));
+      const mockTrack = mockMusicTrack(
+        resolvedPrompt,
+        Math.round(totalDuration),
+      );
       const assetId = await persistSoundtrack(
         mockTrack.audioUrl,
         mockTrack.durationSeconds,
@@ -300,32 +309,39 @@ export async function POST(req: Request) {
     let finalPrediction = prediction;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (finalPrediction.status === "succeeded") break;
-      if (finalPrediction.status === "failed" ||
-        finalPrediction.status === "canceled") {
-        throw new Error(
-          finalPrediction.error ||
-            "Soundtrack generation failed before completion",
-        );
+      if (
+        finalPrediction.status === "failed" ||
+        finalPrediction.status === "canceled"
+      ) {
+        const errorMessage =
+          typeof finalPrediction.error === "string"
+            ? finalPrediction.error
+            : finalPrediction.error
+              ? JSON.stringify(finalPrediction.error)
+              : "Soundtrack generation failed before completion";
+        throw new Error(errorMessage);
       }
       await wait(2500);
       finalPrediction = await replicate.predictions.get(finalPrediction.id);
     }
 
     if (finalPrediction.status !== "succeeded") {
-      throw new Error(
-        finalPrediction.error ||
-          `Soundtrack generation did not complete (status: ${finalPrediction.status})`,
-      );
+      const errorMessage =
+        typeof finalPrediction.error === "string"
+          ? finalPrediction.error
+          : finalPrediction.error
+            ? JSON.stringify(finalPrediction.error)
+            : `Soundtrack generation did not complete (status: ${finalPrediction.status})`;
+      throw new Error(errorMessage);
     }
 
     const audioUrl = extractReplicateUrl(
       finalPrediction.output,
       "Lyria 2 soundtrack",
     );
-    const resolvedDuration = deriveDuration(
-      finalPrediction.output,
-      Math.round(totalDuration),
-    ) ?? Math.round(totalDuration);
+    const resolvedDuration =
+      deriveDuration(finalPrediction.output, Math.round(totalDuration)) ??
+      Math.round(totalDuration);
 
     const assetId = await persistSoundtrack(
       audioUrl,
@@ -349,8 +365,8 @@ export async function POST(req: Request) {
           sceneNumber,
           duration: meta.duration,
           sceneId: meta.sceneId,
-          shotCount: storyboardBySceneNumber.get(sceneNumber)?.shots.length ??
-            0,
+          shotCount:
+            storyboardBySceneNumber.get(sceneNumber)?.shots.length ?? 0,
           sceneTitle: storyboardBySceneNumber.get(sceneNumber)?.scene.title,
           sceneDescription:
             storyboardBySceneNumber.get(sceneNumber)?.scene.description,

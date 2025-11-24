@@ -46,7 +46,7 @@ export interface ProjectPatch {
   mediaAssets: Record<string, MediaAssetMeta>;
 }
 
-const clone = <T,>(value: T): T => {
+const clone = <T>(value: T): T => {
   if (typeof structuredClone === "function") {
     return structuredClone(value);
   }
@@ -107,17 +107,16 @@ export const extractCanonicalSnapshot = (
 
   const sequences: Sequence[] = snapshot.sequences.map((ocSeq) => {
     const base = sequenceById.get(ocSeq.id);
-    const next: Sequence =
-      base ?? {
-        id: ocSeq.id,
-        name: ocSeq.name,
-        width: originalProject.sequences[0]?.width ?? 1920,
-        height: originalProject.sequences[0]?.height ?? 1080,
-        fps: originalProject.sequences[0]?.fps ?? 30,
-        sampleRate: originalProject.sequences[0]?.sampleRate ?? 48000,
-        duration: ocSeq.duration,
-        tracks: [],
-      };
+    const next: Sequence = base ?? {
+      id: ocSeq.id,
+      name: ocSeq.name,
+      width: originalProject.sequences[0]?.width ?? 1920,
+      height: originalProject.sequences[0]?.height ?? 1080,
+      fps: originalProject.sequences[0]?.fps ?? 30,
+      sampleRate: originalProject.sequences[0]?.sampleRate ?? 48000,
+      duration: ocSeq.duration,
+      tracks: [],
+    };
 
     const trackById = new Map<string, Track>();
     for (const track of next.tracks) {
@@ -130,11 +129,16 @@ export const extractCanonicalSnapshot = (
       if (!track) {
         track = {
           id: ocTrack.id,
+          name: ocTrack.id,
           kind: ocTrack.kind,
           allowOverlap: ocTrack.kind !== "video",
           locked: false,
           muted: false,
+          solo: false,
           volume: 1,
+          zIndex: 0,
+          height: ocTrack.kind === "audio" ? 80 : 120,
+          visible: true,
           clips: [],
         };
         next.tracks.push(track);
@@ -158,6 +162,7 @@ export const extractCanonicalSnapshot = (
           transitions: existing?.transitions ?? [],
           speedCurve: existing?.speedCurve ?? null,
           preservePitch: existing?.preservePitch ?? true,
+          blendMode: existing?.blendMode ?? "normal",
         };
       });
     }
@@ -166,7 +171,9 @@ export const extractCanonicalSnapshot = (
     return next;
   });
 
-  const mediaAssets: Record<string, MediaAssetMeta> = { ...originalProject.mediaAssets };
+  const mediaAssets: Record<string, MediaAssetMeta> = {
+    ...originalProject.mediaAssets,
+  };
 
   for (const item of snapshot.media) {
     const existing = mediaAssets[item.id];

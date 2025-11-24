@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import OpenCutEditorApp from "@opencut/app/editor/[project_id]/page";
+// TODO: OpenCut integration - needs external/OpenCut submodule setup
+// import OpenCutEditorApp from "@opencut/app/editor/[project_id]/page";
 import { useProjectData } from "@/app/archive/[projectId]/_components/useProjectData";
 import { adaptConvexProjectToStandalone } from "@/lib/editor/convex-adapter";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buildOpenCutSnapshot } from "@/lib/opencut/snapshot";
-import { storageService } from "@opencut/lib/storage/storage-service";
+import { storageService } from "@/lib/opencut/storage-service";
 
 type SnapshotState = "idle" | "converting" | "ready" | "error";
 
@@ -173,8 +174,17 @@ const OpenCutEditorPage = () => {
   }
 
   return (
-    <div className="h-screen" key={snapshotVersion}>
-      <OpenCutEditorApp />
+    <div className="h-screen flex items-center justify-center bg-black text-white" key={snapshotVersion}>
+      <div className="text-center">
+        <h1 className="text-2xl font-bold mb-4">OpenCut Editor Integration</h1>
+        <p className="text-gray-400">
+          OpenCut integration is pending. Please use the{" "}
+          <Link href={`/${projectId}/editor`} className="text-blue-400 hover:underline">
+            legacy editor
+          </Link>
+          {" "}instead.
+        </p>
+      </div>
     </div>
   );
 };

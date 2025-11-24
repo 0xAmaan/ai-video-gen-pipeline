@@ -88,7 +88,7 @@ const HomePage = () => {
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a] flex flex-col overflow-y-auto">
       {/* Hero Video Section - positioned at top */}
-      <div className="w-full px-8 pt-8 shrink-0">
+      <div className="w-full px-4 sm:px-8 pt-8 shrink-0">
         <div
           className="relative rounded-3xl overflow-hidden shadow-2xl h-[50vh] mx-auto"
           style={{ maxWidth: "90vw" }}
@@ -99,17 +99,17 @@ const HomePage = () => {
             muted
             playsInline
             className="w-full h-full object-cover"
-            src="/home-demo.mov"
+            src="/hero-demo.mov"
           />
           {/* Dark overlay */}
           <div className="absolute inset-0 bg-black/40" />
 
           {/* Text overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
-            <h1 className="text-5xl font-semibold text-white mb-3">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 sm:px-8">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold text-white mb-2 sm:mb-3 max-w-4xl">
               Turn your ideas into reality
             </h1>
-            <p className="text-xl text-gray-200">
+            <p className="text-base sm:text-lg md:text-xl text-gray-200 max-w-2xl">
               Get started by creating a project
             </p>
           </div>
