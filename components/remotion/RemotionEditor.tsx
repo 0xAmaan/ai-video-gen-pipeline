@@ -101,7 +101,6 @@ export const RemotionEditor = () => {
                 fps={fps}
                 controls
                 style={{ width: "100%", height: "100%", background: "black" }}
-                onFrameUpdate={(e) => setCurrentFrame(e.frame)}
               />
             </div>
           </div>
