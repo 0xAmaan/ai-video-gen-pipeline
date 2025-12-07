@@ -37,7 +37,7 @@
     "idb": "^8.0.3",
     "lucide-react": "^0.553.0",
     "mediabunny": "^1.25.0",
-    "next": "16.0.3",
+    "next": "16.0.7",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "remotion": "^4.0.79",
