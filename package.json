@@ -10,6 +10,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/groq": "^2.0.29",
     "@ai-sdk/openai": "^2.0.67",
     "@clerk/nextjs": "^6.35.1",
     "@dnd-kit/core": "^6.3.1",
