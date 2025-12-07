@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useTimelineStore } from "@/lib/remotion/timelineStore";
+import { captureVideoThumbnail } from "@/lib/remotion/mediaHelpers";
 
 interface Props {
   targetTrackId?: string;
@@ -25,6 +26,32 @@ const getFileDuration = (file: File): Promise<number> => {
       resolve(0);
     };
   });
+};
+
+const getWaveform = async (file: File, samples = 80): Promise<number[] | undefined> => {
+  if (!file.type.startsWith("audio")) return undefined;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioCtx = new AudioContext();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const channel = audioBuffer.getChannelData(0);
+    const blockSize = Math.floor(channel.length / samples);
+    const waveform: number[] = [];
+    for (let i = 0; i < samples; i++) {
+      const start = i * blockSize;
+      let sum = 0;
+      for (let j = 0; j < blockSize; j++) {
+        const sample = channel[start + j];
+        sum += Math.abs(sample);
+      }
+      waveform.push(Math.min(1, sum / blockSize * 2)); // normalize approx
+    }
+    audioCtx.close();
+    return waveform;
+  } catch (err) {
+    console.warn("waveform decode failed", err);
+    return undefined;
+  }
 };
 
 /**
@@ -54,6 +81,9 @@ export const MediaImport = ({ targetTrackId }: Props) => {
         : tracks.find((t) => t.type === kind) || tracks[0];
     if (!track) return;
 
+    const waveform = kind === "audio" ? await getWaveform(file) : undefined;
+    const thumbnail = kind === "video" ? await captureVideoThumbnail(url) : undefined;
+
     actions.addClip(track.id, {
       id: makeId(),
       trackId: track.id,
@@ -61,8 +91,11 @@ export const MediaImport = ({ targetTrackId }: Props) => {
       name: file.name,
       startFrame: durationInFrames,
       durationInFrames: durationFrames,
+      maxDurationFrames: durationFrames,
       trimStartFrames: 0,
       volume: 1,
+      waveform,
+      thumbnail,
     });
 
     setPreviewUrl(url);

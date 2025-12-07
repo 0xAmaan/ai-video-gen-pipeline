@@ -17,7 +17,7 @@ interface Props {
   onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
 }
 
-const trackHeight = 32;
+const trackHeight = 48;
 const trackGap = 8;
 const containerPadding = 12;
 const resizeHandleWidth = 6;
@@ -67,16 +67,21 @@ export const DraggableTimelineBar = ({
       const { mode, clipId, initialStart, initialDuration } = dragState;
       if (!onUpdateClip) return;
 
+      const clip = tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
+      const maxDur = clip?.maxDurationFrames ?? Infinity;
+
       if (mode === "move") {
         const nextStart = Math.max(0, Math.round((initialStart + delta) / SNAP_STEP_FRAMES) * SNAP_STEP_FRAMES);
         onUpdateClip(clipId, { startFrame: nextStart });
       } else if (mode === "resize-left") {
         const newStart = Math.max(0, Math.round((initialStart + delta) / SNAP_STEP_FRAMES) * SNAP_STEP_FRAMES);
         const newDuration = Math.max(1, Math.round((initialDuration - delta) / SNAP_STEP_FRAMES) * SNAP_STEP_FRAMES);
-        onUpdateClip(clipId, { startFrame: newStart, durationInFrames: newDuration });
+        const clampedDuration = Math.min(newDuration, maxDur);
+        onUpdateClip(clipId, { startFrame: newStart, durationInFrames: clampedDuration });
       } else if (mode === "resize-right") {
         const newDuration = Math.max(1, Math.round((initialDuration + delta) / SNAP_STEP_FRAMES) * SNAP_STEP_FRAMES);
-        onUpdateClip(clipId, { durationInFrames: newDuration });
+        const clampedDuration = Math.min(newDuration, maxDur);
+        onUpdateClip(clipId, { durationInFrames: clampedDuration });
       }
     }
   };
@@ -140,16 +145,19 @@ export const DraggableTimelineBar = ({
                 const left = (clip.startFrame / durationInFrames) * 100;
                 const width = (clip.durationInFrames / durationInFrames) * 100;
                 const isSelected = selectedClipId === clip.id;
+                const trackLocked = track.locked;
+                const trackMuted = track.muted;
                 return (
                   <div
                     key={clip.id}
-                    className={`absolute h-full rounded text-[11px] px-2 flex items-center overflow-hidden cursor-pointer ${
-                      isSelected ? "bg-primary text-primary-foreground" : "bg-primary/60 text-primary-foreground"
-                    }`}
+                    className={`absolute h-full rounded text-[11px] flex items-center overflow-hidden border ${
+                      trackLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                    } ${isSelected ? "border-primary" : "border-border"}`}
                     style={{ left: `${left}%`, width: `${width}%` }}
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       onSelectClip?.(clip.id);
+                      if (trackLocked) return;
                       // Determine drag mode based on cursor position
                       const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
                       const offsetX = e.clientX - rect.left;
@@ -181,7 +189,31 @@ export const DraggableTimelineBar = ({
                     }}
                     title={`${clip.name ?? clip.id} • ${clip.durationInFrames}f`}
                   >
-                    <span className="truncate">{clip.name ?? clip.id}</span>
+                    {track.type === "video" && clip.thumbnail && (
+                      <div className="absolute inset-0 overflow-hidden flex">
+                        {(() => {
+                          const clipWidthPx = (clip.durationInFrames / durationInFrames) * 1000; // approximate to pick a count
+                          const tiles = Math.max(3, Math.min(30, Math.ceil(clipWidthPx / (trackHeight * 1.5))));
+                          return Array.from({ length: tiles }).map((_, i) => (
+                            <img
+                              key={i}
+                              src={clip.thumbnail}
+                              alt={clip.name ?? clip.id}
+                              className="h-full object-cover"
+                              style={{ width: "auto", flexShrink: 0 }}
+                            />
+                          ));
+                        })()}
+                        <div className="absolute inset-0 bg-gradient-to-r from-black/10 via-transparent to-black/20 pointer-events-none" />
+                      </div>
+                    )}
+                    {track.type === "audio" && clip.waveform && clip.waveform.length > 0 && (
+                      <div className="absolute inset-0 opacity-70">
+                        <WaveformOverlay waveform={clip.waveform} />
+                      </div>
+                    )}
+                    {trackMuted && <span className="text-[10px] mr-1 z-10">🔇</span>}
+                    <span className="truncate px-2 relative z-10 drop-shadow">{clip.name ?? clip.id}</span>
                   </div>
                 );
               })}
@@ -189,6 +221,21 @@ export const DraggableTimelineBar = ({
           );
         })}
       </div>
+    </div>
+  );
+};
+
+const WaveformOverlay = ({ waveform }: { waveform: number[] }) => {
+  const bars = waveform.slice(0, 80); // cap for rendering
+  return (
+    <div className="flex items-center h-full">
+      {bars.map((v, i) => (
+        <div
+          key={i}
+          className="flex-1 bg-white/70 mx-[1px]"
+          style={{ height: `${Math.max(5, v * 100)}%` }}
+        />
+      ))}
     </div>
   );
 };
